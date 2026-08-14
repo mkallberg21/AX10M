@@ -7,6 +7,7 @@
  * so "works with every processor" is a checklist, not a slogan.
  *
  * `status`:
+ *  - 'implemented' — adapter wired end-to-end against the processor's real API.
  *  - 'skeleton'    — an adapter class exists (capability matrix real, calls TODO).
  *  - 'planned'     — on the roadmap; capability profile documented in PROCESSORS.md.
  */
@@ -20,7 +21,7 @@ export type ProcessorSegment =
   | 'merchant-of-record'
   | 'app-store';
 
-export type AdapterStatus = 'skeleton' | 'planned';
+export type AdapterStatus = 'implemented' | 'skeleton' | 'planned';
 
 export interface ProcessorDescriptor {
   id: string;
@@ -48,7 +49,7 @@ export const PROCESSOR_REGISTRY: readonly ProcessorDescriptor[] = [
   { id: 'razorpay', displayName: 'Razorpay', segment: 'card-gateway', mode: 'co-drive', status: 'planned' },
   { id: 'payu', displayName: 'PayU', segment: 'card-gateway', mode: 'advisory', status: 'planned' },
   // Subscription-billing platforms
-  { id: 'chargebee', displayName: 'Chargebee', segment: 'billing-platform', mode: 'drive', status: 'skeleton' },
+  { id: 'chargebee', displayName: 'Chargebee', segment: 'billing-platform', mode: 'drive', status: 'implemented' },
   { id: 'recurly', displayName: 'Recurly', segment: 'billing-platform', mode: 'co-drive', status: 'planned' },
   { id: 'zuora', displayName: 'Zuora', segment: 'billing-platform', mode: 'co-drive', status: 'planned' },
   { id: 'maxio', displayName: 'Maxio (Chargify/SaaSOptics)', segment: 'billing-platform', mode: 'drive', status: 'planned' },

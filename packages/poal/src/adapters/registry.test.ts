@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { PROCESSOR_REGISTRY, coverageSummary, getProcessor } from './registry.js';
 import { AdyenAdapter } from './adyen.js';
 import { BraintreeAdapter } from './braintree.js';
-import { ChargebeeAdapter } from './chargebee.js';
+import { ChargebeeAdapter } from './chargebee/index.js';
 import { GoCardlessAdapter } from './gocardless.js';
 import { PaddleAdapter } from './paddle.js';
 
@@ -31,7 +31,7 @@ describe('adapter ↔ registry consistency', () => {
   const cases = [
     new AdyenAdapter({ apiKey: 'x', merchantAccount: 'x', hmacKey: 'x' }),
     new BraintreeAdapter({ merchantId: 'x', publicKey: 'x', privateKey: 'x' }),
-    new ChargebeeAdapter({ site: 'x', apiKey: 'x' }),
+    new ChargebeeAdapter({ site: 'x', apiKey: 'x', merchantId: 'm' }),
     new GoCardlessAdapter({ accessToken: 'x', webhookSecret: 'x' }),
     new PaddleAdapter({ apiKey: 'x', webhookSecret: 'x' }),
   ];

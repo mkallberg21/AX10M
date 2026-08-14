@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { CanonicalEvent, Invoice, PaymentMethod } from '@lift/canonical';
-import { familyOf } from '@lift/canonical';
+import type { CanonicalEvent, DeclineEvent, Invoice, MrrTier, PaymentMethod } from '@lift/canonical';
+import { DeclineFamily, familyOf } from '@lift/canonical';
 import type { ProcessorAdapter, RawWebhook } from '@lift/poal';
-import { idempotencyKey } from '@lift/poal';
+import { ChargebeeAdapter, idempotencyKey } from '@lift/poal';
 import {
   assign,
   HashChainedLedger,
@@ -39,22 +39,59 @@ export class RecoveryCaseService {
   // TODO(lift): inject per-environment holdout config from env / config service.
   private readonly holdoutConfig?: HoldoutConfig;
 
+  private chargebee?: ChargebeeAdapter;
+
   /**
    * Entry point from the webhook controller. Verify + normalize, then process
    * each canonical event.
    */
   async ingestStripeWebhook(raw: RawWebhook): Promise<void> {
     // TODO(lift): resolve the correct per-merchant StripeAdapter and call
-    // adapter.ingestWebhook(raw). For the scaffold we short-circuit to empty.
+    // ingestWithAdapter. For the scaffold the Stripe adapter's normalization is
+    // still TODO, so this short-circuits.
     this.logger.debug(`Received Stripe webhook (${raw.body.length} bytes)`);
-    const events: CanonicalEvent[] = [];
+  }
+
+  /** Chargebee ingress — the first fully-wired non-Stripe adapter (PROCESSORS.md §3). */
+  async ingestChargebeeWebhook(raw: RawWebhook): Promise<void> {
+    await this.ingestWithAdapter(this.chargebeeAdapter(), raw);
+  }
+
+  /** Generic ingress: any adapter → canonical events → recovery cases. */
+  async ingestWithAdapter(adapter: ProcessorAdapter, raw: RawWebhook): Promise<void> {
+    const events = await adapter.ingestWebhook(raw);
+    this.logger.debug(`${adapter.id}: normalized ${events.length} canonical event(s)`);
     for (const event of events) {
       await this.handleEvent(event);
     }
   }
 
+  private chargebeeAdapter(): ChargebeeAdapter {
+    if (this.chargebee) return this.chargebee;
+    // TODO(lift): resolve the ChargebeeAdapter per merchant (by site / OAuth),
+    // not from a single process-wide env. Restricted key only; never a PAN.
+    this.chargebee = new ChargebeeAdapter({
+      site: process.env.CHARGEBEE_SITE ?? '',
+      apiKey: process.env.CHARGEBEE_API_KEY ?? '',
+      merchantId: process.env.CHARGEBEE_MERCHANT_ID ?? 'mrc_unknown',
+      webhookUser: process.env.CHARGEBEE_WEBHOOK_USER,
+      webhookPassword: process.env.CHARGEBEE_WEBHOOK_PASSWORD,
+    });
+    return this.chargebee;
+  }
+
   private async handleEvent(event: CanonicalEvent): Promise<void> {
-    // TODO(lift): route by event.type; on 'invoice.failed' open a recovery case.
+    if (event.type === 'invoice.failed') {
+      const payload = event.payload as { invoice?: Invoice; decline?: DeclineEvent };
+      if (payload.invoice) {
+        const stratum = deriveStratum(payload.invoice, payload.decline);
+        const { bucket } = this.openCase({ invoice: payload.invoice, stratum, occurredAt: event.occurredAt });
+        this.logger.debug(`Opened recovery case for ${payload.invoice.id} → ${bucket}`);
+      }
+      return;
+    }
+    // TODO(lift): handle invoice.paid (close case), payment_method.updated (retry),
+    // subscription.updated (state sync).
     this.logger.debug(`Handling ${event.type} for ${event.merchantId}`);
   }
 
@@ -157,4 +194,27 @@ export class RecoveryCaseService {
   ledgerHead(): string {
     return this.ledger.head();
   }
+}
+
+/**
+ * Derive a holdout stratum from a failed invoice + its decline. Scaffold-level:
+ * MRR tier is proxied from the invoice amount and issuer region is unknown until
+ * BIN metadata is joined. TODO(lift): use real MRR + issuer-region from the
+ * subscription / payment-method BIN.
+ */
+function deriveStratum(invoice: Invoice, decline?: DeclineEvent): Stratum {
+  return {
+    mrrTier: mrrTierFromAmount(invoice.amount.amount),
+    declineFamily: decline?.family ?? DeclineFamily.Gray,
+    issuerRegion: 'unknown',
+  };
+}
+
+/** Coarse MRR-tier bucket from an amount in minor units (proxy until real MRR is joined). */
+function mrrTierFromAmount(minor: number): MrrTier {
+  if (minor < 2_000) return 'micro'; // < $20
+  if (minor < 10_000) return 'small'; // < $100
+  if (minor < 50_000) return 'mid'; // < $500
+  if (minor < 200_000) return 'large'; // < $2,000
+  return 'enterprise';
 }

@@ -30,4 +30,23 @@ export class WebhooksController {
     // Always 200 quickly; heavy work is enqueued. Reconciler catches anything missed.
     return { received: true };
   }
+
+  /**
+   * Chargebee webhook ingress (PROCESSORS.md §3). Chargebee authenticates its
+   * webhooks with HTTP Basic auth (not a signature), which the adapter verifies
+   * against the configured credentials before trusting the body.
+   */
+  @Post('chargebee')
+  @HttpCode(200)
+  async chargebee(
+    @Req() req: RawBodyRequest<Request>,
+    @Headers('authorization') authorization: string | undefined,
+  ): Promise<{ received: true }> {
+    const raw = req.rawBody?.toString('utf8') ?? '';
+    await this.recovery.ingestChargebeeWebhook({
+      body: raw,
+      headers: { authorization: authorization ?? '' },
+    });
+    return { received: true };
+  }
 }
