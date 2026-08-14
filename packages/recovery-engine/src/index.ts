@@ -22,6 +22,7 @@ export * from './logistic.js';
 export * from './training.js';
 export * from './simulate.js';
 export * from './ledger-samples.js';
+export * from './retrain.js';
 export * from './bandit.js';
 export * from './bootstrap-weights.js';
 export { trainBootstrap, type BootstrapResult } from './train-cli.js';

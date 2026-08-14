@@ -7,6 +7,7 @@ import {
   assign,
   HashChainedLedger,
   type HoldoutConfig,
+  type LedgerEntry,
   type Stratum,
 } from '@ax10m/attribution';
 import {
@@ -457,6 +458,16 @@ export class RecoveryCaseService {
   /** Expose the ledger head so callers can notarize / build statements. */
   ledgerHead(): string {
     return this.ledger.head();
+  }
+
+  /**
+   * Snapshot the tamper-evident ledger — the retraining corpus source. The recovery
+   * retrain job (`@ax10m/recovery-engine` `retrainFromLedger`) reads these entries,
+   * joins each `recovery.planned` feature snapshot with its realized outcome, and
+   * fits a challenger. In production this reads the persisted (Postgres) ledger.
+   */
+  ledgerEntries(): readonly LedgerEntry[] {
+    return this.ledger.all();
   }
 }
 
