@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { PROCESSOR_REGISTRY, coverageSummary, getProcessor } from './registry.js';
 import { AdyenAdapter } from './adyen/index.js';
-import { BraintreeAdapter } from './braintree.js';
+import { BraintreeAdapter } from './braintree/index.js';
 import { ChargebeeAdapter } from './chargebee/index.js';
 import { GoCardlessAdapter } from './gocardless.js';
 import { PaddleAdapter } from './paddle.js';
@@ -30,7 +30,7 @@ describe('processor registry', () => {
 describe('adapter ↔ registry consistency', () => {
   const cases = [
     new AdyenAdapter({ apiKey: 'x', merchantAccount: 'x', merchantId: 'm', hmacKey: 'x' }),
-    new BraintreeAdapter({ merchantId: 'x', publicKey: 'x', privateKey: 'x' }),
+    new BraintreeAdapter({ merchantId: 'm', braintreeMerchantId: 'x', publicKey: 'x', privateKey: 'x' }),
     new ChargebeeAdapter({ site: 'x', apiKey: 'x', merchantId: 'm' }),
     new GoCardlessAdapter({ accessToken: 'x', webhookSecret: 'x' }),
     new PaddleAdapter({ apiKey: 'x', webhookSecret: 'x' }),
@@ -63,10 +63,10 @@ describe('advisory-mode safety', () => {
   });
 });
 
-describe('skeleton drive adapters', () => {
+describe('skeleton drive/co-drive adapters', () => {
   it('surface an unimplemented (not advisory) error on attemptCharge', async () => {
-    // Braintree is still a capability-only skeleton; Adyen & Chargebee are implemented.
-    const braintree = new BraintreeAdapter({ merchantId: 'x', publicKey: 'x', privateKey: 'x' });
-    await expect(braintree.attemptCharge({} as never, {} as never, 'idem_2')).rejects.toThrow(/TODO\(lift\)/);
+    // GoCardless is still a capability-only skeleton; Adyen/Braintree/Chargebee are implemented.
+    const gocardless = new GoCardlessAdapter({ accessToken: 'x', webhookSecret: 'x' });
+    await expect(gocardless.attemptCharge({} as never, {} as never, 'idem_2')).rejects.toThrow(/TODO\(lift\)/);
   });
 });

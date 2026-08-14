@@ -36,7 +36,7 @@ export const PROCESSOR_REGISTRY: readonly ProcessorDescriptor[] = [
   // Card gateways
   { id: 'stripe', displayName: 'Stripe', segment: 'card-gateway', mode: 'drive', status: 'skeleton' },
   { id: 'adyen', displayName: 'Adyen', segment: 'card-gateway', mode: 'drive', status: 'implemented' },
-  { id: 'braintree', displayName: 'Braintree (PayPal)', segment: 'card-gateway', mode: 'drive', status: 'skeleton' },
+  { id: 'braintree', displayName: 'Braintree (PayPal)', segment: 'card-gateway', mode: 'drive', status: 'implemented' },
   { id: 'checkout', displayName: 'Checkout.com', segment: 'card-gateway', mode: 'drive', status: 'planned' },
   { id: 'cybersource', displayName: 'Cybersource (Visa)', segment: 'card-gateway', mode: 'drive', status: 'planned' },
   { id: 'authorizenet', displayName: 'Authorize.Net', segment: 'card-gateway', mode: 'drive', status: 'planned' },

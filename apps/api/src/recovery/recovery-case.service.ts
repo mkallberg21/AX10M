@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { CanonicalEvent, DeclineEvent, Invoice, MrrTier, PaymentMethod } from '@lift/canonical';
 import { DeclineCode, DeclineFamily, familyOf } from '@lift/canonical';
 import type { ProcessorAdapter, RawWebhook } from '@lift/poal';
-import { AdyenAdapter, ChargebeeAdapter, idempotencyKey } from '@lift/poal';
+import { AdyenAdapter, BraintreeAdapter, ChargebeeAdapter, idempotencyKey } from '@lift/poal';
 import {
   assign,
   HashChainedLedger,
@@ -44,6 +44,7 @@ export class RecoveryCaseService {
 
   private chargebee?: ChargebeeAdapter;
   private adyen?: AdyenAdapter;
+  private braintree?: BraintreeAdapter;
 
   /**
    * Entry point from the webhook controller. Verify + normalize, then process
@@ -64,6 +65,11 @@ export class RecoveryCaseService {
   /** Adyen ingress (HMAC-verified notifications). */
   async ingestAdyenWebhook(raw: RawWebhook): Promise<void> {
     await this.ingestWithAdapter(this.adyenAdapter(), raw);
+  }
+
+  /** Braintree ingress (bt_signature-verified webhooks). */
+  async ingestBraintreeWebhook(raw: RawWebhook): Promise<void> {
+    await this.ingestWithAdapter(this.braintreeAdapter(), raw);
   }
 
   /** Generic ingress: any adapter → canonical events → recovery cases. */
@@ -100,6 +106,19 @@ export class RecoveryCaseService {
       baseUrl: process.env.ADYEN_CHECKOUT_URL,
     });
     return this.adyen;
+  }
+
+  private braintreeAdapter(): BraintreeAdapter {
+    if (this.braintree) return this.braintree;
+    // TODO(lift): resolve the BraintreeAdapter per merchant.
+    this.braintree = new BraintreeAdapter({
+      merchantId: process.env.BRAINTREE_LIFT_MERCHANT_ID ?? 'mrc_unknown',
+      braintreeMerchantId: process.env.BRAINTREE_MERCHANT_ID ?? '',
+      publicKey: process.env.BRAINTREE_PUBLIC_KEY ?? '',
+      privateKey: process.env.BRAINTREE_PRIVATE_KEY ?? '',
+      environment: process.env.BRAINTREE_ENVIRONMENT === 'production' ? 'production' : 'sandbox',
+    });
+    return this.braintree;
   }
 
   private async handleEvent(event: CanonicalEvent): Promise<void> {

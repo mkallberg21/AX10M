@@ -62,4 +62,18 @@ export class WebhooksController {
     await this.recovery.ingestAdyenWebhook({ body: raw, headers: {} });
     return '[accepted]';
   }
+
+  /**
+   * Braintree webhook ingress (PROCESSORS.md §3). Braintree POSTs a form-encoded
+   * bt_signature + bt_payload (base64 XML); the adapter verifies the HMAC-SHA1
+   * signature before trusting the payload. (Endpoint verification uses a separate
+   * GET bt_challenge handshake — TODO(lift).)
+   */
+  @Post('braintree')
+  @HttpCode(200)
+  async braintree(@Req() req: RawBodyRequest<Request>): Promise<{ received: true }> {
+    const raw = req.rawBody?.toString('utf8') ?? '';
+    await this.recovery.ingestBraintreeWebhook({ body: raw, headers: {} });
+    return { received: true };
+  }
 }

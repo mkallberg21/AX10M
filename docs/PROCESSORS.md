@@ -114,7 +114,7 @@ Prioritized by market share × ease × capability completeness:
 
 1. **Stripe** — reference adapter *skeleton* (capability matrix real; API calls TODO). Largest SaaS footprint; drive; the coexistence-with-Smart-Retries story.
 2. **Adyen** — ✅ **implemented end-to-end** (Checkout `/payments` idempotent token retries, HMAC-verified notification ingestion, stored-method listing). Clean drive, no competing dunning.
-3. **Braintree/PayPal** — huge footprint, auto network tokens.
+3. **Braintree/PayPal** — ✅ **implemented end-to-end** (classic-gateway `sale` on a vault token, HMAC-SHA1-signed webhook ingestion, vaulted-card listing). Huge footprint, auto network tokens.
 4. **Chargebee** — ✅ **implemented end-to-end** (`collect_payment` on a stored token, webhook Basic-auth verify, reconciliation poll). Best billing-platform drive surface.
 5. **Recurly** — rich webhooks + native updater.
 6. **Checkout.com / Cybersource** — enterprise acquirers, drive.
