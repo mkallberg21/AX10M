@@ -21,6 +21,7 @@ export * from './features.js';
 export * from './logistic.js';
 export * from './training.js';
 export * from './simulate.js';
+export * from './feature-store.js';
 export * from './ledger-samples.js';
 export * from './retrain.js';
 export * from './bandit.js';

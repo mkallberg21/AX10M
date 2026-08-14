@@ -19,6 +19,7 @@ import {
   BOOTSTRAP_RECOVERABILITY_WEIGHTS,
   HeuristicPolicy,
   LogisticRecoverability,
+  RecoveryFeatureStore,
   type AvailableMethod,
   type RecoveryDecision,
   type RecoveryFeatures,
@@ -67,6 +68,12 @@ export class RecoveryCaseService {
   private readonly policy: RetryPolicy = new HeuristicPolicy(
     new LogisticRecoverability(BOOTSTRAP_RECOVERABILITY_WEIGHTS),
   );
+
+  // Enrichment layer + data flywheel: turns a raw failure into the high-signal feature
+  // vector (customer recovery rate, issuer/BIN approval prior + region, tenure) from
+  // accumulated outcomes. Fed by observe()/recordOutcome() below; read (leakage-free)
+  // by featuresFor(). TODO(ax10m): back with the persistent feature store in production.
+  private readonly featureStore = new RecoveryFeatureStore();
 
   // Invoices whose holdout assignment has already been recorded — webhooks are
   // at-least-once, so we must not double-append to the tamper-evident ledger.
@@ -182,6 +189,12 @@ export class RecoveryCaseService {
       if (payload.invoice) {
         const stratum = deriveStratum(payload.invoice, payload.decline);
         const { bucket } = this.openCase({ invoice: payload.invoice, stratum, occurredAt: event.occurredAt });
+        // Stamp first-contact time so the feature store can compute customer tenure.
+        this.featureStore.observe({
+          merchantId: payload.invoice.merchantId,
+          customerId: payload.invoice.customerId,
+          now: event.occurredAt,
+        });
         // Feed the shadow-mode baseline measurement (no-op unless the merchant is onboarding).
         this.onboarding.recordFailure(payload.invoice.merchantId, {
           invoiceId: payload.invoice.id,
@@ -335,6 +348,18 @@ export class RecoveryCaseService {
         },
       });
     }
+    // Feed the flywheel: this realized outcome sharpens the customer's recovery rate
+    // and the issuer/BIN approval prior for every FUTURE case. Recorded AFTER the
+    // decision (features were read before the charge) so it stays leakage-free.
+    if (result.outcome !== 'pending') {
+      this.featureStore.recordOutcome({
+        merchantId: params.invoice.merchantId,
+        customerId: params.invoice.customerId,
+        bin: params.method.bin,
+        recovered: result.outcome === 'succeeded',
+        now: new Date().toISOString(),
+      });
+    }
     return { result: 'attempted', outcome: result.outcome };
   }
 
@@ -355,7 +380,7 @@ export class RecoveryCaseService {
    */
   planAttempt(params: { invoice: Invoice; method?: PaymentMethod; decline?: DeclineEvent; attemptNumber: number }): RecoveryDecision {
     const { invoice, method, decline, attemptNumber } = params;
-    const features = deriveFeatures(invoice, decline, attemptNumber - 1);
+    const features = this.featuresFor({ invoice, method, decline, attemptNumber });
     const methods: AvailableMethod[] = method
       ? [{ ref: method.processorRef, isDefault: true, autoUpdated: method.autoUpdated }]
       : [];
@@ -406,7 +431,7 @@ export class RecoveryCaseService {
   }): Promise<{ action: RecoveryActionOutcome; outcome?: ChargeOutcome; decision: RecoveryDecision }> {
     const { adapter, invoice, method, attemptNumber, shadow } = params;
     const attemptsSoFar = attemptNumber - 1;
-    const features = deriveFeatures(invoice, params.decline, attemptsSoFar);
+    const features = this.featuresFor({ invoice, method, decline: params.decline, attemptNumber });
     const methods: AvailableMethod[] = [
       { ref: method.processorRef, isDefault: true, autoUpdated: method.autoUpdated },
     ];
@@ -455,6 +480,26 @@ export class RecoveryCaseService {
     return { action: exec.result, outcome: exec.outcome, decision };
   }
 
+  /**
+   * Build the enriched feature vector for a case from the feature store — leakage-free
+   * (reads only outcomes recorded BEFORE this case resolves). The BIN (for issuer
+   * region + approval prior) comes from the payment method when available; the shadow
+   * plan path has no method, so BIN-derived signals fall back to their priors.
+   */
+  private featuresFor(p: { invoice: Invoice; method?: PaymentMethod; decline?: DeclineEvent; attemptNumber: number }): RecoveryFeatures {
+    return this.featureStore.enrich({
+      merchantId: p.invoice.merchantId,
+      customerId: p.invoice.customerId,
+      bin: p.method?.bin,
+      firstFailedAt: p.invoice.firstFailedAt,
+      declineCode: p.decline?.code ?? DeclineCode.Unknown,
+      amountMinor: p.invoice.amount.amount,
+      currency: p.invoice.amount.currency,
+      attemptNumber: p.attemptNumber,
+      now: new Date().toISOString(),
+    });
+  }
+
   /** Expose the ledger head so callers can notarize / build statements. */
   ledgerHead(): string {
     return this.ledger.head();
@@ -476,25 +521,6 @@ type RecoveryActionOutcome = 'card_update_comms' | 'suppress' | 'suppressed' | '
 
 /** Realized processor outcome of a charge attempt. */
 type ChargeOutcome = 'succeeded' | 'failed' | 'pending';
-
-/**
- * Derive the recovery-engine feature vector from a failed invoice + its decline.
- * Scaffold-grade: tenure / prior-recovery-rate / issuer signals are neutral priors
- * until the customer graph and BIN metadata are joined. TODO(ax10m): populate from
- * the customer's real history + payment-method BIN so the learned policy has signal.
- */
-function deriveFeatures(invoice: Invoice, decline: DeclineEvent | undefined, attemptsSoFar: number): RecoveryFeatures {
-  return {
-    declineCode: decline?.code ?? DeclineCode.Unknown,
-    amountMinor: invoice.amount.amount,
-    currency: invoice.amount.currency,
-    issuerRegion: 'unknown',
-    customerTenureDays: 180,
-    priorRecoveryRate: 0.35,
-    attemptNumber: attemptsSoFar + 1,
-    daysSinceFirstFail: 0,
-  };
-}
 
 /** Map a processor's card brand string to the guardrail's network taxonomy. */
 function mapCardNetwork(brand: string | undefined): CardNetwork {

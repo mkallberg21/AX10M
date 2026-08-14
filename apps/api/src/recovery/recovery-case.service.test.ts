@@ -196,3 +196,30 @@ describe('RecoveryCaseService webhook ingress (shadow planning)', () => {
     expect((adapter as FakeAdapter).charges).toHaveLength(0);
   });
 });
+
+describe('feature enrichment flywheel', () => {
+  it('a recurring customer\'s learned priorRecoveryRate rises across cases and lands in the ledger', async () => {
+    const svc = new RecoveryCaseService(new OnboardingService());
+    const adapter = new FakeAdapter('succeeded'); // every recovery succeeds → rate should climb
+    const bin = '424242';
+
+    for (let i = 0; i < 12; i++) {
+      const inv: Invoice = { ...invoice, id: `ax10m_inv_${i}`, processorRef: `in_${i}` };
+      const pm: PaymentMethod = { ...method, id: `ax10m_pm_${i}`, bin };
+      await svc.executeRecovery({ adapter, invoice: inv, method: pm, decline: softDecline, attemptNumber: 1, shadow: false });
+    }
+
+    // Pull the priorRecoveryRate the engine saw at each successive decision from the ledger.
+    const rates = svc
+      .ledgerEntries()
+      .filter((e) => e.type === 'recovery.planned')
+      .map((e) => (e.detail.features as { priorRecoveryRate: number }).priorRecoveryRate);
+
+    expect(rates.length).toBe(12);
+    expect(rates[0]).toBeCloseTo(0.35, 2); // first case: pure cold-start prior
+    expect(rates[rates.length - 1]!).toBeGreaterThan(rates[0]!); // flywheel learned the customer recovers
+    expect(rates[rates.length - 1]!).toBeGreaterThan(0.55);
+    // The issuer/BIN approval prior also learned from the same wins.
+    expect(svc.ledgerEntries().length).toBeGreaterThan(12);
+  });
+});
