@@ -15,6 +15,11 @@
 export * from './recoverability.js';
 export * from './timing.js';
 export * from './policy.js';
+// Decline-Code Intelligence + Autonomous Retry Sequencing (ARSE).
+export * from './decline-intel.js';
+export * from './retry-strategy.js';
+export * from './sequence.js';
+export * from './intelligence.js';
 // Learning: feature encoding, the trained logistic model, the trainer, the online
 // bandit, the real ledger→corpus pipeline, and the shipped bootstrap prior.
 export * from './features.js';
