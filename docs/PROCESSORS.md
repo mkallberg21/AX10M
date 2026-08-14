@@ -112,7 +112,7 @@ platform run a retry/dunning engine AX10M must disable or coexist with.
 
 Prioritized by market share × ease × capability completeness:
 
-1. **Stripe** — reference adapter *skeleton* (capability matrix real; API calls TODO). Largest SaaS footprint; drive; the coexistence-with-Smart-Retries story.
+1. **Stripe** — ✅ **implemented end-to-end** (invoice `/pay` retries on a stored PaymentMethod, Stripe-Signature-verified webhooks, open-invoice reconciliation poll, card listing). Largest SaaS footprint; drive; the coexistence-with-Smart-Retries story.
 2. **Adyen** — ✅ **implemented end-to-end** (Checkout `/payments` idempotent token retries, HMAC-verified notification ingestion, stored-method listing). Clean drive, no competing dunning.
 3. **Braintree/PayPal** — ✅ **implemented end-to-end** (classic-gateway `sale` on a vault token, HMAC-SHA1-signed webhook ingestion, vaulted-card listing). Huge footprint, auto network tokens.
 4. **Chargebee** — ✅ **implemented end-to-end** (`collect_payment` on a stored token, webhook Basic-auth verify, reconciliation poll). Best billing-platform drive surface.

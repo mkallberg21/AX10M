@@ -34,7 +34,7 @@ export interface ProcessorDescriptor {
 /** The full roster (PROCESSORS.md §2). Modes reflect the researched capability set. */
 export const PROCESSOR_REGISTRY: readonly ProcessorDescriptor[] = [
   // Card gateways
-  { id: 'stripe', displayName: 'Stripe', segment: 'card-gateway', mode: 'drive', status: 'skeleton' },
+  { id: 'stripe', displayName: 'Stripe', segment: 'card-gateway', mode: 'drive', status: 'implemented' },
   { id: 'adyen', displayName: 'Adyen', segment: 'card-gateway', mode: 'drive', status: 'implemented' },
   { id: 'braintree', displayName: 'Braintree (PayPal)', segment: 'card-gateway', mode: 'drive', status: 'implemented' },
   { id: 'checkout', displayName: 'Checkout.com', segment: 'card-gateway', mode: 'drive', status: 'planned' },

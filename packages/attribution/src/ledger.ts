@@ -21,6 +21,7 @@ import { createHash } from 'node:crypto';
 /** The kinds of events recorded in the ledger. */
 export type LedgerEventType =
   | 'holdout.assigned'
+  | 'recovery.planned'
   | 'charge.attempted'
   | 'charge.succeeded'
   | 'charge.failed'

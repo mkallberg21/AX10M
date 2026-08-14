@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { CanonicalEvent, DeclineEvent, Invoice, MrrTier, PaymentMethod } from '@ax10m/canonical';
 import { DeclineCode, DeclineFamily, familyOf } from '@ax10m/canonical';
 import type { ProcessorAdapter, RawWebhook } from '@ax10m/poal';
-import { AdyenAdapter, BraintreeAdapter, ChargebeeAdapter, GoCardlessAdapter, idempotencyKey } from '@ax10m/poal';
+import { AdyenAdapter, BraintreeAdapter, ChargebeeAdapter, GoCardlessAdapter, idempotencyKey, stripe } from '@ax10m/poal';
 import {
   assign,
   HashChainedLedger,
@@ -11,8 +11,16 @@ import {
 } from '@ax10m/attribution';
 import {
   evaluate as evaluateGuardrail,
+  type CardNetwork,
   type ProposedAction,
 } from '@ax10m/guardrail';
+import {
+  HeuristicPolicy,
+  type AvailableMethod,
+  type RecoveryDecision,
+  type RecoveryFeatures,
+  type RetryPolicy,
+} from '@ax10m/recovery-engine';
 import { OnboardingService } from '../onboarding/onboarding.service.js';
 
 /**
@@ -46,20 +54,37 @@ export class RecoveryCaseService {
   private adyen?: AdyenAdapter;
   private braintree?: BraintreeAdapter;
   private gocardless?: GoCardlessAdapter;
+  private stripe?: stripe.StripeAdapter;
+
+  // The recovery brain. Cold-start heuristic today; swap for a trained
+  // ContextualBanditPolicy without touching this wiring.
+  private readonly policy: RetryPolicy = new HeuristicPolicy();
 
   // Invoices whose holdout assignment has already been recorded — webhooks are
   // at-least-once, so we must not double-append to the tamper-evident ledger.
   private readonly openedInvoices = new Set<string>();
+
+  // Highest attempt number executed per invoice (drives the guardrail's window count).
+  private readonly attempts = new Map<string, number>();
 
   /**
    * Entry point from the webhook controller. Verify + normalize, then process
    * each canonical event.
    */
   async ingestStripeWebhook(raw: RawWebhook): Promise<void> {
-    // TODO(ax10m): resolve the correct per-merchant StripeAdapter and call
-    // ingestWithAdapter. For the scaffold the Stripe adapter's normalization is
-    // still TODO, so this short-circuits.
-    this.logger.debug(`Received Stripe webhook (${raw.body.length} bytes)`);
+    await this.ingestWithAdapter(this.stripeAdapter(), raw);
+  }
+
+  private stripeAdapter(): stripe.StripeAdapter {
+    if (this.stripe) return this.stripe;
+    // TODO(ax10m): resolve the StripeAdapter per merchant (by Connect account).
+    this.stripe = new stripe.StripeAdapter({
+      secretKey: process.env.STRIPE_SECRET_KEY ?? '',
+      webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? '',
+      merchantId: process.env.STRIPE_MERCHANT_ID ?? 'mrc_unknown',
+      apiVersion: process.env.STRIPE_API_VERSION,
+    });
+    return this.stripe;
   }
 
   /** Chargebee ingress — the first fully-wired non-Stripe adapter (PROCESSORS.md §3). */
@@ -155,6 +180,11 @@ export class RecoveryCaseService {
           declineCode: payload.decline?.code ?? DeclineCode.Unknown,
           amount: payload.invoice.amount.amount,
         });
+        // TREATMENT cases get the recovery brain; CONTROL stays baseline-only. In
+        // shadow mode we PLAN (record the engine's decision) but never execute.
+        if (bucket === 'treatment') {
+          this.planRecovery(payload.invoice, payload.decline);
+        }
         this.logger.debug(`Opened recovery case for ${payload.invoice.id} → ${bucket}`);
       }
       return;
@@ -266,16 +296,185 @@ export class RecoveryCaseService {
       return 'shadowed';
     }
 
-    // TODO(ax10m): Phase 1 — execute inside a Temporal activity for durability +
-    // exactly-once semantics, then record the outcome (succeeded/failed) to the
-    // ledger and close the case on success.
-    await params.adapter.attemptCharge(params.invoice, params.method, key);
+    // Phase 1 — move money. `attemptNumber` is owned by the caller (the durable
+    // saga) so replaying this activity re-derives the SAME idempotency key and the
+    // processor de-dupes: exactly-once even though the transport is at-least-once.
+    // TODO(ax10m): host this call inside a Temporal activity for crash durability.
+    this.attempts.set(params.invoice.id, Math.max(this.attempts.get(params.invoice.id) ?? 0, params.attemptNumber));
+    const result = await params.adapter.attemptCharge(params.invoice, params.method, key);
+    this.ledger.append({
+      merchantId: params.invoice.merchantId,
+      type: result.outcome === 'succeeded' ? 'charge.succeeded' : 'charge.failed',
+      occurredAt: new Date().toISOString(),
+      detail: {
+        invoiceId: params.invoice.id,
+        idempotencyKey: key,
+        outcome: result.outcome,
+        idempotentReplay: result.idempotentReplay ?? false,
+        declineCode: result.attempt?.declineCode,
+      },
+    });
+    if (result.outcome === 'succeeded') {
+      this.ledger.append({
+        merchantId: params.invoice.merchantId,
+        type: 'case.recovered',
+        occurredAt: new Date().toISOString(),
+        detail: {
+          invoiceId: params.invoice.id,
+          amount: params.invoice.amount.amount,
+          currency: params.invoice.amount.currency,
+          attemptNumber: params.attemptNumber,
+        },
+      });
+    }
     return 'attempted';
+  }
+
+  /**
+   * Run the recovery engine for a case and RECORD its decision — without executing.
+   * This is the shadow-mode brain: it produces (and ledgers) the exact action the
+   * active system *would* take on a treatment case, so the Uplift Statement can
+   * later compare "what we'd have done" against the control arm's realized outcome.
+   */
+  private planRecovery(invoice: Invoice, decline?: DeclineEvent): RecoveryDecision {
+    const attemptsSoFar = this.attempts.get(invoice.id) ?? 0;
+    const features = deriveFeatures(invoice, decline, attemptsSoFar);
+    const decision = this.policy.decide(features, { now: new Date().toISOString(), methods: [] });
+    this.ledger.append({
+      merchantId: invoice.merchantId,
+      type: 'recovery.planned',
+      occurredAt: new Date().toISOString(),
+      detail: {
+        invoiceId: invoice.id,
+        action: decision.action,
+        retryAt: decision.retryAt ?? null,
+        recoverabilityScore: decision.recoverabilityScore,
+        expectedValueMinor: decision.expectedValueMinor,
+        rationale: decision.rationale,
+        shadow: true,
+      },
+    });
+    this.logger.debug(`Planned ${decision.action} for ${invoice.id}: ${decision.rationale}`);
+    return decision;
+  }
+
+  /**
+   * The end-to-end recovery path: the engine PROPOSES an action, the guardrail
+   * DISPOSES, and only then does the adapter move money.
+   *
+   *   engine.decide  →  ledger('recovery.planned')  →  guardrail  →  adapter.attemptCharge
+   *
+   * `attemptNumber` is owned by the caller (the durable saga / scheduler), so a
+   * retried activity re-derives the same idempotency key and the processor
+   * de-dupes — exactly-once over an at-least-once transport. In `shadow` mode the
+   * chain stops before the charge. This is the seam a Temporal workflow drives in
+   * Phase 1; TODO(ax10m): host it inside a durable activity + scheduler.
+   */
+  async executeRecovery(params: {
+    adapter: ProcessorAdapter;
+    invoice: Invoice;
+    method: PaymentMethod;
+    decline?: DeclineEvent;
+    /** Saga-owned attempt number (1-based). Stable across activity retries → exactly-once. */
+    attemptNumber: number;
+    localHour?: number;
+    minutesSinceLastAttempt?: number;
+    shadow: boolean;
+  }): Promise<{ action: RecoveryActionOutcome; decision: RecoveryDecision }> {
+    const { adapter, invoice, method, attemptNumber, shadow } = params;
+    const attemptsSoFar = attemptNumber - 1;
+    const features = deriveFeatures(invoice, params.decline, attemptsSoFar);
+    const methods: AvailableMethod[] = [
+      { ref: method.processorRef, isDefault: true, autoUpdated: method.autoUpdated },
+    ];
+    const decision = this.policy.decide(features, { now: new Date().toISOString(), methods });
+
+    this.ledger.append({
+      merchantId: invoice.merchantId,
+      type: 'recovery.planned',
+      occurredAt: new Date().toISOString(),
+      detail: {
+        invoiceId: invoice.id,
+        action: decision.action,
+        retryAt: decision.retryAt ?? null,
+        expectedValueMinor: decision.expectedValueMinor,
+        rationale: decision.rationale,
+        shadow,
+      },
+    });
+
+    // The engine chose NOT to retry this card (dead credential, or EV ≤ threshold).
+    if (decision.action !== 'retry') {
+      this.ledger.append({
+        merchantId: invoice.merchantId,
+        type: decision.action === 'card_update_comms' ? 'comms.sent' : 'action.suppressed',
+        occurredAt: new Date().toISOString(),
+        detail: { invoiceId: invoice.id, reason: decision.action, rationale: decision.rationale },
+      });
+      return { action: decision.action, decision };
+    }
+
+    // The engine proposed a retry — hand it to the guardrail + execution path.
+    const proposed: ProposedAction = {
+      kind: 'charge_retry',
+      declineCode: features.declineCode,
+      declineFamily: familyOf(features.declineCode),
+      attemptsSoFar,
+      cardNetwork: mapCardNetwork(method.brand),
+      attemptsInWindow: attemptsSoFar,
+      minutesSinceLastAttempt: params.minutesSinceLastAttempt,
+      localHour: params.localHour ?? new Date().getUTCHours(),
+      hasConsent: true,
+      globallyOptedOut: false,
+    };
+    const result = await this.attemptRecovery({ adapter, invoice, method, proposed, attemptNumber, shadow });
+    return { action: result, decision };
   }
 
   /** Expose the ledger head so callers can notarize / build statements. */
   ledgerHead(): string {
     return this.ledger.head();
+  }
+}
+
+/** Outcome of an end-to-end recovery decision — engine verdict OR guardrail/execution result. */
+type RecoveryActionOutcome = 'card_update_comms' | 'suppress' | 'suppressed' | 'shadowed' | 'attempted';
+
+/**
+ * Derive the recovery-engine feature vector from a failed invoice + its decline.
+ * Scaffold-grade: tenure / prior-recovery-rate / issuer signals are neutral priors
+ * until the customer graph and BIN metadata are joined. TODO(ax10m): populate from
+ * the customer's real history + payment-method BIN so the learned policy has signal.
+ */
+function deriveFeatures(invoice: Invoice, decline: DeclineEvent | undefined, attemptsSoFar: number): RecoveryFeatures {
+  return {
+    declineCode: decline?.code ?? DeclineCode.Unknown,
+    amountMinor: invoice.amount.amount,
+    currency: invoice.amount.currency,
+    issuerRegion: 'unknown',
+    customerTenureDays: 180,
+    priorRecoveryRate: 0.35,
+    attemptNumber: attemptsSoFar + 1,
+    daysSinceFirstFail: 0,
+  };
+}
+
+/** Map a processor's card brand string to the guardrail's network taxonomy. */
+function mapCardNetwork(brand: string | undefined): CardNetwork {
+  switch ((brand ?? '').toLowerCase()) {
+    case 'visa':
+      return 'visa';
+    case 'mastercard':
+    case 'master':
+      return 'mastercard';
+    case 'amex':
+    case 'american express':
+    case 'american_express':
+      return 'amex';
+    case 'discover':
+      return 'discover';
+    default:
+      return 'other';
   }
 }
 
