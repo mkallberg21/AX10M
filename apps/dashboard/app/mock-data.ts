@@ -1,73 +1,114 @@
 /**
- * Mocked shadow-mode attribution summary.
+ * Mocked shadow-mode attribution summary — BILLING-SAFE path.
  *
  * Phase 0 shadow mode shows the merchant *projected* monthly uplift and the fee
  * Lift would have charged (12%) BEFORE they activate — the "here's the proof,
- * then decide" move (ARCHITECTURE.md §6). This module fabricates per-stratum arm
- * stats and runs them through the REAL @lift/attribution engine so the dashboard
- * numbers are computed exactly as production would compute them.
+ * then decide" move (ARCHITECTURE.md §6). This module fabricates realistic
+ * per-invoice observations and runs them through the REAL @lift/attribution
+ * billing engine (`buildBillableStatement`: CUPED + cluster-robust + mSPRT
+ * confidence sequence), so the dashboard numbers are computed exactly as a
+ * production bill would be — lower bound, not point estimate.
  *
- * TODO(lift): replace with a live query against the API's attribution summary.
+ * TODO(lift): replace the fabricated observations with a live query against the
+ * API's window-closed outcome log.
  */
 
 import {
-  buildUpliftStatement,
+  buildBillableStatement,
   HashChainedLedger,
-  type StratumArms,
-  type UpliftStatement,
+  DEFAULT_SEQUENTIAL_CONFIG,
+  type BillableStatement,
+  type UpliftObservation,
 } from '@lift/attribution';
 
-/** Fabricated per-stratum arm stats (control = baseline-only, treatment = Lift). */
-const STRATA: StratumArms[] = [
-  {
-    stratumKey: 'enterprise|soft|na',
-    control: { n: 240, recovered: 108, failedVolume: 12_000_000, recoveredVolume: 5_400_000 },
-    treatment: { n: 2160, recovered: 1123, failedVolume: 108_000_000, recoveredVolume: 56_150_000 },
-  },
-  {
-    stratumKey: 'mid|soft|na',
-    control: { n: 520, recovered: 208, failedVolume: 5_200_000, recoveredVolume: 2_080_000 },
-    treatment: { n: 4680, recovered: 2200, failedVolume: 46_800_000, recoveredVolume: 22_000_000 },
-  },
-  {
-    stratumKey: 'small|gray|emea',
-    control: { n: 610, recovered: 195, failedVolume: 3_050_000, recoveredVolume: 975_000 },
-    treatment: { n: 5490, recovered: 1920, failedVolume: 27_450_000, recoveredVolume: 9_600_000 },
-  },
-  {
-    stratumKey: 'micro|hard|apac',
-    // Hard declines: treatment barely beats control — engine correctly suppresses
-    // retries and leans on card-update comms. Not billable (thin, low lift).
-    control: { n: 180, recovered: 12, failedVolume: 540_000, recoveredVolume: 36_000 },
-    treatment: { n: 1620, recovered: 118, failedVolume: 4_860_000, recoveredVolume: 354_000 },
-  },
+/** One cohort's intended shape; we expand it into per-invoice observations. */
+interface CohortSpec {
+  stratum: string;
+  controlN: number;
+  treatmentN: number;
+  controlRate: number;
+  treatmentRate: number;
+  /** Mean invoice face value in minor units. */
+  meanAmount: number;
+  spread: number;
+}
+
+const COHORTS: CohortSpec[] = [
+  { stratum: 'enterprise|soft|na', controlN: 240, treatmentN: 2160, controlRate: 0.45, treatmentRate: 0.58, meanAmount: 50_000, spread: 12_000 },
+  { stratum: 'mid|soft|na', controlN: 520, treatmentN: 4680, controlRate: 0.4, treatmentRate: 0.52, meanAmount: 20_000, spread: 8_000 },
+  { stratum: 'small|gray|emea', controlN: 610, treatmentN: 5490, controlRate: 0.32, treatmentRate: 0.45, meanAmount: 5_000, spread: 3_000 },
+  // Hard declines: treatment barely beats control — the engine suppresses retries
+  // and leans on card-update comms. Low lift; contributes little to the bill.
+  { stratum: 'micro|hard|apac', controlN: 180, treatmentN: 1620, controlRate: 0.07, treatmentRate: 0.09, meanAmount: 3_000, spread: 1_500 },
 ];
 
-let cachedStatement: UpliftStatement | undefined;
+/** Deterministic PRNG (LCG) so the demo is stable across renders. */
+function lcg(seed: number): () => number {
+  let s = seed >>> 0;
+  return () => {
+    s = (1664525 * s + 1013904223) >>> 0;
+    return s / 2 ** 32;
+  };
+}
 
-/** Build (and cache) the mocked projected-uplift statement for August 2026. */
-export function getProjectedStatement(): UpliftStatement {
-  if (cachedStatement) return cachedStatement;
+function expandArm(
+  spec: CohortSpec,
+  arm: 'control' | 'treatment',
+  seed: number,
+): UpliftObservation[] {
+  const n = arm === 'control' ? spec.controlN : spec.treatmentN;
+  const rate = arm === 'control' ? spec.controlRate : spec.treatmentRate;
+  const rng = lcg(seed);
+  const obs: UpliftObservation[] = [];
+  for (let i = 0; i < n; i++) {
+    const recovered = rng() < rate;
+    const amount = Math.round(spec.meanAmount + (rng() - 0.5) * spec.spread);
+    obs.push({
+      arm,
+      cluster: `${arm[0]}_${spec.stratum}_${i}`,
+      stratum: spec.stratum,
+      outcome: recovered ? amount : 0,
+      covariate: amount, // pre-failure covariate: invoice amount drives CUPED reduction
+      recovered,
+    });
+  }
+  return obs;
+}
+
+let cached: BillableStatement | undefined;
+
+/** Build (and cache) the mocked billing-safe projected statement for August 2026. */
+export function getProjectedStatement(): BillableStatement {
+  if (cached) return cached;
+
+  const observations: UpliftObservation[] = [];
+  COHORTS.forEach((c, i) => {
+    observations.push(...expandArm(c, 'control', 1000 + i * 2));
+    observations.push(...expandArm(c, 'treatment', 1001 + i * 2));
+  });
 
   // A small mock ledger so the statement carries a real (verifiable) head hash.
   const ledger = new HashChainedLedger();
-  for (const s of STRATA) {
+  for (const c of COHORTS) {
     ledger.append({
       merchantId: 'mrc_demo',
       type: 'uplift.statement',
       occurredAt: '2026-08-31T23:59:59.000Z',
-      detail: { stratumKey: s.stratumKey, treatmentN: s.treatment.n, controlN: s.control.n },
+      detail: { stratum: c.stratum, controlN: c.controlN, treatmentN: c.treatmentN },
     });
   }
 
-  cachedStatement = buildUpliftStatement({
+  cached = buildBillableStatement({
     merchantId: 'mrc_demo',
     period: '2026-08',
-    strata: STRATA,
+    observations,
+    priorBilledDollars: 0,
     ledger: ledger.all(),
     ledgerHead: ledger.head(),
+    // Overall control share ≈ 1550 / 15500 = 10%.
+    config: { ...DEFAULT_SEQUENTIAL_CONFIG, expectedControlFraction: 0.1 },
   });
-  return cachedStatement;
+  return cached;
 }
 
 /** Format integer minor units as a currency string (display only). */

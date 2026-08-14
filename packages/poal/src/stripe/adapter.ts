@@ -46,6 +46,7 @@ export class StripeAdapter implements ProcessorAdapter {
 
   capabilities(): CapabilityMatrix {
     return {
+      integrationMode: 'drive', // co-drive on Stripe Billing (disable Smart Retries)
       externalRetryControl: true,
       accountUpdater: true, // Stripe supports card auto-updates / network tokens
       networkTokens: true,

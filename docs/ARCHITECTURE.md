@@ -24,7 +24,13 @@ Everyone in this category ("pay on uplift") measures recovery against a *baselin
 | **Gravy** | Custom flat fee | **Attribution disputes reported** | Multi | Partial | Heavy human + comms | Some | Sales-led |
 | **Churnkey** | Tiered SaaS + % | Self-reported +4–12% | Multi | Via processor | Email/SMS/in-app + paywall | ML "precision retries" | Medium |
 | **Paddle/ProfitWell Retain** | % of recovered | Baseline, no holdout | Paddle-centric | Yes | Email | Some | Medium |
-| **Lift (us)** | **12% of holdout-verified lower-bound uplift** | **Live randomized holdout + signed ledger** | **Adapter SDK, processor-agnostic** | **Yes + cross-merchant BIN intel** | **Email/SMS/WhatsApp/push/in-app, generative** | **Contextual-bandit / offline-RL + compliance guardrail** | **OAuth, 5-min, shadow-first** |
+| **Revova** | Flat SaaS ($29–$79/mo) | None — comms only | Read-only (Stripe/Paddle/Braintree/Chargebee/Recurly) | No | AI dunning email | No retries driven | Self-serve |
+| **ChurnShield** | Tiered SaaS ($49–$199/mo) | "94% recovery" — unaudited gross | Stripe only | No | Email/SMS/Slack + cancel widget | Smart retry | Medium |
+| **Gravy Solutions** | Flat fee | **Documented attribution dispute** (~45% projected vs ~1.2% real) | Multi | Partial | Human-to-human | Some | Sales-led |
+| **Recover.ai** | *Unverified — no company found at that name (Aug 2026)* | — | — | — | — | — | — |
+| **Lift (us)** | **12% of holdout-verified lower-bound uplift** | **Live randomized holdout + signed ledger** | **Adapter SDK, processor-agnostic (25+ mapped)** | **Yes + cross-merchant BIN intel** | **Email/SMS/WhatsApp/push/in-app, generative** | **Contextual-bandit / offline-RL + compliance guardrail** | **OAuth, 5-min, shadow-first** |
+
+> Full teardown of every named competitor (with `[VERIFIED]`/`[UNVERIFIED]` tags and sources) is in [`COMPETITIVE.md`](./COMPETITIVE.md); the universal processor capability matrix and per-processor integration modes are in [`PROCESSORS.md`](./PROCESSORS.md). The structural fact that holds across the entire field: **not one competitor runs a live randomized holdout or ships a signed, reconcilable lift statement.** Those two rows are all-empty except Lift.
 
 **Three ways we blow the field away:**
 1. **Honest, auditable billing.** We bill the *lower confidence bound* of a live-holdout-measured uplift. We deliberately under-claim. A skeptical CFO becomes our best salesperson.

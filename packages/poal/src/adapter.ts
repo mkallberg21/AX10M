@@ -22,10 +22,23 @@ import type {
 } from '@lift/canonical';
 
 /**
+ * How much of the recovery loop this processor lets Lift own (PROCESSORS.md §1):
+ *  - 'drive'    — we re-attempt the charge on our own schedule against a token/mandate.
+ *  - 'co-drive' — we drive some recovery but must coordinate with / disable the
+ *                 processor's own retry engine to avoid double-charging.
+ *  - 'advisory' — the platform owns the token and retry loop (Merchant-of-Record,
+ *                 app-store IAP). We measure failure/recovery and recommend/prompt
+ *                 out-of-band actions, but cannot trigger the charge.
+ */
+export type IntegrationMode = 'drive' | 'co-drive' | 'advisory';
+
+/**
  * What a processor can do. The decision core reads this to decide whether it can
  * drive an action directly or must fall back to advisory mode.
  */
 export interface CapabilityMatrix {
+  /** Overall integration posture — the headline of the capability set. */
+  integrationMode: IntegrationMode;
   /** Can we trigger charge attempts ourselves (vs. only observe)? */
   externalRetryControl: boolean;
   /** Card Account Updater / network-token auto-refresh available? */

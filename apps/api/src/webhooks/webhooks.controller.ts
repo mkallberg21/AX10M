@@ -1,11 +1,5 @@
-import {
-  Controller,
-  Headers,
-  HttpCode,
-  Post,
-  RawBodyRequest,
-  Req,
-} from '@nestjs/common';
+import { Controller, Headers, HttpCode, Post, Req } from '@nestjs/common';
+import type { RawBodyRequest } from '@nestjs/common';
 import type { Request } from 'express';
 import { RecoveryCaseService } from '../recovery/recovery-case.service.js';
 

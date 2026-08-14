@@ -145,6 +145,25 @@ tr:last-child td {
   background: rgba(251, 191, 36, 0.12);
 }
 
+.method-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 24px;
+  padding: 14px 18px;
+  margin-bottom: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.method-strip strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
 .section-title {
   font-size: 15px;
   font-weight: 600;

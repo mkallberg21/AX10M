@@ -1,20 +1,34 @@
 /**
- * Randomized holdout assignment (ARCHITECTURE.md §3.1).
+ * Randomized holdout assignment (ATTRIBUTION.md §2).
  *
- * At the unit of a *failed invoice*, we route a configurable control fraction to
- * baseline-only recovery (the merchant's existing Stripe Smart Retries) and the
- * rest to Lift's engine. Assignment is:
+ * We **cluster-randomize at the customer level**, not the invoice level. The
+ * randomization unit is the customer; ALL of a customer's failed invoices inherit
+ * that customer's arm for the life of the epoch. Outcomes are still observed per
+ * invoice, but assignment is per customer. This is the single most important
+ * design choice: if a customer's two failed invoices could land in different
+ * arms, a treatment "update your card" comm would fix the payment method that
+ * then recovers the *control* invoice for free — contaminating the control rate
+ * and biasing (understating) uplift (§3.1). Customer-level clustering makes that
+ * spillover structurally impossible, and it is what lets the cluster-robust
+ * variance in `sequential.ts` be well-defined.
  *
- *  - Deterministic: keyed on a stable hash of (merchant, customer, invoice) plus
- *    a per-environment salt. Re-processing the same failed invoice ALWAYS yields
- *    the same bucket, so crashes / replays / reconciliation never flip a unit
- *    between control and treatment (which would corrupt attribution).
+ * Assignment is:
+ *
+ *  - Deterministic: keyed on a stable hash of (merchant, customer) plus a
+ *    per-epoch salt. `invoice_id` does NOT enter the bucket boundary — only the
+ *    guest fallback (§2.4) and the assignment record use it. Re-processing the
+ *    same customer ALWAYS yields the same arm, so crashes / replays /
+ *    reconciliation never flip a unit between control and treatment.
  *
  *  - Stratified: we record the stratum (MRR tier × decline family × issuer
  *    region) so uplift is computed within comparable cells and we can run an SRM
- *    (sample-ratio-mismatch) check per stratum. Folding the stratum into the hash
- *    keeps each stratum's assignment stream independent while preserving the same
- *    expected control fraction inside every cell.
+ *    check per stratum. The stratum is folded into the hash so each stratum is an
+ *    independent assignment stream at the same expected control fraction; callers
+ *    must pass the customer's *sticky* stratum (from their first qualifying
+ *    failure in the epoch, §2.5) so the bucket stays stable across repeat failures.
+ *
+ *  - Guest-safe: one-off invoices with no durable customer identity fall back to
+ *    invoice-grain assignment and are analyzed in a separate stratum (§2.4).
  */
 
 import { createHash } from 'node:crypto';
@@ -51,9 +65,17 @@ export const DEFAULT_HOLDOUT_CONFIG: HoldoutConfig = {
 
 export type Bucket = 'control' | 'treatment';
 
+/** The grain at which a unit was randomized. Customers cluster; guests fall back to invoice. */
+export type UnitGrain = 'customer' | 'invoice';
+
 export interface AssignmentInput {
   merchantId: string;
-  customerId: string;
+  /**
+   * Durable customer id (the randomization cluster). Null/empty → a guest /
+   * one-off charge with no durable identity, which falls back to invoice grain.
+   */
+  customerId: string | null;
+  /** Invoice id — used for the assignment record and for the guest fallback boundary only. */
   invoiceId: string;
   stratum: Stratum;
 }
@@ -61,6 +83,10 @@ export interface AssignmentInput {
 export interface Assignment {
   bucket: Bucket;
   stratumKey: string;
+  /** 'customer' for normal cluster assignment; 'invoice' for guest/one-off fallback. */
+  unitGrain: UnitGrain;
+  /** The exact string that was hashed (audit trail, ATTRIBUTION.md §10.2 bucket_key). */
+  bucketKey: string;
   /** The normalized hash position in [0, 1). Exposed for auditing / SRM debug. */
   position: number;
 }
@@ -80,8 +106,13 @@ function hashToUnitInterval(input: string): number {
 }
 
 /**
- * Deterministically assign a failed invoice to control or treatment.
- * Stable for a given (input, config): same input + same config ⇒ same bucket.
+ * Deterministically assign a customer (or guest invoice) to control or treatment.
+ *
+ * Cluster-randomized at the customer level: the bucket boundary is a pure
+ * function of (salt, stratum, merchant, customer) — `invoice_id` is deliberately
+ * excluded so a customer's repeat failures all inherit the same arm. Guests with
+ * no `customerId` fall back to invoice-grain assignment (§2.4). Stable for a
+ * given (input, config): same input + same config ⇒ same bucket.
  */
 export function assign(
   input: AssignmentInput,
@@ -93,16 +124,19 @@ export function assign(
     );
   }
   const key = stratumKey(input.stratum);
-  // Fold the stratum into the hashed material so each stratum is an independent
-  // assignment stream; keep the salt first so it dominates re-randomization.
-  const material = [
-    config.salt,
-    key,
-    input.merchantId,
-    input.customerId,
-    input.invoiceId,
-  ].join(':');
+  const isGuest = input.customerId == null || input.customerId === '';
+  // Salt first so it dominates re-randomization; stratum folded so each stratum is
+  // an independent stream. Customer grain excludes invoiceId; guest grain uses it.
+  const material = isGuest
+    ? [config.salt, key, input.merchantId, 'guest', input.invoiceId].join(':')
+    : [config.salt, key, input.merchantId, input.customerId].join(':');
   const position = hashToUnitInterval(material);
   const bucket: Bucket = position < config.controlFraction ? 'control' : 'treatment';
-  return { bucket, stratumKey: key, position };
+  return {
+    bucket,
+    stratumKey: key,
+    unitGrain: isGuest ? 'invoice' : 'customer',
+    bucketKey: material,
+    position,
+  };
 }

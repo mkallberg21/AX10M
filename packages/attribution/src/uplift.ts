@@ -1,17 +1,18 @@
 /**
- * Uplift computation (ARCHITECTURE.md §3.1–§3.2).
+ * Recovery-rate diagnostic (ARCHITECTURE.md §3.1–§3.2).
  *
- *   incremental uplift = (treatment recovery rate − control recovery rate)
- *                        × treated failed volume
+ *   rate lift = treatment recovery rate − control recovery rate
  *
- * We bill on the LOWER BOUND of the confidence interval, never the point
- * estimate — structural under-claiming is the trust wedge.
+ * ⚠️ DIAGNOSTIC ONLY — DO NOT BILL ON THIS MODULE. The interval here is a
+ * fixed-horizon two-proportion Wald z-interval. Reading a fixed-horizon CI
+ * continuously (as billing does) inflates the false-positive rate and would
+ * over-claim (ATTRIBUTION.md §5.1). This module survives to power the dashboard's
+ * headline "we lift recovery by X points" number and quick aggregate checks.
  *
- * The interval here is a two-proportion Wald z-interval on the rate difference.
- * That is a deliberate Phase-0 placeholder: the production engine uses
- * always-valid sequential intervals (mSPRT) + CUPED variance reduction. The
- * *shape* (point estimate, lower bound, dollars) is what downstream billing and
- * the Uplift Statement depend on, and that shape is stable.
+ * The BILLABLE path is `sequential.ts` (`computeBillableUplift`): CUPED variance
+ * reduction + post-stratification + cluster-robust SE + an always-valid mSPRT
+ * confidence sequence, billed on the lower bound. Everything a merchant is
+ * charged flows through there, never through `computeUplift` below.
  */
 
 import type { CurrencyCode, Money } from '@lift/canonical';
