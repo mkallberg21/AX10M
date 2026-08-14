@@ -1,0 +1,595 @@
+<meta charset="utf-8">
+<title>Lift Payment Recovery</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  /* ============ TOKENS ============ */
+  :root{
+    --ground:#F5F6F9; --grid:rgba(12,20,32,.045);
+    --surface:#FFFFFF; --surface-2:#FBFCFE;
+    --border:rgba(12,20,32,.11); --border-strong:rgba(12,20,32,.20);
+    --ink:#0C1420; --muted:#5A6473; --faint:#8B94A3;
+    --accent:#0B8C7D; --accent-bright:#11B39B; --accent-wash:rgba(17,179,155,.10);
+    --control:#98A1B0;
+    --warn:#C6822B;
+    --shadow:0 1px 2px rgba(12,20,32,.05), 0 10px 34px -18px rgba(12,20,32,.28);
+    --mono:ui-monospace,"SF Mono","Cascadia Code","JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#080D17; --grid:rgba(255,255,255,.045);
+      --surface:#111A29; --surface-2:#0D1421;
+      --border:rgba(255,255,255,.10); --border-strong:rgba(255,255,255,.20);
+      --ink:#EAEEF6; --muted:#97A2B6; --faint:#6A7488;
+      --accent:#2DD4BF; --accent-bright:#3BE6CE; --accent-wash:rgba(45,212,191,.12);
+      --control:#556074;
+      --warn:#E0A54A;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 20px 50px -24px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#080D17; --grid:rgba(255,255,255,.045);
+    --surface:#111A29; --surface-2:#0D1421;
+    --border:rgba(255,255,255,.10); --border-strong:rgba(255,255,255,.20);
+    --ink:#EAEEF6; --muted:#97A2B6; --faint:#6A7488;
+    --accent:#2DD4BF; --accent-bright:#3BE6CE; --accent-wash:rgba(45,212,191,.12);
+    --control:#556074;
+    --warn:#E0A54A;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 20px 50px -24px rgba(0,0,0,.7);
+  }
+
+  /* ============ BASE ============ */
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0; background:var(--ground); color:var(--ink);
+    font-family:var(--sans); font-size:17px; line-height:1.6;
+    -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+    background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+    background-size:44px 44px;
+  }
+  .wrap{max-width:1080px; margin:0 auto; padding:0 24px}
+  section{padding:88px 0}
+  @media(max-width:720px){section{padding:60px 0}}
+
+  h1,h2,h3{font-weight:800; letter-spacing:-.025em; line-height:1.04; text-wrap:balance; margin:0}
+  h1{font-size:clamp(2.6rem,6.4vw,4.5rem)}
+  h2{font-size:clamp(1.9rem,3.8vw,2.9rem); letter-spacing:-.03em}
+  h3{font-size:1.18rem; letter-spacing:-.015em; line-height:1.25}
+  p{margin:0}
+  a{color:inherit}
+
+  .eyebrow{
+    font-family:var(--mono); font-size:.72rem; font-weight:600;
+    letter-spacing:.22em; text-transform:uppercase; color:var(--accent);
+    display:inline-flex; align-items:center; gap:.6em;
+  }
+  .eyebrow::before{content:""; width:26px; height:1px; background:var(--accent); opacity:.6}
+  .lede{font-size:clamp(1.05rem,1.8vw,1.28rem); color:var(--muted); max-width:60ch; line-height:1.55}
+  .mono{font-family:var(--mono)}
+  .tnum{font-variant-numeric:tabular-nums}
+
+  /* ============ TOPBAR ============ */
+  .topbar{
+    position:sticky; top:0; z-index:50; backdrop-filter:saturate(1.4) blur(10px);
+    background:color-mix(in srgb,var(--ground) 82%,transparent);
+    border-bottom:1px solid var(--border);
+  }
+  .topbar .wrap{display:flex; align-items:center; justify-content:space-between; height:60px}
+  .brand{display:flex; align-items:center; gap:10px; font-weight:800; letter-spacing:-.02em; font-size:1.06rem}
+  .brand .glyph{
+    width:26px; height:26px; border-radius:7px; position:relative; flex:0 0 auto;
+    background:var(--ink); overflow:hidden;
+  }
+  .brand .glyph::after{
+    content:""; position:absolute; left:5px; right:5px; bottom:5px; height:2px; background:var(--accent-bright);
+    box-shadow:0 -5px 0 -1px color-mix(in srgb,var(--accent-bright) 55%,transparent),0 -10px 0 -2px color-mix(in srgb,var(--accent-bright) 28%,transparent);
+    transform:skewY(-20deg); transform-origin:left;
+  }
+  .navlinks{display:flex; gap:26px; font-size:.9rem; color:var(--muted)}
+  .navlinks a{text-decoration:none}
+  .navlinks a:hover{color:var(--ink)}
+  .theme-btn{
+    font-family:var(--mono); font-size:.72rem; letter-spacing:.1em; text-transform:uppercase;
+    background:var(--surface); color:var(--muted); border:1px solid var(--border);
+    border-radius:8px; padding:7px 11px; cursor:pointer;
+  }
+  .theme-btn:hover{color:var(--ink); border-color:var(--border-strong)}
+  @media(max-width:720px){.navlinks{display:none}}
+
+  /* ============ HERO ============ */
+  .hero{padding-top:70px; padding-bottom:40px}
+  .hero-grid{display:grid; grid-template-columns:1.05fr .95fr; gap:52px; align-items:center}
+  @media(max-width:900px){.hero-grid{grid-template-columns:1fr; gap:36px}}
+  .hero h1{margin:20px 0 0}
+  .hero h1 .u{
+    color:var(--accent); position:relative; white-space:nowrap;
+  }
+  .hero h1 .u::after{content:""; position:absolute; left:0; right:0; bottom:.06em; height:.11em; background:var(--accent-wash); z-index:-1}
+  .hero .lede{margin-top:22px}
+  .cta-row{display:flex; gap:14px; margin-top:32px; flex-wrap:wrap}
+  .btn{
+    font-family:var(--sans); font-weight:650; font-size:.98rem; letter-spacing:-.01em;
+    border-radius:11px; padding:13px 20px; cursor:pointer; border:1px solid transparent;
+    text-decoration:none; display:inline-flex; align-items:center; gap:9px; transition:transform .12s ease, box-shadow .12s ease;
+  }
+  .btn:active{transform:translateY(1px)}
+  .btn-primary{background:var(--ink); color:var(--ground); box-shadow:var(--shadow)}
+  .btn-primary:hover{box-shadow:0 8px 26px -12px color-mix(in srgb,var(--ink) 60%,transparent)}
+  .btn-ghost{background:var(--surface); color:var(--ink); border-color:var(--border-strong)}
+  .btn-ghost:hover{border-color:var(--ink)}
+  .btn .arw{color:var(--accent-bright)}
+  .btn-primary .arw{color:var(--accent-bright)}
+
+  /* chart card */
+  .chart-card{
+    background:var(--surface); border:1px solid var(--border); border-radius:18px;
+    padding:20px 20px 16px; box-shadow:var(--shadow);
+  }
+  .chart-head{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px}
+  .chart-head .t{font-family:var(--mono); font-size:.72rem; letter-spacing:.14em; text-transform:uppercase; color:var(--faint)}
+  .chart-head .r{font-family:var(--mono); font-size:.76rem; color:var(--muted)}
+  .legend{display:flex; gap:18px; margin-top:12px; font-family:var(--mono); font-size:.74rem; color:var(--muted); flex-wrap:wrap}
+  .legend span{display:inline-flex; align-items:center; gap:7px}
+  .swatch{width:16px; height:3px; border-radius:2px; display:inline-block}
+  .swatch.ctrl{background:var(--control); height:0; border-top:2px dashed var(--control)}
+  .swatch.trt{background:var(--accent-bright)}
+  .swatch.gap{background:var(--accent-wash); height:11px; border:1px solid color-mix(in srgb,var(--accent) 30%,transparent)}
+  svg .draw{stroke-dasharray:var(--len); stroke-dashoffset:var(--len); animation:draw 1.5s ease forwards .25s}
+  svg .gapfill{opacity:0; animation:fade 1s ease forwards 1.1s}
+  svg .dot{opacity:0; animation:fade .5s ease forwards 1.55s}
+  svg .callout{opacity:0; animation:fade .6s ease forwards 1.7s}
+  @keyframes draw{to{stroke-dashoffset:0}}
+  @keyframes fade{to{opacity:1}}
+  @media(prefers-reduced-motion:reduce){
+    svg .draw{stroke-dashoffset:0; animation:none}
+    svg .gapfill,svg .dot,svg .callout{opacity:1; animation:none}
+  }
+
+  /* ============ TRUST STRIP ============ */
+  .strip{border-top:1px solid var(--border); border-bottom:1px solid var(--border); background:var(--surface-2)}
+  .strip .wrap{display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--border)}
+  @media(max-width:720px){.strip .wrap{grid-template-columns:repeat(2,1fr)}}
+  .stat{background:var(--surface-2); padding:26px 8px 24px; text-align:center}
+  .stat .n{font-family:var(--mono); font-weight:600; font-size:clamp(1.7rem,3.4vw,2.3rem); letter-spacing:-.02em; color:var(--ink); font-variant-numeric:tabular-nums}
+  .stat .n .accent{color:var(--accent)}
+  .stat .l{font-size:.82rem; color:var(--muted); margin-top:6px; line-height:1.3}
+
+  /* ============ SECTION HEADS ============ */
+  .shead{max-width:64ch; margin-bottom:44px}
+  .shead h2{margin-top:16px}
+  .shead p{margin-top:16px}
+
+  /* ============ PROBLEM ============ */
+  .compare{display:grid; grid-template-columns:1fr 1fr; gap:20px}
+  @media(max-width:760px){.compare{grid-template-columns:1fr}}
+  .cmp{background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:26px}
+  .cmp.bad{border-style:dashed}
+  .cmp .tag{font-family:var(--mono); font-size:.72rem; letter-spacing:.14em; text-transform:uppercase; color:var(--faint)}
+  .cmp.good .tag{color:var(--accent)}
+  .cmp h3{margin:12px 0 10px}
+  .cmp p{color:var(--muted); font-size:.98rem}
+  .cmp .quote{margin-top:16px; padding-top:16px; border-top:1px solid var(--border); font-family:var(--mono); font-size:.82rem; color:var(--muted)}
+
+  /* ============ WEDGE / how ============ */
+  .steps{display:grid; grid-template-columns:repeat(3,1fr); gap:20px}
+  @media(max-width:820px){.steps{grid-template-columns:1fr}}
+  .step{background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:26px; position:relative; box-shadow:var(--shadow)}
+  .step .idx{font-family:var(--mono); font-size:.78rem; color:var(--accent); letter-spacing:.1em}
+  .step h3{margin:14px 0 10px}
+  .step p{color:var(--muted); font-size:.96rem}
+
+  /* ledger card */
+  .ledger{
+    margin-top:30px; background:var(--surface); border:1px solid var(--border); border-radius:16px;
+    overflow:hidden; box-shadow:var(--shadow);
+  }
+  .ledger .lh{display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid var(--border); background:var(--surface-2)}
+  .ledger .lh .t{font-family:var(--mono); font-size:.74rem; letter-spacing:.14em; text-transform:uppercase; color:var(--faint)}
+  .ledger .lh .sig{font-family:var(--mono); font-size:.74rem; color:var(--accent); display:inline-flex; align-items:center; gap:7px}
+  .ledger .lh .sig::before{content:""; width:7px; height:7px; border-radius:50%; background:var(--accent); box-shadow:0 0 0 3px var(--accent-wash)}
+  .ltable{width:100%; border-collapse:collapse; font-family:var(--mono); font-size:.8rem}
+  .ltable td,.ltable th{padding:11px 20px; text-align:left; border-bottom:1px solid var(--border); white-space:nowrap}
+  .ltable th{color:var(--faint); font-weight:600; font-size:.68rem; letter-spacing:.1em; text-transform:uppercase}
+  .ltable td{color:var(--muted); font-variant-numeric:tabular-nums}
+  .ltable td.hash{color:var(--faint)}
+  .ltable td.amt{color:var(--ink)}
+  .ltable tr:last-child td{border-bottom:none}
+  .pill{display:inline-block; font-size:.7rem; padding:2px 8px; border-radius:20px; letter-spacing:.06em}
+  .pill.trt{background:var(--accent-wash); color:var(--accent)}
+  .pill.ctrl{background:color-mix(in srgb,var(--control) 22%,transparent); color:var(--muted)}
+  .ledger-scroll{overflow-x:auto}
+  .lfoot{display:flex; justify-content:space-between; align-items:center; padding:16px 20px; background:var(--surface-2); border-top:1px solid var(--border); font-family:var(--mono); font-size:.82rem; flex-wrap:wrap; gap:8px}
+  .lfoot .k{color:var(--muted)}
+  .lfoot .v{color:var(--ink); font-weight:600}
+  .lfoot .fee{color:var(--accent)}
+
+  /* ============ COMPARISON TABLE ============ */
+  .tablewrap{overflow-x:auto; border:1px solid var(--border); border-radius:16px; box-shadow:var(--shadow)}
+  table.cmp-t{width:100%; border-collapse:collapse; min-width:640px; background:var(--surface)}
+  table.cmp-t th,table.cmp-t td{padding:15px 18px; text-align:left; border-bottom:1px solid var(--border); font-size:.92rem}
+  table.cmp-t thead th{font-family:var(--mono); font-size:.72rem; letter-spacing:.1em; text-transform:uppercase; color:var(--faint); font-weight:600}
+  table.cmp-t thead th.us{color:var(--accent)}
+  table.cmp-t tbody th{font-weight:600; color:var(--ink)}
+  table.cmp-t td{color:var(--muted)}
+  table.cmp-t td.us{color:var(--ink); background:var(--accent-wash); font-weight:550}
+  table.cmp-t tr:last-child td,table.cmp-t tr:last-child th{border-bottom:none}
+  .yes{color:var(--accent); font-weight:700}
+  .no{color:var(--faint)}
+
+  /* ============ PILLARS ============ */
+  .pillars{display:grid; grid-template-columns:repeat(2,1fr); gap:20px}
+  @media(max-width:760px){.pillars{grid-template-columns:1fr}}
+  .pillar{background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:26px; display:flex; gap:18px}
+  .pillar .ico{flex:0 0 auto; width:42px; height:42px; border-radius:11px; background:var(--accent-wash); border:1px solid color-mix(in srgb,var(--accent) 26%,transparent); display:grid; place-items:center}
+  .pillar .ico svg{width:22px; height:22px; stroke:var(--accent); fill:none; stroke-width:1.7}
+  .pillar h3{margin:0 0 8px}
+  .pillar p{color:var(--muted); font-size:.95rem}
+
+  /* ============ PRICING ============ */
+  .price{
+    background:var(--surface); border:1px solid var(--border-strong); border-radius:20px;
+    padding:44px; text-align:center; box-shadow:var(--shadow); position:relative; overflow:hidden;
+  }
+  .price::before{content:""; position:absolute; inset:0; background:radial-gradient(120% 80% at 50% -10%,var(--accent-wash),transparent 60%); pointer-events:none}
+  .price .big{font-family:var(--mono); font-weight:700; font-size:clamp(3.4rem,9vw,5.5rem); letter-spacing:-.04em; color:var(--ink); line-height:1}
+  .price .big .pct{color:var(--accent)}
+  .price .sub{font-size:1.12rem; color:var(--ink); margin-top:12px; font-weight:600}
+  .price .fine{color:var(--muted); max-width:52ch; margin:14px auto 0; font-size:.96rem}
+  .price .rowline{display:flex; gap:14px; justify-content:center; margin-top:26px; flex-wrap:wrap; font-family:var(--mono); font-size:.82rem; color:var(--muted)}
+  .price .rowline b{color:var(--accent)}
+
+  /* ============ ROADMAP ============ */
+  .road{display:grid; grid-template-columns:repeat(4,1fr); gap:0}
+  @media(max-width:820px){.road{grid-template-columns:1fr; gap:12px}}
+  .phase{padding:24px 22px; border-left:2px solid var(--border); position:relative}
+  @media(max-width:820px){.phase{border-left:2px solid var(--border)}}
+  .phase::before{content:""; position:absolute; left:-6px; top:26px; width:10px; height:10px; border-radius:50%; background:var(--ground); border:2px solid var(--accent)}
+  .phase.now::before{background:var(--accent)}
+  .phase .p{font-family:var(--mono); font-size:.72rem; letter-spacing:.12em; text-transform:uppercase; color:var(--accent)}
+  .phase h3{font-size:1.02rem; margin:10px 0 8px}
+  .phase ul{margin:0; padding-left:16px; color:var(--muted); font-size:.88rem; line-height:1.5}
+  .phase li{margin:3px 0}
+  .phase .badge{display:inline-block; margin-top:10px; font-family:var(--mono); font-size:.66rem; letter-spacing:.1em; text-transform:uppercase; padding:3px 9px; border-radius:20px; background:var(--accent-wash); color:var(--accent)}
+
+  /* ============ CTA / FOOT ============ */
+  .final{text-align:center; padding:96px 0}
+  .final h2{max-width:20ch; margin:0 auto}
+  .final p{max-width:54ch; margin:18px auto 0; color:var(--muted)}
+  footer{border-top:1px solid var(--border); padding:34px 0; color:var(--faint); font-family:var(--mono); font-size:.78rem}
+  footer .wrap{display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px}
+  .disclaim{max-width:1080px; margin:0 auto; padding:0 24px 40px; color:var(--faint); font-size:.72rem; font-family:var(--mono); line-height:1.6}
+</style>
+
+<div class="topbar">
+  <div class="wrap">
+    <div class="brand"><span class="glyph"></span>Lift</div>
+    <nav class="navlinks">
+      <a href="#problem">The gap</a>
+      <a href="#how">How it works</a>
+      <a href="#why">Why we win</a>
+      <a href="#pricing">Pricing</a>
+    </nav>
+    <button class="theme-btn" id="themeBtn" aria-label="Toggle color theme">Theme</button>
+  </div>
+</div>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <span class="eyebrow">Failed-payment recovery, proven</span>
+      <h1>You only pay for the lift <span class="u">you can prove.</span></h1>
+      <p class="lede">Lift is the AI recovery engine that overlays Stripe Smart Retries, runs a live randomized holdout to measure the recovery you'd never have gotten on your own, and bills 12% of that verified number — backed by a signed ledger your CFO can reconcile.</p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="#how">See how it works <span class="arw">→</span></a>
+        <a class="btn btn-ghost" href="#pricing">The 12% model</a>
+      </div>
+    </div>
+
+    <div class="chart-card" aria-label="Cumulative recovery: Lift treatment vs baseline control">
+      <div class="chart-head">
+        <span class="t">Cumulative recovery · 30 days</span>
+        <span class="r">held-out A/B</span>
+      </div>
+      <svg id="hchart" viewBox="0 0 460 260" width="100%" role="img" aria-label="Two recovery curves; the shaded gap between them is verified uplift">
+        <!-- gridlines -->
+        <g stroke="var(--border)" stroke-width="1">
+          <line x1="40" y1="30" x2="40" y2="220"/>
+          <line x1="40" y1="220" x2="440" y2="220"/>
+        </g>
+        <g stroke="var(--border)" stroke-width="1" opacity=".55">
+          <line x1="40" y1="78" x2="440" y2="78"/>
+          <line x1="40" y1="126" x2="440" y2="126"/>
+          <line x1="40" y1="174" x2="440" y2="174"/>
+        </g>
+        <!-- y labels -->
+        <g font-family="var(--mono)" font-size="9" fill="var(--faint)" text-anchor="end">
+          <text x="34" y="82">60%</text>
+          <text x="34" y="130">40%</text>
+          <text x="34" y="178">20%</text>
+          <text x="34" y="223">0%</text>
+        </g>
+        <!-- gap fill: between control and treatment (filled at render by JS) -->
+        <path id="gapPath" class="gapfill" fill="var(--accent-wash)" stroke="none"></path>
+        <!-- control (baseline, dashed) -->
+        <path id="ctrlPath" class="draw" fill="none" stroke="var(--control)" stroke-width="2.4" stroke-dasharray="5 4" stroke-linecap="round"></path>
+        <!-- treatment (Lift) -->
+        <path id="trtPath" class="draw" fill="none" stroke="var(--accent-bright)" stroke-width="3" stroke-linecap="round"></path>
+        <!-- endpoint dots -->
+        <circle id="trtDot" class="dot" r="4.5" fill="var(--accent-bright)"></circle>
+        <circle id="ctrlDot" class="dot" r="4" fill="var(--control)"></circle>
+        <!-- callout -->
+        <g class="callout" id="callout">
+          <line id="calLine" stroke="var(--accent)" stroke-width="1" stroke-dasharray="2 2"></line>
+        </g>
+      </svg>
+      <div class="legend">
+        <span><i class="swatch trt"></i> Lift (treatment)</span>
+        <span><i class="swatch ctrl"></i> Your baseline (control)</span>
+        <span><i class="swatch gap"></i> Verified uplift · billable</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TRUST STRIP -->
+<div class="strip">
+  <div class="wrap">
+    <div class="stat"><div class="n"><span class="accent">12%</span></div><div class="l">of verified uplift — nothing else</div></div>
+    <div class="stat"><div class="n">~5<span style="font-size:.6em">min</span></div><div class="l">OAuth to shadow-mode, zero code</div></div>
+    <div class="stat"><div class="n">0</div><div class="l">card numbers we ever touch (PCI SAQ-A)</div></div>
+    <div class="stat"><div class="n">100%</div><div class="l">of decisions on a signed, hash-chained ledger</div></div>
+  </div>
+</div>
+
+<!-- PROBLEM -->
+<section id="problem">
+  <div class="wrap">
+    <div class="shead">
+      <span class="eyebrow">The gap in "pay on uplift"</span>
+      <h2>Everyone bills you for lift. Nobody proves it.</h2>
+      <p class="lede">Redux, Butter, Gravy, Churnkey — all charge a cut of "recovery above your baseline." But that baseline is a number <em>they</em> compute for you, with no live control group. You're trusting an estimate that happens to size their own invoice.</p>
+    </div>
+    <div class="compare">
+      <div class="cmp bad">
+        <span class="tag">The industry</span>
+        <h3>A baseline you can't audit</h3>
+        <p>A cohort estimate reconstructs what "would have happened." It quietly counts dollars Stripe Smart Retries recovers for free, and there's no way to separate their work from yours after the fact.</p>
+        <p class="quote">"Some customers report difficulty distinguishing recoveries from their own existing retry systems." — public review of a category leader</p>
+      </div>
+      <div class="cmp good">
+        <span class="tag">Lift</span>
+        <h3>A randomized experiment you can</h3>
+        <p>A stratified slice of failures stays on your existing baseline as a live control, running under identical conditions. Uplift is the measured difference — not a model of the counterfactual, the counterfactual itself.</p>
+        <p class="quote">We bill the lower confidence bound. We'd rather under-claim and be trusted than over-claim and be audited.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- HOW -->
+<section id="how">
+  <div class="wrap">
+    <div class="shead">
+      <span class="eyebrow">How it works</span>
+      <h2>Prove the money before you pay a cent.</h2>
+      <p class="lede">Connect once. We measure your true baseline in shadow mode, then take control of recovery while a control group keeps the experiment honest — every decision written to a ledger you can reconcile.</p>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <span class="idx">01 · Connect</span>
+        <h3>OAuth, not engineering</h3>
+        <p>Two clicks through Stripe Connect with least-privilege, restricted keys. For homegrown billing, one line of SDK. We register webhooks and read your dunning config — no PAN ever crosses our servers.</p>
+      </div>
+      <div class="step">
+        <span class="idx">02 · Shadow</span>
+        <h3>Measure, don't touch</h3>
+        <p>For 14 days we compute every recovery decision without executing one — establishing your real baseline and a <em>projected</em> uplift with the exact fee we'd charge. You activate having already seen the money.</p>
+      </div>
+      <div class="step">
+        <span class="idx">03 · Recover</span>
+        <h3>Engine on, control held out</h3>
+        <p>We take over retries — timing, method, rail — plus omni-channel dunning and one-click card update. A guardrail obeys Visa/Mastercard retry caps so you're never fined for chasing dead cards.</p>
+      </div>
+    </div>
+
+    <!-- LEDGER -->
+    <div class="ledger" aria-label="Sample Uplift Statement ledger">
+      <div class="lh">
+        <span class="t">Uplift Statement · Nov 2026 · excerpt</span>
+        <span class="sig">signed · chain verified</span>
+      </div>
+      <div class="ledger-scroll">
+        <table class="ltable">
+          <thead>
+            <tr><th>Case</th><th>Bucket</th><th>Decline</th><th>Outcome</th><th>Recovered</th><th>Entry hash</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>inv_9f2a</td><td><span class="pill trt">treatment</span></td><td>insufficient_funds</td><td>recovered · d3</td><td class="amt">$149.00</td><td class="hash">3af9…c1</td></tr>
+            <tr><td>inv_9f31</td><td><span class="pill ctrl">control</span></td><td>issuer_unavailable</td><td>recovered · d5</td><td class="amt">$89.00</td><td class="hash">7be2…04</td></tr>
+            <tr><td>inv_9f3d</td><td><span class="pill trt">treatment</span></td><td>expired_card</td><td>card updated · d2</td><td class="amt">$249.00</td><td class="hash">1cd8…9f</td></tr>
+            <tr><td>inv_9f44</td><td><span class="pill trt">treatment</span></td><td>do_not_honor</td><td>recovered · d7</td><td class="amt">$39.00</td><td class="hash">e0a5…7b</td></tr>
+            <tr><td>inv_9f52</td><td><span class="pill ctrl">control</span></td><td>lost_stolen</td><td>suppressed · hard</td><td class="amt">—</td><td class="hash">92f1…3d</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="lfoot">
+        <span><span class="k">Treatment recovery</span> <span class="v">57.4%</span> &nbsp;·&nbsp; <span class="k">Control</span> <span class="v">44.9%</span> &nbsp;·&nbsp; <span class="k">Verified uplift (lower bound)</span> <span class="v">+11.8%</span></span>
+        <span><span class="k">Your fee</span> <span class="fee">= 12% × verified uplift $</span></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- WHY WE WIN -->
+<section id="why" class="strip" style="border-radius:0">
+  <div class="wrap" style="background:transparent; display:block; padding:88px 24px">
+    <div class="shead">
+      <span class="eyebrow">Why we win</span>
+      <h2>Honest math, better engine, easier start.</h2>
+    </div>
+    <div class="tablewrap">
+      <table class="cmp-t">
+        <thead>
+          <tr>
+            <th>&nbsp;</th>
+            <th>Stripe Smart Retries</th>
+            <th>Redux / Butter / Gravy</th>
+            <th class="us">Lift</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><th>Attribution</th><td>It <em>is</em> your baseline</td><td>Computed baseline, no live control</td><td class="us"><span class="yes">Live randomized holdout</span></td></tr>
+          <tr><th>Auditability</th><td>Standard reports</td><td>Vendor dashboard</td><td class="us"><span class="yes">Signed, reconcilable ledger</span></td></tr>
+          <tr><th>What you pay on</th><td>Free (part of Billing)</td><td>% of gross recovery</td><td class="us"><span class="yes">12% of verified lower bound</span></td></tr>
+          <tr><th>Network-fine guardrail</th><td>Basic</td><td class="no">Often exposed</td><td class="us"><span class="yes">Hard constraint layer</span></td></tr>
+          <tr><th>Card updater + tokens</th><td class="yes">Yes</td><td class="yes">Yes</td><td class="us"><span class="yes">Yes + cross-merchant BIN intel</span></td></tr>
+          <tr><th>Processors</th><td>Stripe only</td><td>Mostly Stripe</td><td class="us"><span class="yes">Any billing system (adapter SDK)</span></td></tr>
+          <tr><th>Onboarding</th><td>On by default</td><td>2-click to sales-led</td><td class="us"><span class="yes">5-min OAuth, shadow-first</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="pillars" style="margin-top:44px">
+      <div class="pillar">
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M3 17l5-5 4 3 8-9"/><path d="M20 6v5h-5"/></svg></div>
+        <div><h3>An AI engine, not an if-statement</h3><p>A recoverability model scores every decline; a contextual-bandit policy learns the best time, method, and rail per issuer. LLMs write the dunning copy — never the charge decision.</p></div>
+      </div>
+      <div class="pillar">
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M12 3l7 4v5c0 4-3 7-7 8-4-1-7-4-7-8V7z"/><path d="M9 12l2 2 4-4"/></svg></div>
+        <div><h3>Compliance built into the core</h3><p>Hard declines are suppressed, not retried. Visa/Mastercard attempt caps, quiet hours, and consent are inviolable constraints that override any learned policy.</p></div>
+      </div>
+      <div class="pillar">
+        <div class="ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+        <div><h3>A data flywheel small merchants can't build alone</h3><p>Aggregated, privacy-safe issuer and BIN intelligence across every merchant means better cold-start timing for all — a network effect single-tenant tools can't match.</p></div>
+      </div>
+      <div class="pillar">
+        <div class="ico"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v16"/></svg></div>
+        <div><h3>Processor-agnostic by design</h3><p>One canonical schema behind an adapter layer. Stripe today; Adyen, Braintree, Chargebee, Recurly, Zuora next. Degrades to advisory mode where a processor won't cede control.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PRICING -->
+<section id="pricing">
+  <div class="wrap">
+    <div class="price">
+      <div class="big"><span class="pct">12%</span></div>
+      <div class="sub">of statistically-verified incremental uplift.</div>
+      <p class="fine">Not 25% of gross recovery — which silently bills you for what Stripe would have recovered for free. We charge the lower confidence bound of a live experiment, so the number on your invoice is one you can defend.</p>
+      <div class="rowline">
+        <span>No upfront cost</span><span>·</span><span>No contract</span><span>·</span><span><b>Pay only above your measured baseline</b></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ROADMAP -->
+<section>
+  <div class="wrap">
+    <div class="shead">
+      <span class="eyebrow">Build path</span>
+      <h2>The proof engine ships first.</h2>
+      <p class="lede">Phase 0 alone is sellable: it's the entire trust wedge, before a single line of fancy ML.</p>
+    </div>
+    <div class="road">
+      <div class="phase now">
+        <span class="p">Phase 0 · now</span>
+        <h3>Proof engine</h3>
+        <ul><li>Stripe adapter + reconciler</li><li>Randomized holdout</li><li>Signed uplift ledger</li><li>Shadow-mode projection</li></ul>
+        <span class="badge">Sellable</span>
+      </div>
+      <div class="phase">
+        <span class="p">Phase 1</span>
+        <h3>Take control</h3>
+        <ul><li>Exactly-once retries</li><li>Omni-channel dunning</li><li>Card updater + tokens</li><li>Compliance guardrail</li></ul>
+      </div>
+      <div class="phase">
+        <span class="p">Phase 2</span>
+        <h3>Intelligence</h3>
+        <ul><li>Bandit / offline-RL policy</li><li>Cross-merchant BIN model</li><li>SHAP explainability</li><li>Retention-aware reward</li></ul>
+      </div>
+      <div class="phase">
+        <span class="p">Phase 3</span>
+        <h3>Scale &amp; moat</h3>
+        <ul><li>Adyen / Braintree / more</li><li>Stripe App Marketplace</li><li>SOC 2 Type II</li><li>Enterprise</li></ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FINAL -->
+<section class="final">
+  <div class="wrap">
+    <span class="eyebrow" style="justify-content:center">Certified-partner ready</span>
+    <h2 style="margin-top:18px">Built to sit inside Stripe — and outlive it.</h2>
+    <p>A Stripe App that enhances Smart Retries instead of ripping it out, with the PCI and SOC 2 posture certification requires from day one — and an adapter layer so the same engine runs anywhere your billing lives.</p>
+    <div class="cta-row" style="justify-content:center; margin-top:30px">
+      <a class="btn btn-primary" href="#how">Read the architecture <span class="arw">→</span></a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>Lift · AI-native payment recovery</span>
+    <span>Architecture v0.1 · confidential</span>
+  </div>
+</footer>
+<p class="disclaim">Illustrative concept pitch for an independent product in development. "Stripe", "Visa", and "Mastercard" are trademarks of their respective owners; references describe interoperability and intent to pursue partner certification, and do not imply endorsement or an existing partnership. Figures shown are illustrative.</p>
+
+<script>
+(function(){
+  // ---- theme toggle ----
+  var btn=document.getElementById('themeBtn');
+  btn.addEventListener('click',function(){
+    var r=document.documentElement;
+    var cur=r.getAttribute('data-theme');
+    if(!cur){ // system -> pick opposite of what's shown
+      var dark=window.matchMedia('(prefers-color-scheme:dark)').matches;
+      r.setAttribute('data-theme',dark?'light':'dark');
+    } else {
+      r.setAttribute('data-theme',cur==='dark'?'light':'dark');
+    }
+  });
+
+  // ---- hero chart ----
+  var W=460,H=260,x0=40,x1=440,yTop=30,yBot=220;
+  function X(t){return x0+(x1-x0)*t;}          // t in 0..1 (time)
+  function Y(v){return yBot-(yBot-yTop)*(v/0.60);} // v recovery fraction, axis maxes at 60%
+  // control approaches ~44.9%, treatment ~57.4%, both concave (fast early, plateau)
+  function curve(max){
+    var pts=[],N=40;
+    for(var i=0;i<=N;i++){var t=i/N; var v=max*(1-Math.exp(-3.1*t)); pts.push([X(t),Y(v)]);}
+    return pts;
+  }
+  var ctrl=curve(0.449), trt=curve(0.574);
+  function d(pts){return pts.map(function(p,i){return (i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1);}).join(' ');}
+  var cp=document.getElementById('ctrlPath'), tp=document.getElementById('trtPath');
+  cp.setAttribute('d',d(ctrl)); tp.setAttribute('d',d(trt));
+  // set dash length for draw animation
+  [cp,tp].forEach(function(p){var L=p.getTotalLength(); p.style.setProperty('--len',L); });
+  // gap fill polygon: treatment forward + control backward
+  var gap=d(trt)+' '+ctrl.slice().reverse().map(function(p){return 'L'+p[0].toFixed(1)+' '+p[1].toFixed(1);}).join(' ')+' Z';
+  document.getElementById('gapPath').setAttribute('d',gap);
+  // endpoint dots
+  var te=trt[trt.length-1], ce=ctrl[ctrl.length-1];
+  var td=document.getElementById('trtDot'); td.setAttribute('cx',te[0]); td.setAttribute('cy',te[1]);
+  var cd=document.getElementById('ctrlDot'); cd.setAttribute('cx',ce[0]); cd.setAttribute('cy',ce[1]);
+  // callout line between endpoints (the gap)
+  var cl=document.getElementById('calLine');
+  cl.setAttribute('x1',te[0]); cl.setAttribute('y1',te[1]); cl.setAttribute('x2',te[0]); cl.setAttribute('y2',ce[1]);
+  // add a small label for the gap
+  var svg=document.getElementById('hchart');
+  var svgns='http://www.w3.org/2000/svg';
+  var lbl=document.createElementNS(svgns,'text');
+  lbl.setAttribute('x',te[0]-8); lbl.setAttribute('y',(te[1]+ce[1])/2+3);
+  lbl.setAttribute('text-anchor','end'); lbl.setAttribute('font-family','var(--mono)');
+  lbl.setAttribute('font-size','10'); lbl.setAttribute('font-weight','600');
+  lbl.setAttribute('fill','var(--accent)'); lbl.setAttribute('class','callout');
+  lbl.textContent='+11.8% verified';
+  svg.appendChild(lbl);
+})();
+</script>

@@ -1,0 +1,160 @@
+:root {
+  --bg: #0b0e14;
+  --panel: #141922;
+  --panel-2: #1b212d;
+  --border: #263041;
+  --text: #e6edf3;
+  --muted: #8b98a9;
+  --accent: #4ade80;
+  --accent-dim: #22c55e;
+  --warn: #fbbf24;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+a {
+  color: var(--accent);
+}
+
+.container {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 40px 24px 80px;
+}
+
+.badge {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: rgba(74, 222, 128, 0.1);
+  border: 1px solid rgba(74, 222, 128, 0.3);
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+
+h1 {
+  font-size: 28px;
+  margin: 16px 0 4px;
+}
+
+.subtitle {
+  color: var(--muted);
+  margin: 0 0 32px;
+  max-width: 60ch;
+}
+
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.kpi {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.kpi .label {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.kpi .value {
+  font-size: 30px;
+  font-weight: 700;
+}
+
+.kpi .value.accent {
+  color: var(--accent);
+}
+
+.kpi .hint {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 6px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  font-size: 14px;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+th {
+  background: var(--panel-2);
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+td.num,
+th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+tr:last-child td {
+  border-bottom: none;
+}
+
+.pill {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.pill.billable {
+  color: var(--accent);
+  background: rgba(74, 222, 128, 0.12);
+}
+
+.pill.holdout {
+  color: var(--warn);
+  background: rgba(251, 191, 36, 0.12);
+}
+
+.section-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 40px 0 12px;
+}
+
+.ledger-note {
+  margin-top: 16px;
+  font-size: 12px;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  word-break: break-all;
+}
