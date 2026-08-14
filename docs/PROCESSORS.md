@@ -1,6 +1,6 @@
-# Lift — Universal Processor Compatibility
+# AX10M — Universal Processor Compatibility
 
-> How Lift works as a plug-and-play recovery overlay on **any** payment processor
+> How AX10M works as a plug-and-play recovery overlay on **any** payment processor
 > or subscription-billing platform, not just Stripe. Companion to `ARCHITECTURE.md`
 > §4.1 (the Payment Orchestration Abstraction Layer) and §8 (multi-processor).
 > Status: v0.1. Date: 2026-08-14. Claims are sourced; anything not publicly
@@ -10,8 +10,8 @@
 
 ## 1. The principle: one canonical core, an adapter per processor
 
-Lift never speaks a processor's dialect in its decision core. Every processor is
-wrapped by an **adapter** that normalizes into the canonical schema (`@lift/canonical`)
+AX10M never speaks a processor's dialect in its decision core. Every processor is
+wrapped by an **adapter** that normalizes into the canonical schema (`@ax10m/canonical`)
 and advertises a **capability matrix**. The core drives recovery through the POAL
 interface; the adapter translates. New processors are added by writing an adapter,
 not by touching the engine.
@@ -19,13 +19,13 @@ not by touching the engine.
 Because processors differ in how much retry control they cede, every adapter
 declares one of three **integration modes**:
 
-- **Drive** — Lift programmatically re-attempts the charge against a stored
+- **Drive** — AX10M programmatically re-attempts the charge against a stored
   token/mandate on its own optimized schedule. Full control.
-- **Co-drive** — Lift drives some recovery but coordinates with the processor's
+- **Co-drive** — AX10M drives some recovery but coordinates with the processor's
   own retry/dunning engine (which must be disabled, paused, or deconflicted to
   avoid double-charging).
-- **Advisory** — Lift cannot trigger the charge (the platform owns the token and
-  the retry loop). Lift **measures** failure/recovery via the platform's
+- **Advisory** — AX10M cannot trigger the charge (the platform owns the token and
+  the retry loop). AX10M **measures** failure/recovery via the platform's
   notifications and **recommends/prompts** out-of-band actions. Still holdout-
   measurable; the "action" is a comm, not a charge.
 
@@ -44,7 +44,7 @@ on the comms we do control and prove incremental recovery.
 ## 2. Master capability matrix
 
 Legend: ✅ yes · ⚠️ partial / gated / verify · ❌ no / N/A. "Own dunning" = does the
-platform run a retry/dunning engine Lift must disable or coexist with.
+platform run a retry/dunning engine AX10M must disable or coexist with.
 
 | Processor / platform | Ext. retry API | Failure webhooks | Account Updater | Network tokens | Tokenized re-charge (SAQ-A) | Partial capture | Multi-cur FX report | Own dunning | **Mode** |
 |---|---|---|---|---|---|---|---|---|---|
@@ -92,7 +92,7 @@ platform run a retry/dunning engine Lift must disable or coexist with.
 - **Square** — **drive** on the raw Payments API (`CreatePayment` with `card_id`, idempotent); network tokens + updater are automatic and Square-run. Key off `payment.updated` at the payment level (Invoices don't emit a failure webhook). Single-currency per account.
 - **Mollie** — **co-drive** via mandates (`sequenceType: recurring` + `mandateId`); Mollie Subscriptions imposes a fixed 5-retry dunning and exposes no card VAU/ABU. SEPA Direct Debit dominates and fails on a different timeline than cards.
 - **Nuvei** — **drive**: Rebilling Service + MIT, VAU/ABU, network tokens, DMN decline webhooks. Strong global multi-currency — a good non-US drive target.
-- **Razorpay / PayU (India)** — **co-drive / advisory**, hard-constrained by RBI: mandatory tokenization, Additional Factor of Authentication at mandate creation and for debits > ₹15,000, and a **24-hour pre-debit notification before every recurring debit**. Lift cannot freely re-time card retries here; it operates inside the e-mandate/SI framework and adds most value on comms + non-card rails (UPI Autopay).
+- **Razorpay / PayU (India)** — **co-drive / advisory**, hard-constrained by RBI: mandatory tokenization, Additional Factor of Authentication at mandate creation and for debits > ₹15,000, and a **24-hour pre-debit notification before every recurring debit**. AX10M cannot freely re-time card retries here; it operates inside the e-mandate/SI framework and adds most value on comms + non-card rails (UPI Autopay).
 
 ### Subscription-billing platforms
 - **Chargebee** — **drive**, best-in-class: `collect` API on a stored `payment_source_id`, partial amounts, and manual collects **don't consume native dunning attempts** (clean coexistence). Dunning is disableable.
@@ -104,7 +104,7 @@ platform run a retry/dunning engine Lift must disable or coexist with.
 
 ### Bank debit & app stores
 - **GoCardless** — **co-drive**: retry via `POST /payments/:id/actions/retry` (mandate must be active); rich webhooks including the bank-debit-specific `late_failure_settled` (post-payout clawback) that our attribution/reconciliation must handle. No card constructs — the credential is the **mandate** (favorable, near-zero PCI card scope). **Guardrail:** always honor the `will_attempt_retry` flag on the `failed` webhook so we never double-collect against GoCardless's own Success+ (NSF-only) engine. Distinct value over Success+: recovering non-NSF failures, dead-mandate re-authorization, and out-of-band comms.
-- **Apple App Store / Google Play IAP** — **advisory only**. The platform owns the card, retries (Apple Billing Retry up to 60 days; Google grace + account hold), and the dunning UX end to end. Lift's only levers: (1) **measure** via App Store Server Notifications v2 (`DID_FAIL_TO_RENEW`, `GRACE_PERIOD_EXPIRED`, `EXPIRED/BILLING_RETRY`, `DID_RENEW`) and Google RTDN (`SUBSCRIPTION_IN_GRACE_PERIOD`, `ON_HOLD`, `RECOVERED`, `EXPIRED`); (2) **prompt** the user in-app/email to fix their payment method in their own store account (deep-link to `manageSubscriptions`). Position this to customers explicitly — never imply we recharge IAP.
+- **Apple App Store / Google Play IAP** — **advisory only**. The platform owns the card, retries (Apple Billing Retry up to 60 days; Google grace + account hold), and the dunning UX end to end. AX10M's only levers: (1) **measure** via App Store Server Notifications v2 (`DID_FAIL_TO_RENEW`, `GRACE_PERIOD_EXPIRED`, `EXPIRED/BILLING_RETRY`, `DID_RENEW`) and Google RTDN (`SUBSCRIPTION_IN_GRACE_PERIOD`, `ON_HOLD`, `RECOVERED`, `EXPIRED`); (2) **prompt** the user in-app/email to fix their payment method in their own store account (deep-link to `manageSubscriptions`). Position this to customers explicitly — never imply we recharge IAP.
 
 ---
 
@@ -128,8 +128,8 @@ Prioritized by market share × ease × capability completeness:
 ## 5. Cross-cutting concerns (every adapter)
 
 - **Failure detection has two paths.** Not every processor emits a rich decline webhook (Cybersource, Fiserv lean on synchronous reason codes). Every adapter implements **both** a webhook path and a polling reconciler (the truth source), so we never miss or double-count a failure.
-- **Card-network retry-cap compliance.** Visa/Mastercard/Amex attempt caps and non-retryable reason codes are enforced in the guardrail (`@lift/guardrail`) regardless of processor — the adapter maps processor decline codes into the canonical taxonomy so the guardrail speaks one language.
+- **Card-network retry-cap compliance.** Visa/Mastercard/Amex attempt caps and non-retryable reason codes are enforced in the guardrail (`@ax10m/guardrail`) regardless of processor — the adapter maps processor decline codes into the canonical taxonomy so the guardrail speaks one language.
 - **Exactly-once charging across processors.** Every `attemptCharge` carries a deterministic idempotency key; the reconciler is the source of truth. Bank debit adds the `will_attempt_retry`/Success+ deconfliction; app stores are advisory (no charge at all).
 - **PCI scope minimization everywhere.** Every drive/co-drive adapter re-charges a **token/mandate**, never a PAN → SAQ-A posture across the board. Bank debit (GoCardless) and IAP have effectively zero card scope.
-- **Reconciliation via the processor's own payout report.** Each adapter exposes the processor's settlement/payout export keyed by transaction id so the Uplift Statement (ATTRIBUTION.md §8.4) ties out penny-for-penny against the processor's own records — the CFO never has to trust Lift's dashboard.
+- **Reconciliation via the processor's own payout report.** Each adapter exposes the processor's settlement/payout export keyed by transaction id so the Uplift Statement (ATTRIBUTION.md §8.4) ties out penny-for-penny against the processor's own records — the CFO never has to trust AX10M's dashboard.
 - **Currency.** All dollar math uses the processor's settled FX from the payout record, never our own rate (ATTRIBUTION.md §9.4).

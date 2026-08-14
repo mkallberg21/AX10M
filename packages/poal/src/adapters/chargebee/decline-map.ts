@@ -3,14 +3,14 @@
  *
  * Chargebee surfaces a failed transaction via `transaction.error_code` /
  * `error_text`, which are largely the underlying gateway's decline codes (Chargebee
- * normalizes many onto its own set). We map the common ones onto Lift's canonical
+ * normalizes many onto its own set). We map the common ones onto AX10M's canonical
  * taxonomy; unmapped codes fall back to `Unknown` (family: gray) so the
  * recoverability model decides rather than a guess.
  *
  * Reference: Chargebee transaction error codes + common gateway decline strings.
  */
 
-import { DeclineCode } from '@lift/canonical';
+import { DeclineCode } from '@ax10m/canonical';
 
 const CHARGEBEE_DECLINE_MAP: Readonly<Record<string, DeclineCode>> = {
   // Insufficient funds

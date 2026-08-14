@@ -36,7 +36,7 @@ import type {
   DeclineFamily,
   IssuerRegion,
   MrrTier,
-} from '@lift/canonical';
+} from '@ax10m/canonical';
 
 /** The stratification key: assignment is balanced within each stratum. */
 export interface Stratum {
@@ -60,7 +60,7 @@ export interface HoldoutConfig {
 
 export const DEFAULT_HOLDOUT_CONFIG: HoldoutConfig = {
   controlFraction: 0.1,
-  salt: 'lift-holdout-v1',
+  salt: 'ax10m-holdout-v1',
 };
 
 export type Bucket = 'control' | 'treatment';

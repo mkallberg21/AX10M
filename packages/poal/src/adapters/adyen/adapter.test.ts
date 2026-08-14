@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DeclineCode, DeclineFamily, type Customer, type Invoice, type PaymentMethod } from '@lift/canonical';
+import { DeclineCode, DeclineFamily, type Customer, type Invoice, type PaymentMethod } from '@ax10m/canonical';
 import { AdyenAdapter } from './adapter.js';
 import { computeAdyenHmac, mapAdyenRefusalReason, type AdyenNotificationItem } from './notification-map.js';
 import type { FetchLike, FetchResponseLike } from './client.js';
@@ -55,10 +55,10 @@ function notification(item: AdyenNotificationItem): string {
 }
 
 const invoice: Invoice = {
-  id: 'lift_inv_inv_1', customerId: 'lift_cus_shopper1', merchantId: 'mrc_1', processorRef: 'inv_1',
+  id: 'ax10m_inv_inv_1', customerId: 'ax10m_cus_shopper1', merchantId: 'mrc_1', processorRef: 'inv_1',
   amount: { amount: 14900, currency: 'USD' }, status: 'open', createdAt: '2026-08-01T00:00:00.000Z',
 };
-const method: PaymentMethod = { id: 'lift_pm_TOKEN', customerId: 'lift_cus_shopper1', processorRef: 'TOKEN', token: 'TOKEN' };
+const method: PaymentMethod = { id: 'ax10m_pm_TOKEN', customerId: 'ax10m_cus_shopper1', processorRef: 'TOKEN', token: 'TOKEN' };
 
 describe('mapAdyenRefusalReason', () => {
   it('maps text and numeric-coded reasons, defaulting to Unknown', () => {
@@ -121,18 +121,18 @@ describe('attemptCharge', () => {
       return res(200, { resultCode: 'Authorised', pspReference: 'psp_ok' });
     });
     const adapter = new AdyenAdapter({ ...baseCfg, fetch });
-    const r = await adapter.attemptCharge(invoice, method, 'lift_charge_abc');
+    const r = await adapter.attemptCharge(invoice, method, 'ax10m_charge_abc');
     expect(r.outcome).toBe('succeeded');
     expect(r.attempt.status).toBe('succeeded');
-    expect(calls[0]!.init.headers?.['Idempotency-Key']).toBe('lift_charge_abc');
+    expect(calls[0]!.init.headers?.['Idempotency-Key']).toBe('ax10m_charge_abc');
     expect(calls[0]!.init.body).toContain('"storedPaymentMethodId":"TOKEN"');
-    expect(calls[0]!.init.body).toContain('"shopperReference":"shopper1"'); // derived from lift_cus_ prefix
+    expect(calls[0]!.init.body).toContain('"shopperReference":"shopper1"'); // derived from ax10m_cus_ prefix
   });
 
   it('treats a Refused resultCode (HTTP 200) as a decline, not an error', async () => {
     const { fetch } = makeFetch(() => res(200, { resultCode: 'Refused', refusalReason: 'Insufficient funds', pspReference: 'psp_x' }));
     const adapter = new AdyenAdapter({ ...baseCfg, fetch });
-    const r = await adapter.attemptCharge(invoice, method, 'lift_charge_abc');
+    const r = await adapter.attemptCharge(invoice, method, 'ax10m_charge_abc');
     expect(r.outcome).toBe('failed');
     expect(r.attempt.declineCode).toBe(DeclineCode.InsufficientFunds);
   });
@@ -140,7 +140,7 @@ describe('attemptCharge', () => {
   it('rethrows a genuine HTTP error (bad key / infra) for the saga to retry', async () => {
     const { fetch } = makeFetch(() => res(401, { status: 401, errorCode: '101', message: 'Invalid API key' }));
     const adapter = new AdyenAdapter({ ...baseCfg, fetch });
-    await expect(adapter.attemptCharge(invoice, method, 'lift_charge_abc')).rejects.toThrow(/Invalid API key/);
+    await expect(adapter.attemptCharge(invoice, method, 'ax10m_charge_abc')).rejects.toThrow(/Invalid API key/);
   });
 });
 
@@ -152,7 +152,7 @@ describe('stored payment methods', () => {
     });
     const adapter = new AdyenAdapter({ ...baseCfg, fetch });
     const customer: Customer = {
-      id: 'lift_cus_shopper1', merchantId: 'mrc_1', processorRef: 'shopper1', issuerRegion: 'unknown',
+      id: 'ax10m_cus_shopper1', merchantId: 'mrc_1', processorRef: 'shopper1', issuerRegion: 'unknown',
       createdAt: '2026-01-01T00:00:00.000Z', consent: { email: true, sms: false, whatsapp: false, push: false, globallyOptedOut: false },
     };
     const methods = await adapter.listPaymentMethods(customer);

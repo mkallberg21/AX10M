@@ -3,14 +3,14 @@
  *
  * Everything upstream of the decision core speaks this vocabulary, so the core
  * never knows which processor (Stripe, Adyen, Braintree, ...) produced an event.
- * Processor adapters (see @lift/poal) are responsible for normalizing native
+ * Processor adapters (see @ax10m/poal) are responsible for normalizing native
  * payloads into these shapes. See ARCHITECTURE.md §4.1.
  *
  * Design notes:
  *  - We NEVER store a PAN. `PaymentMethod` carries only tokenized / display data.
  *  - All monetary amounts are integer minor units (cents) + an ISO-4217 currency,
  *    to avoid float drift in anything that touches money.
- *  - `id` fields are Lift-internal canonical ids; `processorRef` fields hold the
+ *  - `id` fields are AX10M-internal canonical ids; `processorRef` fields hold the
  *    opaque native id so adapters can round-trip back to the processor.
  */
 
@@ -46,13 +46,13 @@ export type MrrTier = 'micro' | 'small' | 'mid' | 'large' | 'enterprise';
 /** Coarse issuer region, used as a stratification key. */
 export type IssuerRegion = 'na' | 'emea' | 'latam' | 'apac' | 'unknown';
 
-/** A Lift-onboarded merchant (tenant). */
+/** A AX10M-onboarded merchant (tenant). */
 export interface Merchant {
   id: string;
   processor: ProcessorId;
   processorRef: string;
   displayName: string;
-  /** Whether Lift is actively driving recovery, or only observing (shadow). */
+  /** Whether AX10M is actively driving recovery, or only observing (shadow). */
   mode: 'shadow' | 'active';
   createdAt: string;
 }
@@ -165,7 +165,7 @@ export interface RecoveryCase {
   merchantId: string;
   customerId: string;
   invoiceId: string;
-  /** Holdout bucket. `control` = baseline-only; `treatment` = Lift engine. */
+  /** Holdout bucket. `control` = baseline-only; `treatment` = AX10M engine. */
   bucket: 'control' | 'treatment';
   status: 'open' | 'recovered' | 'abandoned';
   openedAt: string;

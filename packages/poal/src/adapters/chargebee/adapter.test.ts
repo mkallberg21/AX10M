@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DeclineCode, DeclineFamily, type Customer, type Invoice, type PaymentMethod } from '@lift/canonical';
+import { DeclineCode, DeclineFamily, type Customer, type Invoice, type PaymentMethod } from '@ax10m/canonical';
 import { ChargebeeAdapter } from './adapter.js';
 import { mapChargebeeDeclineCode } from './decline-map.js';
 import type { FetchLike, FetchResponseLike } from './client.js';
@@ -32,10 +32,10 @@ const baseCfg = { site: 'acme', apiKey: 'test_key', merchantId: 'mrc_1', baseUrl
 const basicAuth = (u: string, p: string) => `Basic ${Buffer.from(`${u}:${p}`).toString('base64')}`;
 
 const invoice: Invoice = {
-  id: 'lift_inv_inv_1', customerId: 'lift_cus_c1', merchantId: 'mrc_1', processorRef: 'inv_1',
+  id: 'ax10m_inv_inv_1', customerId: 'ax10m_cus_c1', merchantId: 'mrc_1', processorRef: 'inv_1',
   amount: { amount: 14900, currency: 'USD' }, status: 'open', createdAt: '2026-08-01T00:00:00.000Z',
 };
-const method: PaymentMethod = { id: 'lift_pm_pm_1', customerId: 'lift_cus_c1', processorRef: 'pm_1', token: 'pm_1' };
+const method: PaymentMethod = { id: 'ax10m_pm_pm_1', customerId: 'ax10m_cus_c1', processorRef: 'pm_1', token: 'pm_1' };
 
 describe('mapChargebeeDeclineCode', () => {
   it('maps known codes and defaults unknown to Unknown', () => {
@@ -109,12 +109,12 @@ describe('attemptCharge', () => {
       return res(200, { invoice: { id: 'inv_1', status: 'paid' }, transaction: { id: 'txn_ok', status: 'success', amount: 14900, currency_code: 'USD' } });
     });
     const adapter = new ChargebeeAdapter({ ...baseCfg, fetch });
-    const r = await adapter.attemptCharge(invoice, method, 'lift_charge_abc');
+    const r = await adapter.attemptCharge(invoice, method, 'ax10m_charge_abc');
     expect(r.outcome).toBe('succeeded');
     expect(r.idempotentReplay).toBe(false);
     expect(r.attempt.status).toBe('succeeded');
     // idempotency key + payment source were sent
-    expect(calls[0]!.init.headers?.['chargebee-idempotency-key']).toBe('lift_charge_abc');
+    expect(calls[0]!.init.headers?.['chargebee-idempotency-key']).toBe('ax10m_charge_abc');
     expect(calls[0]!.init.body).toContain('payment_source_id=pm_1');
   });
 
@@ -123,7 +123,7 @@ describe('attemptCharge', () => {
       res(200, { transaction: { id: 'txn_ok', status: 'success' } }, { 'chargebee-idempotency-replayed': 'true' }),
     );
     const adapter = new ChargebeeAdapter({ ...baseCfg, fetch });
-    const r = await adapter.attemptCharge(invoice, method, 'lift_charge_abc');
+    const r = await adapter.attemptCharge(invoice, method, 'ax10m_charge_abc');
     expect(r.idempotentReplay).toBe(true);
   });
 
@@ -132,7 +132,7 @@ describe('attemptCharge', () => {
       res(400, { message: 'Payment declined', type: 'payment', api_error_code: 'payment_processing_failed', error_code: 'do_not_honor' }),
     );
     const adapter = new ChargebeeAdapter({ ...baseCfg, fetch });
-    const r = await adapter.attemptCharge(invoice, method, 'lift_charge_abc');
+    const r = await adapter.attemptCharge(invoice, method, 'ax10m_charge_abc');
     expect(r.outcome).toBe('failed');
     expect(r.attempt.status).toBe('failed');
     expect(r.attempt.declineCode).toBe(DeclineCode.DoNotHonor);
@@ -141,7 +141,7 @@ describe('attemptCharge', () => {
   it('rethrows an infra/operation error so the saga can retry', async () => {
     const { fetch } = makeFetch(() => res(500, { message: 'gateway timeout', type: 'operation_failed' }));
     const adapter = new ChargebeeAdapter({ ...baseCfg, fetch });
-    await expect(adapter.attemptCharge(invoice, method, 'lift_charge_abc')).rejects.toThrow();
+    await expect(adapter.attemptCharge(invoice, method, 'ax10m_charge_abc')).rejects.toThrow();
   });
 });
 
@@ -182,7 +182,7 @@ describe('reconciliation & payment methods', () => {
     );
     const adapter = new ChargebeeAdapter({ ...baseCfg, fetch });
     const customer: Customer = {
-      id: 'lift_cus_c1', merchantId: 'mrc_1', processorRef: 'c1', issuerRegion: 'unknown',
+      id: 'ax10m_cus_c1', merchantId: 'mrc_1', processorRef: 'c1', issuerRegion: 'unknown',
       createdAt: '2026-01-01T00:00:00.000Z', consent: { email: true, sms: false, whatsapp: false, push: false, globallyOptedOut: false },
     };
     const methods = await adapter.listPaymentMethods(customer);

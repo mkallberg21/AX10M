@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { Cursor, ProcessorAdapter } from '@lift/poal';
-import type { Invoice } from '@lift/canonical';
+import type { Cursor, ProcessorAdapter } from '@ax10m/poal';
+import type { Invoice } from '@ax10m/canonical';
 
 /**
  * Reconciliation poller — the truth source (ARCHITECTURE.md §4.1).
@@ -11,7 +11,7 @@ import type { Invoice } from '@lift/canonical';
  * is ultimately backstopped: any ambiguous charge is resolved here against the
  * processor's own record.
  *
- * Phase 0: stub. TODO(lift): schedule (cron/interval), persist cursors per
+ * Phase 0: stub. TODO(ax10m): schedule (cron/interval), persist cursors per
  * merchant, diff against ingested state, and enqueue recovery cases for gaps.
  */
 @Injectable()
@@ -21,7 +21,7 @@ export class ReconcilerService {
   /** Poll one processor once, from a saved cursor. Returns invoices found. */
   async pollOnce(adapter: ProcessorAdapter, cursor: Cursor): Promise<Invoice[]> {
     const page = await adapter.listOpenFailures(cursor);
-    // TODO(lift): for each invoice, upsert canonical state, detect failures not
+    // TODO(ax10m): for each invoice, upsert canonical state, detect failures not
     // seen via webhook, and reconcile charge outcomes for exactly-once safety.
     this.logger.debug(
       `Reconciler polled ${adapter.id}: ${page.invoices.length} open failures`,
@@ -29,7 +29,7 @@ export class ReconcilerService {
     return page.invoices;
   }
 
-  /** TODO(lift): start the recurring reconciliation loop for all merchants. */
+  /** TODO(ax10m): start the recurring reconciliation loop for all merchants. */
   startLoop(): void {
     this.logger.log('Reconciler loop not started (Phase 0 stub).');
   }

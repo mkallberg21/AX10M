@@ -1,7 +1,7 @@
 /**
- * Processor registry — the enumerable roster of everything Lift targets.
+ * Processor registry — the enumerable roster of everything AX10M targets.
  *
- * This is the machine-readable companion to PROCESSORS.md §2. Every processor Lift
+ * This is the machine-readable companion to PROCESSORS.md §2. Every processor AX10M
  * intends to support is listed with its integration mode, segment, and adapter
  * status, so onboarding / dashboards can answer "do you support X?" from data, and
  * so "works with every processor" is a checklist, not a slogan.

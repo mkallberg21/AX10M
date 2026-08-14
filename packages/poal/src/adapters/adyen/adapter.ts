@@ -31,7 +31,7 @@ import {
   type Money,
   type PaymentMethod,
   type Subscription,
-} from '@lift/canonical';
+} from '@ax10m/canonical';
 import type {
   CapabilityMatrix,
   ChargeResult,
@@ -50,7 +50,7 @@ import {
 export interface AdyenAdapterConfig {
   apiKey: string;
   merchantAccount: string;
-  /** Lift-internal merchant id this adapter instance serves (stamped on canonical events). */
+  /** AX10M-internal merchant id this adapter instance serves (stamped on canonical events). */
   merchantId: string;
   /** Hex HMAC key for webhook signature verification (from the Adyen Customer Area). */
   hmacKey?: string;
@@ -122,7 +122,7 @@ export class AdyenAdapter implements ProcessorAdapter {
     const invoice = this.mapInvoice(item, occurredAt, failed);
     const attempt = this.mapAttempt(item, invoice.id, failed);
     const base = {
-      id: `lift_evt_${item.pspReference ?? invoice.processorRef}`,
+      id: `ax10m_evt_${item.pspReference ?? invoice.processorRef}`,
       merchantId: this.config.merchantId,
       processorEventId: item.pspReference ?? '',
       occurredAt,
@@ -139,7 +139,7 @@ export class AdyenAdapter implements ProcessorAdapter {
   async listOpenFailures(_cursor: Cursor): Promise<OpenFailuresPage> {
     // Adyen is a gateway, not a biller — there is no invoice ledger to poll. Failures
     // arrive via notifications; $-reconciliation is against the Settlement Details
-    // report (TODO(lift): wire Adyen Report API). Invoice state lives in the
+    // report (TODO(ax10m): wire Adyen Report API). Invoice state lives in the
     // merchant's billing system, reconciled there.
     return { invoices: [], nextCursor: null };
   }
@@ -152,7 +152,7 @@ export class AdyenAdapter implements ProcessorAdapter {
     idempotencyKey: string,
   ): Promise<ChargeResult> {
     const shopperReference =
-      stripPrefix(method.customerId, 'lift_cus_') || stripPrefix(invoice.customerId, 'lift_cus_');
+      stripPrefix(method.customerId, 'ax10m_cus_') || stripPrefix(invoice.customerId, 'ax10m_cus_');
     const { body, idempotentReplay } = await this.client.post(
       '/payments',
       {
@@ -211,7 +211,7 @@ export class AdyenAdapter implements ProcessorAdapter {
 
   async pauseNativeDunning(_subscription: Subscription): Promise<void> {
     // No-op: Adyen runs no merchant-facing dunning engine, so there is nothing to
-    // disable — Lift owns the retry loop entirely on Adyen.
+    // disable — AX10M owns the retry loop entirely on Adyen.
   }
 
   // ── mapping helpers ──────────────────────────────────────────────────────────
@@ -219,7 +219,7 @@ export class AdyenAdapter implements ProcessorAdapter {
   private mapInvoice(item: AdyenNotificationItem, occurredAt: string, failed: boolean): Invoice {
     const ref = item.merchantReference ?? '';
     return {
-      id: `lift_inv_${ref}`,
+      id: `ax10m_inv_${ref}`,
       customerId: '',
       merchantId: this.config.merchantId,
       processorRef: ref,
@@ -254,7 +254,7 @@ export class AdyenAdapter implements ProcessorAdapter {
     attemptedAt: string;
   }): ChargeAttempt {
     return {
-      id: `lift_att_${p.txnId ?? (p.idempotencyKey || 'unknown')}`,
+      id: `ax10m_att_${p.txnId ?? (p.idempotencyKey || 'unknown')}`,
       invoiceId: p.invoiceId,
       paymentMethodId: p.paymentMethodId,
       idempotencyKey: p.idempotencyKey,
@@ -275,7 +275,7 @@ export class AdyenAdapter implements ProcessorAdapter {
     const raw = item.reason ?? item.additionalData?.refusalReasonRaw;
     const code = mapAdyenRefusalReason(raw);
     return {
-      id: `lift_dec_${item.pspReference ?? invoiceId}`,
+      id: `ax10m_dec_${item.pspReference ?? invoiceId}`,
       invoiceId,
       chargeAttemptId,
       code,
@@ -288,7 +288,7 @@ export class AdyenAdapter implements ProcessorAdapter {
   private mapStoredMethod(sp: Record<string, unknown>, customer: Customer): PaymentMethod {
     const id = String(sp.id ?? '');
     return {
-      id: `lift_pm_${id}`,
+      id: `ax10m_pm_${id}`,
       customerId: customer.id,
       processorRef: id,
       token: id, // Adyen stored-method / recurring-detail reference — no PAN

@@ -3,14 +3,14 @@
  *
  * Adyen surfaces a decline via `refusalReason` (normalized text, often prefixed
  * with a numeric code, e.g. "6 Expired Card") and `additionalData.refusalReasonRaw`
- * (the raw acquirer response). We match the common ones onto Lift's canonical
+ * (the raw acquirer response). We match the common ones onto AX10M's canonical
  * taxonomy; unmapped reasons fall back to `Unknown` (family: gray).
  *
  * Reference: Adyen refusal reasons + HMAC signature calculation.
  */
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { DeclineCode } from '@lift/canonical';
+import { DeclineCode } from '@ax10m/canonical';
 
 /** Ordered substring rules — specific first — matched against the lowercased reason. */
 const ADYEN_REFUSAL_RULES: ReadonlyArray<readonly [string, DeclineCode]> = [

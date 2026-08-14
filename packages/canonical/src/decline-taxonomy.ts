@@ -10,7 +10,7 @@
  *  - gray: issuer-and-context dependent ("do not honor", 05). The recoverability
  *          model earns its keep here.
  *
- * The codes below are Lift-canonical decline codes. Processor adapters map their
+ * The codes below are AX10M-canonical decline codes. Processor adapters map their
  * native reason codes onto these; the decision core only ever sees canonical.
  */
 
@@ -84,7 +84,7 @@ export function familyOf(code: DeclineCode): DeclineFamily {
  * Whether a decline code is *eligible* for a network retry.
  *
  * NOTE: this is a taxonomy-level answer only ("is this code the kind of thing we
- * ever retry?"). It is NOT the final say — the compliance guardrail (@lift/guardrail)
+ * ever retry?"). It is NOT the final say — the compliance guardrail (@ax10m/guardrail)
  * still applies network attempt caps, quiet hours, consent, etc. and can suppress
  * a retry this function would allow. Hard declines are never retriable; gray-zone
  * codes are retriable in principle and handed to the recoverability model.

@@ -14,7 +14,7 @@
  *     the fixed-horizon `computeUplift`, for quick rate-lift summaries. Never bill
  *     from it.
  *
- * TODO(lift): render to CSV/PDF and sign the statement (Ed25519 over the
+ * TODO(ax10m): render to CSV/PDF and sign the statement (Ed25519 over the
  * statement hash, which covers the ledger hash range) for export — ATTRIBUTION §8.5.
  */
 
@@ -61,7 +61,7 @@ export function buildBillableStatement(params: {
   };
 }
 
-import type { CurrencyCode, Money } from '@lift/canonical';
+import type { CurrencyCode, Money } from '@ax10m/canonical';
 import { computeUplift, type ArmStats, type UpliftConfig, DEFAULT_UPLIFT_CONFIG } from './uplift.js';
 import {
   computeBillableUplift,

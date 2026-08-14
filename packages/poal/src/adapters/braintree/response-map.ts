@@ -2,7 +2,7 @@
  * Braintree → canonical decline mapping + webhook signature verification.
  *
  * Braintree surfaces declines via a numeric `processor-response-code` (the 2000
- * series) and text. We map the common codes onto Lift's canonical taxonomy;
+ * series) and text. We map the common codes onto AX10M's canonical taxonomy;
  * unmapped codes fall back to `Unknown` (family: gray).
  *
  * Webhooks are signed: `bt_signature` is `publicKey|hmac` pairs joined by `&`, and
@@ -11,7 +11,7 @@
  */
 
 import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
-import { DeclineCode } from '@lift/canonical';
+import { DeclineCode } from '@ax10m/canonical';
 
 const BRAINTREE_DECLINE_MAP: Readonly<Record<string, DeclineCode>> = {
   '2000': DeclineCode.DoNotHonor, // Do Not Honor

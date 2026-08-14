@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DeclineCode } from '@lift/canonical';
+import { DeclineCode } from '@ax10m/canonical';
 import { projectShadow, type ShadowObservation } from './projection.js';
 import {
   activate,

@@ -29,5 +29,5 @@ export function idempotencyKey(input: IdempotencyKeyInput): string {
     String(input.attemptNumber),
   ].join(':');
   const digest = createHash('sha256').update(canonical).digest('hex').slice(0, 32);
-  return `lift_charge_${digest}`;
+  return `ax10m_charge_${digest}`;
 }

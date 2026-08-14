@@ -35,7 +35,7 @@ import {
   type Money,
   type PaymentMethod,
   type Subscription,
-} from '@lift/canonical';
+} from '@ax10m/canonical';
 import type {
   CapabilityMatrix,
   ChargeResult,
@@ -49,7 +49,7 @@ import { mapBraintreeDeclineCode, verifyBraintreeSignature } from './response-ma
 import { xmlBlocks, xmlInner, xmlLeaf } from './xml.js';
 
 export interface BraintreeAdapterConfig {
-  /** Lift-internal merchant id this adapter instance serves. */
+  /** AX10M-internal merchant id this adapter instance serves. */
   merchantId: string;
   /** Braintree gateway merchant id (used in the URL path). */
   braintreeMerchantId: string;
@@ -149,7 +149,7 @@ export class BraintreeAdapter implements ProcessorAdapter {
         attemptedAt: occurredAt,
       });
       const base = {
-        id: `lift_evt_${subId}_${occurredAt}`,
+        id: `ax10m_evt_${subId}_${occurredAt}`,
         merchantId: this.config.merchantId,
         processorEventId: `${kind}:${subId}:${occurredAt}`,
         occurredAt,
@@ -223,7 +223,7 @@ export class BraintreeAdapter implements ProcessorAdapter {
   async pauseNativeDunning(_subscription: Subscription): Promise<void> {
     // No-op for raw-vault usage. If the merchant uses Braintree Subscriptions,
     // taking control means canceling/adjusting that subscription's retry schedule
-    // (TODO(lift): update_subscription), which is why that config is co-drive.
+    // (TODO(ax10m): update_subscription), which is why that config is co-drive.
   }
 
   // ── mapping helpers ──────────────────────────────────────────────────────────
@@ -237,8 +237,8 @@ export class BraintreeAdapter implements ProcessorAdapter {
     failed: boolean;
   }): Invoice {
     return {
-      id: `lift_inv_${p.ref}`,
-      subscriptionId: p.subscriptionId ? `lift_sub_${p.subscriptionId}` : undefined,
+      id: `ax10m_inv_${p.ref}`,
+      subscriptionId: p.subscriptionId ? `ax10m_sub_${p.subscriptionId}` : undefined,
       customerId: '',
       merchantId: this.config.merchantId,
       processorRef: p.ref,
@@ -260,7 +260,7 @@ export class BraintreeAdapter implements ProcessorAdapter {
     attemptedAt: string;
   }): ChargeAttempt {
     return {
-      id: `lift_att_${p.txnId ?? (p.idempotencyKey || 'unknown')}`,
+      id: `ax10m_att_${p.txnId ?? (p.idempotencyKey || 'unknown')}`,
       invoiceId: p.invoiceId,
       paymentMethodId: p.paymentMethodId,
       idempotencyKey: p.idempotencyKey,
@@ -275,7 +275,7 @@ export class BraintreeAdapter implements ProcessorAdapter {
   private buildDecline(txn: string, invoiceId: string, chargeAttemptId: string, occurredAt: string): DeclineEvent {
     const code = mapBraintreeDeclineCode(xmlLeaf(txn, 'processor-response-code'));
     return {
-      id: `lift_dec_${xmlLeaf(txn, 'id') ?? invoiceId}`,
+      id: `ax10m_dec_${xmlLeaf(txn, 'id') ?? invoiceId}`,
       invoiceId,
       chargeAttemptId,
       code,
@@ -288,7 +288,7 @@ export class BraintreeAdapter implements ProcessorAdapter {
   private mapCreditCard(cc: string, customer: Customer): PaymentMethod {
     const token = xmlLeaf(cc, 'token') ?? '';
     return {
-      id: `lift_pm_${token}`,
+      id: `ax10m_pm_${token}`,
       customerId: customer.id,
       processorRef: token,
       token,

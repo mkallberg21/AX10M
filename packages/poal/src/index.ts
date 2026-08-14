@@ -1,7 +1,7 @@
 /**
- * @lift/poal — Payment Orchestration Abstraction Layer.
+ * @ax10m/poal — Payment Orchestration Abstraction Layer.
  *
- * The narrow `ProcessorAdapter` contract + capability matrix that make Lift
+ * The narrow `ProcessorAdapter` contract + capability matrix that make AX10M
  * processor-agnostic, plus deterministic idempotency-key generation and the
  * Stripe adapter (first processor). See ARCHITECTURE.md §4.1 & §8.
  */

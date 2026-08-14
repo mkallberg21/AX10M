@@ -1,6 +1,6 @@
-# Lift — Competitive Teardown
+# AX10M — Competitive Teardown
 
-> Companion to `ARCHITECTURE.md` and `ATTRIBUTION.md`. This document characterizes the failed-payment / involuntary-churn recovery field and derives a prioritized backlog that makes Lift strictly dominant.
+> Companion to `ARCHITECTURE.md` and `ATTRIBUTION.md`. This document characterizes the failed-payment / involuntary-churn recovery field and derives a prioritized backlog that makes AX10M strictly dominant.
 > Document owner: founding eng / competitive intel. Status: v0.1. Date: 2026-08-14.
 
 **Honesty conventions used throughout.** `[VERIFIED]` = claim backed by a cited source (vendor page or third-party). `[VENDOR-CLAIM]` = the vendor's own marketing number, not independently confirmed — treat as a ceiling, not a fact. `[INFERRED]` = our analytical read, not a stated fact. `[UNVERIFIED]` = we could not confirm the entity or the fact from public sources. Pricing is marked **not public** where no number is published. We do not invent pricing.
@@ -13,7 +13,7 @@ The entire category shares one structural weakness: **nobody measures their own 
 
 This is not a theoretical gap. **Gravy has a documented, public attribution dispute**: a customer reported Gravy projected ~45% recovery, reported ~21% in month one, but the customer's own cohort analysis (how many recipients clicked the outreach, then actually updated a card) could only credibly attribute ~1.2% incremental recovery to Gravy — the rest would have recovered anyway. Gravy's contractual defense was that projections are "estimates, not guarantees" (G2 / third-party review analysis, 2026). That is the whole category's exposure in one anecdote: **without a randomized holdout, "incremental" is unfalsifiable, and a sophisticated CFO eventually notices.**
 
-**Lift's wedge** is to make the counterfactual *measured, not modeled*:
+**AX10M's wedge** is to make the counterfactual *measured, not modeled*:
 
 1. **Live randomized holdout** (customer-clustered, stratified) runs baseline-only recovery *simultaneously* under identical conditions. The lift is a difference of arms, not a forecast.
 2. **Always-valid mSPRT confidence sequence** lets us read results continuously and bill the **lower confidence bound** — structural under-claiming. An unproven month bills $0.
@@ -38,7 +38,7 @@ These are our closest analogues: they position on recovering failed payments and
 - **Card updater / network tokens** Frictionless card-update links `[VERIFIED]`; **no explicit network-tokenization claim** `[INFERRED]`.
 - **Notable strengths** Clean Stripe-native UX; strong case-study marketing (+27% vs Stripe, 10x ROI — all `[VENDOR-CLAIM]`); pay-on-lift framing is close to ours rhetorically.
 - **Exploitable weaknesses** (1) Baseline is self-computed, not a simultaneous control — the exact thing Gravy got caught on. (2) Stripe-only — no multi-processor hedge. (3) No signed/reconcilable statement. (4) Coexistence with Smart Retries is muddy: if they bill on "lift above what we were recovering," is Smart-Retries revenue in or out of that baseline?
-- **How Lift beats it** Same pay-on-lift promise, but our lift is a *randomized-holdout* difference, we bill the *lower bound*, and we hand the CFO a signed statement they can recompute against Stripe's payout export. We turn "trust our baseline" into "reconstruct our experiment."
+- **How AX10M beats it** Same pay-on-lift promise, but our lift is a *randomized-holdout* difference, we bill the *lower bound*, and we hand the CFO a signed statement they can recompute against Stripe's payout export. We turn "trust our baseline" into "reconstruct our experiment."
 
 #### Butter Payments — `butterpayments.com`
 - **What it does** `[VERIFIED]` ML-driven failed-payment recovery; processes failed payments individually (not batch); models customized per business. Products: **PaymentScore** (recoverability), **Outreach** (retries + comms), **Dispute** (chargeback reduction).
@@ -49,7 +49,7 @@ These are our closest analogues: they position on recovering failed payments and
 - **Card updater / network tokens** Not mentioned publicly `[UNVERIFIED]`.
 - **Notable strengths** Genuine ML depth; enterprise-oriented; multi-platform; dispute/chargeback product is a real adjacent capability most peers lack.
 - **Exploitable weaknesses** (1) Sales-led, opaque — no self-serve, no public pricing, no shadow-mode proof-before-pay. (2) ML baseline, not a control group. (3) No signed audit artifact. (4) "10%+ ARR" is a `[VENDOR-CLAIM]` with no reconcilable proof.
-- **How Lift beats it** Match the ML depth (recoverability model + bandit) but add the one thing an ML baseline can never provide — a *measured* counterfactual — plus self-serve shadow-mode proof and a signed statement. We also ship a dispute/chargeback module (backlog) so Butter has no orphan advantage.
+- **How AX10M beats it** Match the ML depth (recoverability model + bandit) but add the one thing an ML baseline can never provide — a *measured* counterfactual — plus self-serve shadow-mode proof and a signed statement. We also ship a dispute/chargeback module (backlog) so Butter has no orphan advantage.
 
 #### FlyCode — `flycode.com`
 - **What it does** `[VERIFIED]` Failed-payment recovery for SaaS & eCom with a **multi-processor orchestration layer** that routes failed payments across providers to the highest-approval path; ML retry-timing decisioning on hundreds of datapoints; "adaptive backup cards."
@@ -60,7 +60,7 @@ These are our closest analogues: they position on recovering failed payments and
 - **Card updater / network tokens** **Prefers network tokens** to eliminate CVV failures on recurring charges; backup/alternate payment methods `[VERIFIED]`. Strongest public network-token story in the field besides Stripe itself.
 - **Notable strengths** Multi-processor routing + network tokens = genuinely closest to our POAL/processor-agnostic thesis on the *execution* side. Strong technical content marketing.
 - **Exploitable weaknesses** (1) Still no measured counterfactual — outcome billing on gross recovered dollars silently includes what the native processor would have recovered for free. (2) No signed/reconcilable statement. (3) Attribution rigor is the gap even though execution is strong.
-- **How Lift beats it** Concede nothing on execution — we also do multi-processor routing + network tokens (backlog) — and win decisively on attribution: FlyCode bills on recovered dollars; we bill only the holdout-proven *incremental* lower bound. Their own "51%→66%" number would, under our method, be split into "what baseline did" vs. "what we added," and we'd only bill the latter.
+- **How AX10M beats it** Concede nothing on execution — we also do multi-processor routing + network tokens (backlog) — and win decisively on attribution: FlyCode bills on recovered dollars; we bill only the holdout-proven *incremental* lower bound. Their own "51%→66%" number would, under our method, be split into "what baseline did" vs. "what we added," and we'd only bill the latter.
 
 #### Vindicia (Retain) — `vindicia.com`
 - **What it does** `[VERIFIED]` Enterprise AI/ML payment recovery; "20+ years of payments intelligence," trained on 1.8B+ transactions; recovers up to 50% of failed recurring payments `[VENDOR-CLAIM]`; submit failed transactions via API or UI. Publishing/media and SaaS verticals.
@@ -71,7 +71,7 @@ These are our closest analogues: they position on recovering failed payments and
 - **Card updater / network tokens** `[INFERRED]` Works with issuer/processor updater flows via provider collaboration; not spelled out publicly.
 - **Notable strengths** Incumbent credibility, huge training corpus, enterprise compliance posture (PCI L1), billing-agnostic, long track record. This is the enterprise anchor tenant.
 - **Exploitable weaknesses** (1) Legacy enterprise motion — slow, sales-led, no self-serve, no shadow-mode. (2) Gross-recovery attribution, no control group, no signed reconcilable statement. (3) Opaque pricing. (4) Innovation cadence slower than startups.
-- **How Lift beats it** We match the compliance bar (SOC 2 / PCI SAQ-A posture — backlog) and billing-agnosticism (POAL), then out-trust them: a 1.8B-transaction model still produces a *modeled* baseline; we produce a *measured* one and a signed statement. Against a CFO, "reconstruct our randomized experiment" beats "trust our 20 years."
+- **How AX10M beats it** We match the compliance bar (SOC 2 / PCI SAQ-A posture — backlog) and billing-agnosticism (POAL), then out-trust them: a 1.8B-transaction model still produces a *modeled* baseline; we produce a *measured* one and a signed statement. Against a CFO, "reconstruct our randomized experiment" beats "trust our 20 years."
 
 #### Gravy (Gravy Solutions) — `gravysolutions.io`
 - **What it does** `[VERIFIED]` **Human-to-human** failed-payment recovery — retention specialists (not purely automated dunning) contact customers whose recurring payments failed. Atlanta-based; claims $500M+ recovered and up to 80% recovery `[VENDOR-CLAIM]`.
@@ -82,7 +82,7 @@ These are our closest analogues: they position on recovering failed payments and
 - **Card updater / network tokens** `[INFERRED]` Human-assisted card updates via customer contact; no network-token automation story. Partial at best.
 - **Notable strengths** High-touch brand-aligned experience; premium/enterprise recurring-revenue and subscription-box fit; flat-fee removes the "you're taking a cut of my money" objection.
 - **Exploitable weaknesses** (1) **The attribution dispute is public and specific** — our single best proof point that modeled baselines fail. (2) Human model doesn't scale and is expensive per recovery. (3) Reporting/transparency complaints. (4) Flat fee means the merchant carries all the attribution risk with none of the proof.
-- **How Lift beats it** We are the direct antidote to the Gravy failure mode. Where Gravy said "trust our 45% projection," we run a live control group and bill 12% of the *proven lower bound* — so if the real incremental is 1.2%, our bill reflects 1.2%, and the merchant sees exactly that, signed. Gravy is our best sales story: "here's what happens without a holdout."
+- **How AX10M beats it** We are the direct antidote to the Gravy failure mode. Where Gravy said "trust our 45% projection," we run a live control group and bill 12% of the *proven lower bound* — so if the real incremental is 1.2%, our bill reflects 1.2%, and the merchant sees exactly that, signed. Gravy is our best sales story: "here's what happens without a holdout."
 
 ### Tier B — Dunning / retention tooling (SaaS-priced, comms-forward)
 
@@ -91,13 +91,13 @@ These bill on flat SaaS subscription (not on lift), so they don't compete on the
 #### Churnkey — `churnkey.co`
 - **What it does** `[VERIFIED]` Retention infrastructure: cancel flows (retain ~54% `[VENDOR-CLAIM]`), payment recovery (up to 89% `[VENDOR-CLAIM]`), "precision retries," **omnichannel dunning (email/SMS/in-app)**, payment-wall (gate access until card updated), Adaptive Offers, Feedback AI, Account Agent.
 - **Pricing** Not public (quote-based) `[VERIFIED]`.
-- **Attribution / measurement** `[INFERRED]` Dashboard recovery metrics; SaaS pricing means no lift-billing and thus no counterfactual obligation — but also no proof of incremental value.
+- **Attribution / measurement** `[INFERRED]` Dashboard recovery metrics; SaaS pricing means no ax10m-billing and thus no counterfactual obligation — but also no proof of incremental value.
 - **Processors** Multi (Stripe + others) `[INFERRED from "integration-ready"]`.
 - **Comms / dunning** Strongest omnichannel + cancel-flow story in the field; open-source React SDK, **Data API, webhooks, and an MCP server** for AI-agent integration `[VERIFIED]` — genuinely developer-grade.
 - **Card updater / network tokens** Via processor `[INFERRED]`; payment-wall drives self-update.
 - **Notable strengths** Best-in-class developer surface (SDK/API/MCP), broad retention suite beyond payments (voluntary churn too), fast integration (~35 min `[VENDOR-CLAIM]`).
 - **Exploitable weaknesses** (1) No holdout / no proof-of-incrementality — they don't even claim it, but a CFO asking "what's the lift vs. doing nothing?" gets a dashboard, not an experiment. (2) SaaS fee is paid whether or not value is incremental. (3) Payment recovery is one module among many — less depth on retry/issuer intelligence than Butter/FlyCode.
-- **How Lift beats it** We concede the voluntary-churn/cancel-flow breadth (not our fight) and win on: proof-of-lift, honest pay-on-proven-lift pricing, and equal-or-better developer surface (our own SDK/API + Stripe App). Against their MCP/SDK we must ship comparable developer-grade tooling (backlog) so they hold no orphan advantage.
+- **How AX10M beats it** We concede the voluntary-churn/cancel-flow breadth (not our fight) and win on: proof-of-lift, honest pay-on-proven-lift pricing, and equal-or-better developer surface (our own SDK/API + Stripe App). Against their MCP/SDK we must ship comparable developer-grade tooling (backlog) so they hold no orphan advantage.
 
 #### Churn Buster — `churnbuster.io`
 - **What it does** `[VERIFIED]` Failed-payment recovery (dunning) + cancel flows + testing; addresses both involuntary and voluntary churn.
@@ -108,7 +108,7 @@ These bill on flat SaaS subscription (not on lift), so they don't compete on the
 - **Card updater / network tokens** Via processor `[INFERRED]`.
 - **Strengths** Established, trusted, Braintree/Recharge coverage (eCom subscription niche), testing tooling.
 - **Weaknesses** Flat SaaS regardless of incremental value; no proof-of-lift; no signed statement; recovery is retry+comms, not issuer-intelligence-grade.
-- **How Lift beats it** Proof-of-lift + pay-only-on-proven-lift vs. their fixed monthly; deeper AI retry policy; signed statement.
+- **How AX10M beats it** Proof-of-lift + pay-only-on-proven-lift vs. their fixed monthly; deeper AI retry policy; signed statement.
 
 #### Stunning — `stunning.co`
 - **What it does** `[VERIFIED]` Stripe-focused dunning: smart retries + lifecycle/failed-payment recovery emails. Also supports Foxy, Subbly.
@@ -119,7 +119,7 @@ These bill on flat SaaS subscription (not on lift), so they don't compete on the
 - **Card updater / network tokens** Via Stripe `[INFERRED]`.
 - **Strengths** Cheap, simple, good for <$10K MRR; long-standing.
 - **Weaknesses** Email-only-ish; Stripe-bound; no AI depth; no lift proof.
-- **How Lift beats it** Everything above the low end: multi-processor, AI policy, omnichannel, proof-of-lift. Stunning is a price anchor, not a capability threat.
+- **How AX10M beats it** Everything above the low end: multi-processor, AI policy, omnichannel, proof-of-lift. Stunning is a price anchor, not a capability threat.
 
 #### Baremetrics Recover — `baremetrics.com`
 - **What it does** `[VERIFIED]` Dunning module bundled inside the Baremetrics **analytics** platform — retries + dunning emails + recovery tracking.
@@ -129,7 +129,7 @@ These bill on flat SaaS subscription (not on lift), so they don't compete on the
 - **Comms** Email dunning `[VERIFIED]`.
 - **Strengths** Nice if you already use Baremetrics analytics; unified dashboard.
 - **Weaknesses** Bundling tax (pay for analytics you may not want); recovery is basic; no lift proof.
-- **How Lift beats it** Unbundled, recovery-first, proof-of-lift, deeper policy.
+- **How AX10M beats it** Unbundled, recovery-first, proof-of-lift, deeper policy.
 
 #### Revova — `revova.io` *(one of the four named targets)*
 - **What it does** `[VERIFIED]` AI-personalized failed-payment recovery emails; "Lost Revenue Finder" scans 30 days–12 months of history; 5-email sequences personalized by failure reason; daily smart retry up to 30 days; pre-dunning alerts for expiring cards; winback + in-app cancel flow (Pro).
@@ -140,7 +140,7 @@ These bill on flat SaaS subscription (not on lift), so they don't compete on the
 - **Card updater / network tokens** `[INFERRED]` Pre-dunning for expiring cards + customer self-update; **no network-token or VAU/ABU automation claim** — relies on the customer to re-enter.
 - **Notable strengths** Transparent low price, multi-processor read integration, decent LLM-personalized comms, self-serve. A credible SMB self-serve competitor.
 - **Exploitable weaknesses** (1) Read-only / comms-only — it doesn't *drive* retries at the processor, it nudges the customer. (2) No proof-of-lift. (3) No account-updater/network-token automation. (4) No compliance guardrail (over-emailing risk). (5) No signed statement.
-- **How Lift beats it** We do everything Revova does (multi-processor, AI comms, self-serve) and add the whole execution + attribution stack: driven retries, network tokens/updater, compliance guardrail, and a holdout-verified signed bill. Revova is a comms layer; Lift is a recovery *system* with proof.
+- **How AX10M beats it** We do everything Revova does (multi-processor, AI comms, self-serve) and add the whole execution + attribution stack: driven retries, network tokens/updater, compliance guardrail, and a holdout-verified signed bill. Revova is a comms layer; AX10M is a recovery *system* with proof.
 
 #### ChurnShield — `getchurnshield.com` *(one of the four named targets)*
 - **What it does** `[VERIFIED]` Stripe-only recovery: smart retry (timing by card network + failure reason), AI dunning emails, "Smart Save" cancel-intercept widget, risk scoring, revenue dashboard, win-back. Claims failure detection within 90 seconds and a **94% recovery rate** `[VENDOR-CLAIM — implausibly high, treat skeptically]`.
@@ -151,7 +151,7 @@ These bill on flat SaaS subscription (not on lift), so they don't compete on the
 - **Card updater / network tokens** `[INFERRED]` Not claimed; relies on retries + customer self-update via cancel/dunning flows.
 - **Notable strengths** Fast Stripe self-serve onboarding (<2 min OAuth), decent omnichannel for the price, cancel-intercept widget, ROI guarantee.
 - **Exploitable weaknesses** (1) Stripe-only. (2) Headline "94% recovery" is unaudited and conflates baseline with lift. (3) No network tokens/updater automation. (4) No compliance guardrail. (5) No signed/reconcilable proof. (6) ~2,400-customer / SMB positioning `[VENDOR-CLAIM]`.
-- **How Lift beats it** Multi-processor, network tokens/updater, compliance guardrail, and — the killer — we replace an unaudited 94% with a signed lower-bound lift the CFO can reconcile. Same fast OAuth onboarding, but shadow-first so they see the money before paying.
+- **How AX10M beats it** Multi-processor, network tokens/updater, compliance guardrail, and — the killer — we replace an unaudited 94% with a signed lower-bound lift the CFO can reconcile. Same fast OAuth onboarding, but shadow-first so they see the money before paying.
 
 #### Recover.ai *(one of the four named targets)* — **COULD NOT VERIFY**
 - **Status** `[UNVERIFIED]` We could not confirm a company operating as "Recover.ai" in failed-payment / involuntary-churn recovery via public search (Aug 2026). Searches for the exact term surfaced only adjacent, differently-named entities:
@@ -173,7 +173,7 @@ These are what our holdout *measures as the control arm*. We coexist with them a
 - **Card updater / network tokens** `[VERIFIED]` Best-in-class native — vault of PANs, token/PAN selection, VAU/ABU-backed updater. This is the bar FlyCode and we must match/exceed off-Stripe.
 - **Strengths** Free, native, on-by-default, deep network data, world-class updater/tokens.
 - **Weaknesses (as an opportunity)** Retry timing only goes so far; no omnichannel generative comms depth; no cross-merchant intelligence beyond Stripe's own; single-processor; no proof-of-*incremental* value to the merchant.
-- **How Lift relates** We **coexist** — Smart Retries stays on and becomes the control arm. We bill only lift *on top of* it. This keeps Stripe a partner (Stripe App Marketplace path) and reframes our fee as honest: we never charge for what Stripe did for free.
+- **How AX10M relates** We **coexist** — Smart Retries stays on and becomes the control arm. We bill only lift *on top of* it. This keeps Stripe a partner (Stripe App Marketplace path) and reframes our fee as honest: we never charge for what Stripe did for free.
 
 #### Paddle Retain (formerly ProfitWell Retain) — `paddle.com`
 - **What it does** `[VERIFIED]` Built-in dunning + cancel flows + term optimization inside Paddle Billing; proactive dunning for expired cards; auto-translation/localization. Claims cutting churn 25–30% `[VENDOR-CLAIM]`.
@@ -183,7 +183,7 @@ These are what our holdout *measures as the control arm*. We coexist with them a
 - **Card updater / network tokens** `[INFERRED]` Handled within Paddle's MoR rails.
 - **Strengths** Free inside Paddle; strong for Paddle/MoR merchants; good localization.
 - **Weaknesses** Paddle-bound; not a fit for Stripe/Adyen/Braintree-native merchants; no holdout proof; less relevant outside the Paddle ecosystem.
-- **How Lift relates** For Paddle merchants, Retain is the baseline. For everyone else, it's irrelevant. Our POAL lets us serve the 90% of the market not on Paddle.
+- **How AX10M relates** For Paddle merchants, Retain is the baseline. For everyone else, it's irrelevant. Our POAL lets us serve the 90% of the market not on Paddle.
 
 #### Chargebee (dunning + RevenueStory) — `chargebee.com`
 - **What it does** `[VERIFIED]` Integrated dunning inside the Chargebee billing platform: configurable retry schedules by decline code, automated email sequences, in-app payment-update portals; RevenueStory analytics.
@@ -193,7 +193,7 @@ These are what our holdout *measures as the control arm*. We coexist with them a
 - **Card updater / network tokens** `[VERIFIED via account-updater integrations]` Pulls updated cards via Visa/MC updater services.
 - **Strengths** Deep billing flexibility; most control over dunning branching logic; already in the merchant's stack.
 - **Weaknesses** Rules-based, not ML-optimized; recovery is a feature of a billing platform, not a dedicated engine; no proof-of-lift.
-- **How Lift relates** Chargebee is both a *host* (we ship a Chargebee adapter — Path C) and a baseline (its native dunning is the control). We add ML policy + holdout proof on top.
+- **How AX10M relates** Chargebee is both a *host* (we ship a Chargebee adapter — Path C) and a baseline (its native dunning is the control). We add ML policy + holdout proof on top.
 
 #### Recurly (Revenue Optimization Engine) — `recurly.com`
 - **What it does** `[VERIFIED]` Billing platform with built-in "Intelligent/Revenue Optimization" dunning: ML retry timing by decline code / subscription type / processor behavior; account updater (Visa/MC). Claims **28% more revenue than fixed retry schedules** `[VENDOR-CLAIM]`.
@@ -203,7 +203,7 @@ These are what our holdout *measures as the control arm*. We coexist with them a
 - **Card updater / network tokens** `[VERIFIED]` Native Visa/MC account updater.
 - **Strengths** Purpose-built recovery engine among billing platforms; measurably beats naive schedules; account updater native.
 - **Weaknesses** Recovery tied to using Recurly as your billing platform; "28%" is vs fixed schedules, not vs a randomized control; no signed proof.
-- **How Lift relates** Adapter host (Path C) and a strong baseline. Our lift is measured *on top of* Recurly's engine — we only bill what we add beyond it.
+- **How AX10M relates** Adapter host (Path C) and a strong baseline. Our lift is measured *on top of* Recurly's engine — we only bill what we add beyond it.
 
 ---
 
@@ -211,7 +211,7 @@ These are what our holdout *measures as the control arm*. We coexist with them a
 
 Legend: **Y** = yes (verified), **y** = partial / claimed / inferred, **N** = no / absent, **?** = unknown / not public, **native** = provided by the underlying processor. Attribution rigor scale: **Holdout** (live randomized control) > **ML-baseline** > **Gross** (recovered $ only) > **SaaS** (flat fee, no lift claim).
 
-| Capability | **Lift** | Redux | Butter | FlyCode | Vindicia | Gravy | Churnkey | ChurnBuster | Stunning | Baremetrics | Revova | ChurnShield | Stripe SR | Paddle Retain | Chargebee | Recurly |
+| Capability | **AX10M** | Redux | Butter | FlyCode | Vindicia | Gravy | Churnkey | ChurnBuster | Stunning | Baremetrics | Revova | ChurnShield | Stripe SR | Paddle Retain | Chargebee | Recurly |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | Attribution method | **Holdout** | ML-base | ML-base | Gross | Gross | Gross/est | SaaS | SaaS | SaaS | SaaS | SaaS | Gross-claim | native/gross | Gross | SaaS | Gross |
 | Live randomized holdout | **Y** | N | N | N | N | N | N | N | N | N | N | N | N | N | N | N |
@@ -234,7 +234,7 @@ Legend: **Y** = yes (verified), **y** = partial / claimed / inferred, **N** = no
 | Pricing model | **12% proven lift** | %lift(?) | rev-share | %recovered | success-fee | flat fee | SaaS(?) | SaaS $149–249 | SaaS ~$120 | SaaS $129–169 | SaaS $29–79 | SaaS $49–199 | free(Billing) | free(Paddle) | platform | platform |
 | Pricing public | **Y** | N | N | y | N | N | N | y | y | y | **Y** | **Y** | **Y** | **Y** | y | y |
 
-Reading the matrix: **the "live randomized holdout" and "signed audit ledger" rows are all-N except Lift.** That is the moat. The rows where we currently show `(planned)` are the backlog — the capabilities we must ship so competitors hold *no* orphan advantage on execution while we keep our exclusive attribution rows.
+Reading the matrix: **the "live randomized holdout" and "signed audit ledger" rows are all-N except AX10M.** That is the moat. The rows where we currently show `(planned)` are the backlog — the capabilities we must ship so competitors hold *no* orphan advantage on execution while we keep our exclusive attribution rows.
 
 ---
 

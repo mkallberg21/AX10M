@@ -15,7 +15,7 @@
  * charged flows through there, never through `computeUplift` below.
  */
 
-import type { CurrencyCode, Money } from '@lift/canonical';
+import type { CurrencyCode, Money } from '@ax10m/canonical';
 
 /** Aggregated outcomes for one arm of the experiment (within a stratum, or overall). */
 export interface ArmStats {
@@ -78,7 +78,7 @@ function proportionSe(p: number, n: number): number {
  * Compute the billable uplift from control vs treatment arm stats.
  *
  * The rate difference and its CI are scaled by the *treated* failed volume to get
- * incremental recovered dollars: the dollars Lift's engine produced beyond what
+ * incremental recovered dollars: the dollars AX10M's engine produced beyond what
  * the baseline (control) would have recovered on the same population.
  */
 export function computeUplift(

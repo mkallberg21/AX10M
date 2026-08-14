@@ -26,19 +26,19 @@ importers:
 
   apps/api:
     dependencies:
-      '@lift/attribution':
+      '@ax10m/attribution':
         specifier: workspace:*
         version: link:../../packages/attribution
-      '@lift/canonical':
+      '@ax10m/canonical':
         specifier: workspace:*
         version: link:../../packages/canonical
-      '@lift/guardrail':
+      '@ax10m/guardrail':
         specifier: workspace:*
         version: link:../../packages/guardrail
-      '@lift/onboarding':
+      '@ax10m/onboarding':
         specifier: workspace:*
         version: link:../../packages/onboarding
-      '@lift/poal':
+      '@ax10m/poal':
         specifier: workspace:*
         version: link:../../packages/poal
       '@nestjs/common':
@@ -78,13 +78,13 @@ importers:
 
   apps/dashboard:
     dependencies:
-      '@lift/attribution':
+      '@ax10m/attribution':
         specifier: workspace:*
         version: link:../../packages/attribution
-      '@lift/canonical':
+      '@ax10m/canonical':
         specifier: workspace:*
         version: link:../../packages/canonical
-      '@lift/onboarding':
+      '@ax10m/onboarding':
         specifier: workspace:*
         version: link:../../packages/onboarding
       next:
@@ -115,7 +115,7 @@ importers:
 
   packages/attribution:
     dependencies:
-      '@lift/canonical':
+      '@ax10m/canonical':
         specifier: workspace:*
         version: link:../canonical
     devDependencies:
@@ -143,7 +143,7 @@ importers:
 
   packages/guardrail:
     dependencies:
-      '@lift/canonical':
+      '@ax10m/canonical':
         specifier: workspace:*
         version: link:../canonical
     devDependencies:
@@ -159,7 +159,7 @@ importers:
 
   packages/onboarding:
     dependencies:
-      '@lift/canonical':
+      '@ax10m/canonical':
         specifier: workspace:*
         version: link:../canonical
     devDependencies:
@@ -175,7 +175,7 @@ importers:
 
   packages/poal:
     dependencies:
-      '@lift/canonical':
+      '@ax10m/canonical':
         specifier: workspace:*
         version: link:../canonical
     devDependencies:

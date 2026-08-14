@@ -7,7 +7,7 @@
  * fines structurally impossible rather than merely discouraged.
  */
 
-import type { DeclineCode, DeclineFamily } from '@lift/canonical';
+import type { DeclineCode, DeclineFamily } from '@ax10m/canonical';
 
 /** A proposed action the decision core wants to take. */
 export type ProposedActionKind = 'charge_retry' | 'comms';

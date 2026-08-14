@@ -21,7 +21,7 @@
  * output — given the ledger, the exact bill is recomputable (invariant #3).
  */
 
-import type { CurrencyCode, Money } from '@lift/canonical';
+import type { CurrencyCode, Money } from '@ax10m/canonical';
 import { srmCheck } from './uplift.js';
 
 /**

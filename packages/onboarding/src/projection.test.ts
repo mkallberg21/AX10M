@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DeclineCode, DeclineFamily } from '@lift/canonical';
+import { DeclineCode, DeclineFamily } from '@ax10m/canonical';
 import {
   captureOfRemaining,
   projectShadow,

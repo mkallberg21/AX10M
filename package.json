@@ -1,8 +1,8 @@
 {
-  "name": "lift",
+  "name": "ax10m",
   "version": "0.1.0",
   "private": true,
-  "description": "Lift — AI-native failed-payment recovery. Overlays Stripe Smart Retries and bills 12% of live-holdout-verified uplift.",
+  "description": "AX10M — AI-native failed-payment recovery. Overlays Stripe Smart Retries and bills 12% of live-holdout-verified uplift.",
   "packageManager": "pnpm@9.12.0",
   "engines": {
     "node": ">=20.0.0",

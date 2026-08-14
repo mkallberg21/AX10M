@@ -10,7 +10,7 @@
  *                      never a PAN → SAQ-A), with a deterministic idempotency key.
  *  - fetchUpdatedCard— read the payment source to detect an Account-Updater refresh.
  *  - listPaymentMethods — enumerate a customer's tokenized payment sources.
- *  - pauseNativeDunning — set auto_collection=off so Lift owns the retry loop.
+ *  - pauseNativeDunning — set auto_collection=off so AX10M owns the retry loop.
  *
  * Hard rules: we hold only Chargebee tokens / ids, never a PAN. Every charge
  * carries a deterministic idempotency key so a retry after a crash de-dupes into
@@ -28,7 +28,7 @@ import {
   type Money,
   type PaymentMethod,
   type Subscription,
-} from '@lift/canonical';
+} from '@ax10m/canonical';
 import type {
   CapabilityMatrix,
   ChargeResult,
@@ -45,7 +45,7 @@ export interface ChargebeeAdapterConfig {
   site: string;
   /** Full-access or restricted API key (Basic-auth username). Injected, never hardcoded. */
   apiKey: string;
-  /** Lift-internal merchant id this adapter instance serves (stamped on canonical events). */
+  /** AX10M-internal merchant id this adapter instance serves (stamped on canonical events). */
   merchantId: string;
   /** Basic-auth credentials Chargebee sends ON its webhooks (configured in Chargebee). */
   webhookUser?: string;
@@ -137,7 +137,7 @@ export class ChargebeeAdapter implements ProcessorAdapter {
     const content = event.content ?? {};
 
     const envelope = <T>(type: CanonicalEvent['type'], payload: T): CanonicalEvent<T> => ({
-      id: `lift_evt_${eventId}`,
+      id: `ax10m_evt_${eventId}`,
       type,
       merchantId: this.config.merchantId,
       processorEventId: eventId,
@@ -277,7 +277,7 @@ export class ChargebeeAdapter implements ProcessorAdapter {
   }
 
   async pauseNativeDunning(subscription: Subscription): Promise<void> {
-    // Set auto_collection=off so Chargebee stops auto-charging/dunning and Lift owns
+    // Set auto_collection=off so Chargebee stops auto-charging/dunning and AX10M owns
     // the retry loop. NOTE: in Phase 0 shadow mode we do NOT call this — Chargebee
     // dunning stays on and becomes the measured baseline (ARCHITECTURE.md §1.2).
     // (Endpoint per catalog version; auto_collection is accepted on the subscription.)
@@ -292,9 +292,9 @@ export class ChargebeeAdapter implements ProcessorAdapter {
     const currency = inv.currency_code ?? 'USD';
     const amount = CENTS(inv.amount_due ?? inv.amount_to_collect ?? inv.total);
     return {
-      id: `lift_inv_${inv.id}`,
-      subscriptionId: inv.subscription_id ? `lift_sub_${inv.subscription_id}` : undefined,
-      customerId: inv.customer_id ? `lift_cus_${inv.customer_id}` : '',
+      id: `ax10m_inv_${inv.id}`,
+      subscriptionId: inv.subscription_id ? `ax10m_sub_${inv.subscription_id}` : undefined,
+      customerId: inv.customer_id ? `ax10m_cus_${inv.customer_id}` : '',
       merchantId: this.config.merchantId,
       processorRef: inv.id,
       amount: { amount, currency },
@@ -307,7 +307,7 @@ export class ChargebeeAdapter implements ProcessorAdapter {
   private mapAttempt(txn: CbTransaction, invoiceId: string): ChargeAttempt {
     return this.buildAttempt({
       invoiceId,
-      paymentMethodId: txn.payment_source_id ? `lift_pm_${txn.payment_source_id}` : '',
+      paymentMethodId: txn.payment_source_id ? `ax10m_pm_${txn.payment_source_id}` : '',
       idempotencyKey: '',
       amount: { amount: CENTS(txn.amount), currency: txn.currency_code ?? 'USD' },
       status: txn.status === 'success' ? 'succeeded' : txn.status === 'failure' ? 'failed' : 'pending',
@@ -328,7 +328,7 @@ export class ChargebeeAdapter implements ProcessorAdapter {
     attemptedAt: string;
   }): ChargeAttempt {
     return {
-      id: `lift_att_${p.txnId ?? (p.idempotencyKey || 'unknown')}`,
+      id: `ax10m_att_${p.txnId ?? (p.idempotencyKey || 'unknown')}`,
       invoiceId: p.invoiceId,
       paymentMethodId: p.paymentMethodId,
       idempotencyKey: p.idempotencyKey,
@@ -343,7 +343,7 @@ export class ChargebeeAdapter implements ProcessorAdapter {
   private mapDecline(txn: CbTransaction, invoiceId: string, chargeAttemptId: string): DeclineEvent {
     const code = mapChargebeeDeclineCode(txn.error_code);
     return {
-      id: `lift_dec_${txn.id}`,
+      id: `ax10m_dec_${txn.id}`,
       invoiceId,
       chargeAttemptId,
       code,
@@ -355,8 +355,8 @@ export class ChargebeeAdapter implements ProcessorAdapter {
 
   private mapPaymentSource(ps: CbPaymentSource): PaymentMethod {
     return {
-      id: `lift_pm_${ps.id}`,
-      customerId: ps.customer_id ? `lift_cus_${ps.customer_id}` : '',
+      id: `ax10m_pm_${ps.id}`,
+      customerId: ps.customer_id ? `ax10m_cus_${ps.customer_id}` : '',
       processorRef: ps.id,
       token: ps.id, // Chargebee payment_source id is the reusable token; no PAN
       brand: ps.card?.brand,

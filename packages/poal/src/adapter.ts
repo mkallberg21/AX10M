@@ -4,7 +4,7 @@
  * The single most important architectural decision for "works with any billing
  * system" (ARCHITECTURE.md §4.1). Every processor is wrapped in an adapter that
  * implements the narrow `ProcessorAdapter` interface below; everything upstream
- * of the decision core speaks the canonical schema (@lift/canonical), so the core
+ * of the decision core speaks the canonical schema (@ax10m/canonical), so the core
  * never knows which processor it is driving.
  *
  * Capability-gated: not every processor supports external retry control, Account
@@ -19,10 +19,10 @@ import type {
   Invoice,
   PaymentMethod,
   Subscription,
-} from '@lift/canonical';
+} from '@ax10m/canonical';
 
 /**
- * How much of the recovery loop this processor lets Lift own (PROCESSORS.md §1):
+ * How much of the recovery loop this processor lets AX10M own (PROCESSORS.md §1):
  *  - 'drive'    — we re-attempt the charge on our own schedule against a token/mandate.
  *  - 'co-drive' — we drive some recovery but must coordinate with / disable the
  *                 processor's own retry engine to avoid double-charging.
@@ -125,7 +125,7 @@ export interface ProcessorAdapter {
   /** Enumerate a customer's stored (tokenized) payment methods. */
   listPaymentMethods(customer: Customer): Promise<PaymentMethod[]>;
 
-  /** Pause the processor's native dunning so Lift can take control. */
+  /** Pause the processor's native dunning so AX10M can take control. */
   pauseNativeDunning(subscription: Subscription): Promise<void>;
 
   /** Advertise what this processor supports. */

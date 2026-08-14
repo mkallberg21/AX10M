@@ -1,11 +1,11 @@
-# Lift — AI-Native Failed-Payment Recovery
+# AX10M — AI-Native Failed-Payment Recovery
 
 > Overlays Stripe Smart Retries (and any processor) and bills **12% of
 > live-holdout-verified uplift** — the lower bound of a real randomized experiment,
 > recorded in a signed, reconcilable ledger. The only recovery engine that proves
 > its lift with a live control group instead of a trust-me baseline.
 
-The end-to-end proof engine: a merchant connects (OAuth, zero code), Lift measures
+The end-to-end proof engine: a merchant connects (OAuth, zero code), AX10M measures
 their true baseline in **shadow mode** for 14 days and shows the *projected* uplift
 and would-be fee **before** activation, then — once live — runs a stratified
 randomized holdout, bills only the statistically-proven lower bound, and hands the
@@ -37,24 +37,24 @@ lift/
 
 ### The packages
 
-- **`@lift/canonical`** — the vocabulary everything speaks: `Merchant`, `Customer`,
+- **`@ax10m/canonical`** — the vocabulary everything speaks: `Merchant`, `Customer`,
   `PaymentMethod`, `Subscription`, `Invoice`, `ChargeAttempt`, `DeclineEvent`,
   `RecoveryCase`, `CanonicalEvent`, plus the soft/hard/gray decline taxonomy and
   `isRetriable(code)`.
-- **`@lift/poal`** — the `ProcessorAdapter` interface + `CapabilityMatrix`
-  (`integrationMode: drive | co-drive | advisory`) that make Lift processor-agnostic,
+- **`@ax10m/poal`** — the `ProcessorAdapter` interface + `CapabilityMatrix`
+  (`integrationMode: drive | co-drive | advisory`) that make AX10M processor-agnostic,
   deterministic idempotency keys (exactly-once), a **registry** of 24 processors,
   and the adapters (see coverage table).
-- **`@lift/attribution`** — the crown jewel. Deterministic customer-clustered,
+- **`@ax10m/attribution`** — the crown jewel. Deterministic customer-clustered,
   stratified holdout assignment; the **billing-safe estimator** (CUPED variance
   reduction + cluster-robust variance + an always-valid **mSPRT confidence
   sequence**, billed on the lower bound); an append-only **hash-chained ledger**
   (tamper-evident); the monthly **Uplift Statement**; and the **CFO reconciliation
   export** (`reconcileAgainstPayout` + Ed25519-signed statement).
-- **`@lift/guardrail`** — a hard-constraint layer: `evaluate(action)` → allow /
+- **`@ax10m/guardrail`** — a hard-constraint layer: `evaluate(action)` → allow /
   suppress + reason. Network caps, hard-decline suppression, quiet hours, and
   consent always override the learned policy.
-- **`@lift/onboarding`** — the shadow-first lifecycle (`connect → shadow → active`)
+- **`@ax10m/onboarding`** — the shadow-first lifecycle (`connect → shadow → active`)
   and the projection engine that estimates uplift from baseline-only observation
   (conservative per-decline-code priors, only over invoices the baseline missed,
   clearly labeled `holdoutVerified: false`).
@@ -103,16 +103,16 @@ corepack pnpm install                         # install the whole workspace
 
 corepack pnpm build                           # build every package/app in dep order
 corepack pnpm -r run typecheck                # type-check everything
-corepack pnpm --filter @lift/api run build    # NestJS build
-corepack pnpm --filter @lift/dashboard run build   # Next.js build (statically prerenders)
+corepack pnpm --filter @ax10m/api run build    # NestJS build
+corepack pnpm --filter @ax10m/dashboard run build   # Next.js build (statically prerenders)
 
-# Tests (build @lift/canonical once first so the bare @lift/canonical import resolves):
-corepack pnpm --filter @lift/canonical run build
-corepack pnpm --filter @lift/attribution --filter @lift/poal --filter @lift/guardrail --filter @lift/onboarding test
+# Tests (build @ax10m/canonical once first so the bare @ax10m/canonical import resolves):
+corepack pnpm --filter @ax10m/canonical run build
+corepack pnpm --filter @ax10m/attribution --filter @ax10m/poal --filter @ax10m/guardrail --filter @ax10m/onboarding test
 
 # Dev servers:
-corepack pnpm --filter @lift/api dev          # NestJS on :4000
-corepack pnpm --filter @lift/dashboard dev    # Next.js on :3000
+corepack pnpm --filter @ax10m/api dev          # NestJS on :4000
+corepack pnpm --filter @ax10m/dashboard dev    # Next.js on :3000
 ```
 
 Roughly **113 unit tests** across the packages (attribution 41 · poal 46 ·
@@ -147,7 +147,7 @@ must be **restricted, least-privilege** keys (ARCHITECTURE.md §7).
 - **Shadow-first onboarding**: lifecycle + projection, wired to the webhook stream.
 - Dashboard renders the real attribution + onboarding + reconciliation engines.
 
-**Stubbed with `TODO(lift)` markers:**
+**Stubbed with `TODO(ax10m)` markers:**
 - Stripe adapter API calls / normalization (the other adapters are real).
 - Per-merchant adapter resolution + persistence (in-memory today → Postgres).
 - Reconciler scheduling; Temporal saga for durable, exactly-once **active charging**

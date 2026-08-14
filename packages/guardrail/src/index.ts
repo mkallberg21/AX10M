@@ -1,5 +1,5 @@
 /**
- * @lift/guardrail — the compliance guardrail engine.
+ * @ax10m/guardrail — the compliance guardrail engine.
  *
  * A hard-constraint layer that takes a proposed action and returns allow /
  * suppress + reason. Constraints always override the learned policy, making

@@ -2,13 +2,13 @@
  * Mocked shadow-mode attribution + CFO-reconciliation summary — BILLING-SAFE path.
  *
  * Phase 0 shadow mode shows the merchant, before they activate: (a) projected
- * uplift + the 12% fee, computed by the REAL @lift/attribution billing engine
+ * uplift + the 12% fee, computed by the REAL @ax10m/attribution billing engine
  * (CUPED + cluster-robust + mSPRT), and (b) the CFO reconciliation — a signed
  * statement whose recovered dollars tie, penny-for-penny, to the processor's own
  * payout export (ATTRIBUTION.md §8.4). Both are derived from the SAME settlement
  * rows, so the invoice and its evidence can never disagree.
  *
- * TODO(lift): replace fabricated SettledOutcomes with a live query against the
+ * TODO(ax10m): replace fabricated SettledOutcomes with a live query against the
  * API's window-closed outcome_log, and the mock payout with the processor's
  * actual payout report.
  */
@@ -27,8 +27,8 @@ import {
   type ReconciliationExport,
   type ReconResult,
   type SettledOutcome,
-} from '@lift/attribution';
-import { DeclineCode } from '@lift/canonical';
+} from '@ax10m/attribution';
+import { DeclineCode } from '@ax10m/canonical';
 import {
   beginOnboarding,
   projectShadow,
@@ -39,7 +39,7 @@ import {
   type ShadowObservation,
   type ShadowProgress,
   type ShadowProjection,
-} from '@lift/onboarding';
+} from '@ax10m/onboarding';
 
 interface CohortSpec {
   stratum: string;
@@ -60,7 +60,7 @@ const COHORTS: CohortSpec[] = [
 
 const EPOCH: EpochDisclosure = {
   epochId: 'ep_2026_08',
-  saltRevealed: 'lift-holdout-v1',
+  saltRevealed: 'ax10m-holdout-v1',
   controlFraction: 0.1,
   windowDays: 21,
   alpha: 0.05,

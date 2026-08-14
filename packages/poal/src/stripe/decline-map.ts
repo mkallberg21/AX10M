@@ -3,13 +3,13 @@
  *
  * Stripe surfaces failures via `charge.outcome` / `payment_intent` last error
  * with a `decline_code` (issuer reason) and/or `code`. We map the common issuer
- * decline codes onto Lift's canonical taxonomy. Unmapped codes fall back to
+ * decline codes onto AX10M's canonical taxonomy. Unmapped codes fall back to
  * `Unknown` (family: gray) so the recoverability model — not a guess — decides.
  *
  * Reference: https://stripe.com/docs/declines/codes
  */
 
-import { DeclineCode } from '@lift/canonical';
+import { DeclineCode } from '@ax10m/canonical';
 
 const STRIPE_DECLINE_MAP: Readonly<Record<string, DeclineCode>> = {
   insufficient_funds: DeclineCode.InsufficientFunds,

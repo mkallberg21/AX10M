@@ -12,7 +12,7 @@
  *
  * NOTE: this in-memory implementation is the reference logic. Production persists
  * entries to append-only Postgres and signs the chain head with a KMS/HSM key
- * (TODO(lift): wire persistence + signature). The hashing/verification logic is
+ * (TODO(ax10m): wire persistence + signature). The hashing/verification logic is
  * identical and lives here so it is unit-testable in isolation.
  */
 

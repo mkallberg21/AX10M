@@ -11,7 +11,7 @@
  */
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { DeclineCode } from '@lift/canonical';
+import { DeclineCode } from '@ax10m/canonical';
 
 const GOCARDLESS_CAUSE_MAP: Readonly<Record<string, DeclineCode>> = {
   insufficient_funds: DeclineCode.InsufficientFunds,

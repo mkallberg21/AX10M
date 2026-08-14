@@ -1,7 +1,7 @@
 /**
  * CFO reconciliation export (ATTRIBUTION.md §8.3–§8.5).
  *
- * The trust moat made executable. A CFO must be able to tie Lift's invoice to the
+ * The trust moat made executable. A CFO must be able to tie AX10M's invoice to the
  * processor's OWN records without trusting our dashboard. This module produces:
  *
  *   1. A recovered-transactions export (each row carries the processor txn id +
@@ -19,11 +19,11 @@
  *
  * Determinism: given the same outcomes + config + epoch, the fee and hash are
  * reproducible (pass `generatedAt` to pin the timestamp). Signing is the only
- * step that needs a key; production sources it from KMS/HSM (TODO(lift)).
+ * step that needs a key; production sources it from KMS/HSM (TODO(ax10m)).
  */
 
 import { createHash, createPublicKey, generateKeyPairSync, sign as edSign, verify as edVerify } from 'node:crypto';
-import type { CurrencyCode, Money } from '@lift/canonical';
+import type { CurrencyCode, Money } from '@ax10m/canonical';
 import {
   computeBillableUplift,
   DEFAULT_SEQUENTIAL_CONFIG,
@@ -91,11 +91,11 @@ export interface Ed25519KeyMaterial {
 /**
  * Create an in-memory Ed25519 signer (reference/dev). Generates a keypair unless a
  * private key PEM is supplied. The public key is published so anyone can verify a
- * statement without trusting Lift. Production replaces this with a KMS/HSM signer
+ * statement without trusting AX10M. Production replaces this with a KMS/HSM signer
  * exposing the same `Signer` interface.
  */
 export function createEd25519Signer(
-  keyId = 'lift-ed25519-dev',
+  keyId = 'ax10m-ed25519-dev',
   privateKeyPem?: string,
 ): Ed25519KeyMaterial {
   let priv: string;
@@ -394,7 +394,7 @@ export interface ReconResult {
 }
 
 /**
- * Reconcile Lift's recovered transactions against the processor's OWN payout export,
+ * Reconcile AX10M's recovered transactions against the processor's OWN payout export,
  * penny for penny. This is the CFO's check, as code: because we never touch the
  * money flow, the processor's ledger is the independent source of truth (§8.4).
  *

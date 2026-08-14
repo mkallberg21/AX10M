@@ -1,6 +1,6 @@
-# Lift — AI-Native Failed-Payment Recovery
+# AX10M — AI-Native Failed-Payment Recovery
 
-> Working codename: **Lift** (recovers involuntary churn, bills only on verified *uplift*).
+> Working codename: **AX10M** (recovers involuntary churn, bills only on verified *uplift*).
 > Alt names to consider: Reclaim, Recoup, Cadence, Salvage, Grace, Reflow.
 > Document owner: founding eng. Status: architecture v0.1. Date: 2026-08-14.
 
@@ -28,9 +28,9 @@ Everyone in this category ("pay on uplift") measures recovery against a *baselin
 | **ChurnShield** | Tiered SaaS ($49–$199/mo) | "94% recovery" — unaudited gross | Stripe only | No | Email/SMS/Slack + cancel widget | Smart retry | Medium |
 | **Gravy Solutions** | Flat fee | **Documented attribution dispute** (~45% projected vs ~1.2% real) | Multi | Partial | Human-to-human | Some | Sales-led |
 | **Recover.ai** | *Unverified — no company found at that name (Aug 2026)* | — | — | — | — | — | — |
-| **Lift (us)** | **12% of holdout-verified lower-bound uplift** | **Live randomized holdout + signed ledger** | **Adapter SDK, processor-agnostic (25+ mapped)** | **Yes + cross-merchant BIN intel** | **Email/SMS/WhatsApp/push/in-app, generative** | **Contextual-bandit / offline-RL + compliance guardrail** | **OAuth, 5-min, shadow-first** |
+| **AX10M (us)** | **12% of holdout-verified lower-bound uplift** | **Live randomized holdout + signed ledger** | **Adapter SDK, processor-agnostic (25+ mapped)** | **Yes + cross-merchant BIN intel** | **Email/SMS/WhatsApp/push/in-app, generative** | **Contextual-bandit / offline-RL + compliance guardrail** | **OAuth, 5-min, shadow-first** |
 
-> Full teardown of every named competitor (with `[VERIFIED]`/`[UNVERIFIED]` tags and sources) is in [`COMPETITIVE.md`](./COMPETITIVE.md); the universal processor capability matrix and per-processor integration modes are in [`PROCESSORS.md`](./PROCESSORS.md). The structural fact that holds across the entire field: **not one competitor runs a live randomized holdout or ships a signed, reconcilable lift statement.** Those two rows are all-empty except Lift.
+> Full teardown of every named competitor (with `[VERIFIED]`/`[UNVERIFIED]` tags and sources) is in [`COMPETITIVE.md`](./COMPETITIVE.md); the universal processor capability matrix and per-processor integration modes are in [`PROCESSORS.md`](./PROCESSORS.md). The structural fact that holds across the entire field: **not one competitor runs a live randomized holdout or ships a signed, reconcilable lift statement.** Those two rows are all-empty except AX10M.
 
 **Three ways we blow the field away:**
 1. **Honest, auditable billing.** We bill the *lower confidence bound* of a live-holdout-measured uplift. We deliberately under-claim. A skeptical CFO becomes our best salesperson.
@@ -64,7 +64,7 @@ Visa, Mastercard, and Amex cap authorization retries and forbid retrying certain
 If we get one thing world-class, it's this. It's the reason we can charge honestly and win trust.
 
 ### 3.1 Randomized holdout
-- At the unit of a **failed invoice** (assignment keyed on a stable hash of customer+invoice so re-processing is deterministic), route a configurable **control fraction** (default 5–10%) to **baseline-only** recovery (the merchant's existing Stripe Smart Retries / native dunning). The rest — **treatment** — gets Lift's engine.
+- At the unit of a **failed invoice** (assignment keyed on a stable hash of customer+invoice so re-processing is deterministic), route a configurable **control fraction** (default 5–10%) to **baseline-only** recovery (the merchant's existing Stripe Smart Retries / native dunning). The rest — **treatment** — gets AX10M's engine.
 - Assignment is **stratified** by MRR tier, decline code family, and issuer region so control and treatment are comparable.
 - **Incremental uplift = (treatment recovery rate − control recovery rate) × treated failed volume**, in recovered $ and in retained-subscription $.
 
@@ -271,7 +271,7 @@ SHAP per decision; every recovery action carries a human-readable rationale ("re
 
 ## 14. Open decisions (need founder input)
 
-1. **Name** — Lift, or one of the alternates?
+1. **Name** — AX10M, or one of the alternates?
 2. **First beachhead** — SaaS subscriptions, or higher-volume consumer subscriptions (streaming/box)? Changes model priors and comms mix.
 3. **Build language for core** — all-TypeScript for speed, or Go for the hot path? (Recommend TS-first, extract Go later if throughput demands.)
 4. **Holdout default %** — 5% (faster to "no meaningful control cost" story) vs 10% (tighter, faster significance)? Recommend 10% during onboarding, taper to 5% once the model is proven per merchant.

@@ -1,4 +1,4 @@
-# Lift — Uplift Attribution Engine
+# AX10M — Uplift Attribution Engine
 
 > Specification for the component that decides *what we are allowed to bill*.
 > Companion to `ARCHITECTURE.md` §3 (the Uplift Attribution Engine). This document **deepens** that section; it does not contradict it. Where the architecture states a principle, this spec states the math, the schema, and the procedure.
@@ -10,7 +10,7 @@
 
 Everything here serves one sentence:
 
-> **Lift bills 12% of the lower confidence bound of the incremental recovery uplift measured by a live, stratified, randomized holdout, computed with an always-valid confidence sequence, and recorded in a signed, hash-chained ledger a CFO can reconcile line-by-line against the processor's own payout report.**
+> **AX10M bills 12% of the lower confidence bound of the incremental recovery uplift measured by a live, stratified, randomized holdout, computed with an always-valid confidence sequence, and recorded in a signed, hash-chained ledger a CFO can reconcile line-by-line against the processor's own payout report.**
 
 Five non-negotiable invariants follow from that sentence. They are the acceptance criteria for this engine:
 
@@ -32,8 +32,8 @@ Let a **failed invoice** be an invoice that received at least one hard/soft decl
 
 We run two arms:
 
-- **Control (baseline-only, `c`)** — the merchant's *pre-existing* recovery stack runs untouched: Stripe Smart Retries + the merchant's native dunning. Lift observes but does **not** act. This arm *is* the counterfactual.
-- **Treatment (`t`)** — Lift's engine drives recovery (retry policy, comms, card-update, guardrail), *on top of / in place of* the native stack as configured.
+- **Control (baseline-only, `c`)** — the merchant's *pre-existing* recovery stack runs untouched: Stripe Smart Retries + the merchant's native dunning. AX10M observes but does **not** act. This arm *is* the counterfactual.
+- **Treatment (`t`)** — AX10M's engine drives recovery (retry policy, comms, card-update, guardrail), *on top of / in place of* the native stack as configured.
 
 The thing we bill on is the **incremental** difference between arms, in dollars, and only the portion the control group proves is real.
 
@@ -113,7 +113,7 @@ This reconciles with `ARCHITECTURE.md` §3.1 ("keyed on a stable hash of custome
 | | Invoice-level randomization | Customer-level (cluster) — **chosen** |
 |---|---|---|
 | Statistical power | Higher (more independent units, smaller variance) | Lower nominal N; must use cluster-robust variance (§4.5). CUPED partly recovers the loss. |
-| Contamination | **Broken.** A customer with two failed invoices could be split across arms; Lift comms sent for the treatment invoice ("update your card") fix the payment method that then recovers the *control* invoice for free → control looks artificially good, uplift is *understated* (and unstable). | **Clean.** A customer is entirely in one arm; no within-customer spillover. |
+| Contamination | **Broken.** A customer with two failed invoices could be split across arms; AX10M comms sent for the treatment invoice ("update your card") fix the payment method that then recovers the *control* invoice for free → control looks artificially good, uplift is *understated* (and unstable). | **Clean.** A customer is entirely in one arm; no within-customer spillover. |
 | Retained-subscription measurement (§1.2B) | Impossible to attribute cleanly — the subscription belongs to a customer, not an invoice. | Natural — retention is a customer-level outcome. |
 | Repeat failures | Ambiguous | Well-defined: same arm every time. |
 
@@ -181,7 +181,7 @@ The estimator is unbiased only under **SUTVA** (a unit's outcome depends only on
 
 ### 3.1 Within-customer spillover (the main threat) — blocked by design
 
-Mechanism: a customer with multiple failed invoices; Lift sends a card-update link for one, the customer updates their card, and a *different* invoice recovers "for free." If that other invoice were in control, the control recovery rate is inflated → uplift understated and noisy.
+Mechanism: a customer with multiple failed invoices; AX10M sends a card-update link for one, the customer updates their card, and a *different* invoice recovers "for free." If that other invoice were in control, the control recovery rate is inflated → uplift understated and noisy.
 **Mitigation:** customer-level clustering (§2.1). The whole customer is one arm; there is no control invoice to leak into. **This is the single strongest reason for the design choice.**
 
 ### 3.2 Comms spillover across customers — bounded and monitored
@@ -191,8 +191,8 @@ Mechanism: shared inbox / family plan / same billing contact for two customers i
 
 ### 3.3 Model / intelligence leakage — structurally absent from control
 
-Concern: Lift’s cross-merchant issuer model learns from treatment outcomes; does that "help" control?
-**Answer:** No. **Control is baseline-only — Lift executes nothing for control invoices.** No retry timing, no comms, no card-update from us. Control recovery is produced entirely by the merchant’s native stack (Stripe Smart Retries), which is independent of our model. So model improvement cannot raise the control rate. It *does* raise the treatment rate over time — that is exactly the lift we are entitled to bill, and the sequential estimator (§5) tracks a possibly-growing effect honestly.
+Concern: AX10M’s cross-merchant issuer model learns from treatment outcomes; does that "help" control?
+**Answer:** No. **Control is baseline-only — AX10M executes nothing for control invoices.** No retry timing, no comms, no card-update from us. Control recovery is produced entirely by the merchant’s native stack (Stripe Smart Retries), which is independent of our model. So model improvement cannot raise the control rate. It *does* raise the treatment rate over time — that is exactly the lift we are entitled to bill, and the sequential estimator (§5) tracks a possibly-growing effect honestly.
 
 ### 3.4 Temporal interference — handled by strata & epochs
 
@@ -200,7 +200,7 @@ Issuer behavior, paydays, and seasonality shift over time and would bias a naive
 
 ### 3.5 Capacity / congestion interference — monitored
 
-If Lift’s comms volume were so high it degraded deliverability for everyone (including control’s native email), that’s cross-arm interference. Monitored via per-arm comms deliverability metrics; guardrail rate-limits prevent it.
+If AX10M’s comms volume were so high it degraded deliverability for everyone (including control’s native email), that’s cross-arm interference. Monitored via per-arm comms deliverability metrics; guardrail rate-limits prevent it.
 
 ---
 
@@ -542,7 +542,7 @@ The trust moat is that a CFO can tie our number to the processor’s **own** rec
 4. **Fee arithmetic is on the statement.** `fee = 0.12 × billable_increment`, every input shown, recomputable by hand.
 5. **Clawbacks tie out** to the processor’s refund/dispute records via `processor_txn_id`.
 
-The CFO’s conclusion: the counterfactual is a real simultaneous control they can reconstruct, the recovered dollars are the processor’s own settled transactions, and the fee is 12% of a lower bound they can recompute. Nothing requires trusting Lift’s dashboard.
+The CFO’s conclusion: the counterfactual is a real simultaneous control they can reconstruct, the recovered dollars are the processor’s own settled transactions, and the fee is 12% of a lower bound they can recompute. Nothing requires trusting AX10M’s dashboard.
 
 ### 8.5 Signing
 

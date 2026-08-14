@@ -25,7 +25,7 @@ export interface OnboardingState {
   activatedAt?: string;
   /** Length of the shadow measurement window in days. */
   shadowWindowDays: number;
-  /** Whether Lift has registered webhooks with the processor (zero-code setup). */
+  /** Whether AX10M has registered webhooks with the processor (zero-code setup). */
   webhooksRegistered: boolean;
 }
 

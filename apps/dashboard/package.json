@@ -1,5 +1,5 @@
 {
-  "name": "@lift/dashboard",
+  "name": "@ax10m/dashboard",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -11,9 +11,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@lift/attribution": "workspace:*",
-    "@lift/canonical": "workspace:*",
-    "@lift/onboarding": "workspace:*",
+    "@ax10m/attribution": "workspace:*",
+    "@ax10m/canonical": "workspace:*",
+    "@ax10m/onboarding": "workspace:*",
     "next": "^14.2.5",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"

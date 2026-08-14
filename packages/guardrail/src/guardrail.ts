@@ -7,7 +7,7 @@
  * reported first; any single failing constraint suppresses the action.
  */
 
-import { DeclineFamily, isRetriable } from '@lift/canonical';
+import { DeclineFamily, isRetriable } from '@ax10m/canonical';
 import {
   DEFAULT_GUARDRAIL_POLICY,
   SuppressionReason,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DeclineCode, DeclineFamily, type Customer, type Invoice, type PaymentMethod } from '@lift/canonical';
+import { DeclineCode, DeclineFamily, type Customer, type Invoice, type PaymentMethod } from '@ax10m/canonical';
 import { BraintreeAdapter } from './adapter.js';
 import { mapBraintreeDeclineCode, signBraintreePayload } from './response-map.js';
 import type { FetchLike, FetchResponseLike } from './client.js';
@@ -36,10 +36,10 @@ const baseCfg = {
 };
 
 const invoice: Invoice = {
-  id: 'lift_inv_inv_1', customerId: 'lift_cus_c1', merchantId: 'mrc_1', processorRef: 'inv_1',
+  id: 'ax10m_inv_inv_1', customerId: 'ax10m_cus_c1', merchantId: 'mrc_1', processorRef: 'inv_1',
   amount: { amount: 14900, currency: 'USD' }, status: 'open', createdAt: '2026-08-01T00:00:00.000Z',
 };
-const method: PaymentMethod = { id: 'lift_pm_TOKEN', customerId: 'lift_cus_c1', processorRef: 'TOKEN', token: 'TOKEN' };
+const method: PaymentMethod = { id: 'ax10m_pm_TOKEN', customerId: 'ax10m_cus_c1', processorRef: 'TOKEN', token: 'TOKEN' };
 
 function notificationBody(kind: string, opts: { status: string; code?: string } = { status: 'processor_declined' }): string {
   const xml =
@@ -108,7 +108,7 @@ describe('attemptCharge', () => {
       return res(201, '<transaction><id>txn_ok</id><status>submitted_for_settlement</status></transaction>');
     });
     const adapter = new BraintreeAdapter({ ...baseCfg, fetch });
-    const r = await adapter.attemptCharge(invoice, method, 'lift_charge_abc');
+    const r = await adapter.attemptCharge(invoice, method, 'ax10m_charge_abc');
     expect(r.outcome).toBe('succeeded');
     expect(r.attempt.status).toBe('succeeded');
     expect(calls[0]!.init.body).toContain('<payment-method-token>TOKEN</payment-method-token>');
@@ -121,7 +121,7 @@ describe('attemptCharge', () => {
       res(422, '<api-error-response><message>Declined</message><transaction><id>txn_d</id><status>processor_declined</status><processor-response-code>2001</processor-response-code></transaction></api-error-response>'),
     );
     const adapter = new BraintreeAdapter({ ...baseCfg, fetch });
-    const r = await adapter.attemptCharge(invoice, method, 'lift_charge_abc');
+    const r = await adapter.attemptCharge(invoice, method, 'ax10m_charge_abc');
     expect(r.outcome).toBe('failed');
     expect(r.attempt.declineCode).toBe(DeclineCode.InsufficientFunds);
   });
@@ -129,7 +129,7 @@ describe('attemptCharge', () => {
   it('rethrows an auth/validation error (no transaction in the body)', async () => {
     const { fetch } = makeFetch(() => res(401, '<api-error-response><message>Authentication Error</message></api-error-response>'));
     const adapter = new BraintreeAdapter({ ...baseCfg, fetch });
-    await expect(adapter.attemptCharge(invoice, method, 'lift_charge_abc')).rejects.toThrow(/Authentication Error/);
+    await expect(adapter.attemptCharge(invoice, method, 'ax10m_charge_abc')).rejects.toThrow(/Authentication Error/);
   });
 });
 
@@ -145,7 +145,7 @@ describe('vaulted payment methods', () => {
     });
     const adapter = new BraintreeAdapter({ ...baseCfg, fetch });
     const customer: Customer = {
-      id: 'lift_cus_c1', merchantId: 'mrc_1', processorRef: 'c1', issuerRegion: 'unknown',
+      id: 'ax10m_cus_c1', merchantId: 'mrc_1', processorRef: 'c1', issuerRegion: 'unknown',
       createdAt: '2026-01-01T00:00:00.000Z', consent: { email: true, sms: false, whatsapp: false, push: false, globallyOptedOut: false },
     };
     const methods = await adapter.listPaymentMethods(customer);

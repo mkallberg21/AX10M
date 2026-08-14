@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DeclineCode, DeclineFamily, type Customer, type Invoice, type PaymentMethod } from '@lift/canonical';
+import { DeclineCode, DeclineFamily, type Customer, type Invoice, type PaymentMethod } from '@ax10m/canonical';
 import { GoCardlessAdapter } from './adapter.js';
 import { computeGoCardlessSignature, mapGoCardlessCause } from './cause-map.js';
 import type { FetchLike, FetchResponseLike } from './client.js';
@@ -30,10 +30,10 @@ function makeFetch(handler: (url: string, init: { method?: string; headers?: Rec
 const baseCfg = { accessToken: 'tok', webhookSecret: SECRET, merchantId: 'mrc_1', baseUrl: 'https://gc.test' };
 
 const invoice: Invoice = {
-  id: 'lift_inv_PM1', customerId: 'lift_cus_CU1', merchantId: 'mrc_1', processorRef: 'PM1',
+  id: 'ax10m_inv_PM1', customerId: 'ax10m_cus_CU1', merchantId: 'mrc_1', processorRef: 'PM1',
   amount: { amount: 14900, currency: 'USD' }, status: 'open', createdAt: '2026-08-01T00:00:00.000Z',
 };
-const method: PaymentMethod = { id: 'lift_pm_MD1', customerId: 'lift_cus_CU1', processorRef: 'MD1', token: 'MD1', brand: 'ach' };
+const method: PaymentMethod = { id: 'ax10m_pm_MD1', customerId: 'ax10m_cus_CU1', processorRef: 'MD1', token: 'MD1', brand: 'ach' };
 
 function webhookBody(action: string, cause = 'insufficient_funds'): string {
   return JSON.stringify({
@@ -97,16 +97,16 @@ describe('attemptCharge (retry)', () => {
       return res(200, { payments: { id: 'PM1', status: 'submitted' } });
     });
     const adapter = new GoCardlessAdapter({ ...baseCfg, fetch });
-    const r = await adapter.attemptCharge(invoice, method, 'lift_charge_abc');
+    const r = await adapter.attemptCharge(invoice, method, 'ax10m_charge_abc');
     expect(r.outcome).toBe('pending');
     expect(r.idempotentReplay).toBe(false);
-    expect(calls[0]!.init.headers?.['Idempotency-Key']).toBe('lift_charge_abc');
+    expect(calls[0]!.init.headers?.['Idempotency-Key']).toBe('ax10m_charge_abc');
   });
 
   it('treats an idempotent-conflict (409) as a replay', async () => {
     const { fetch } = makeFetch(() => res(409, { error: { type: 'invalid_state', code: 409, errors: [{ reason: 'idempotent_creation_conflict' }] } }));
     const adapter = new GoCardlessAdapter({ ...baseCfg, fetch });
-    const r = await adapter.attemptCharge(invoice, method, 'lift_charge_abc');
+    const r = await adapter.attemptCharge(invoice, method, 'ax10m_charge_abc');
     expect(r.idempotentReplay).toBe(true);
     expect(r.outcome).toBe('pending');
   });
@@ -114,7 +114,7 @@ describe('attemptCharge (retry)', () => {
   it('rethrows a non-idempotent error (e.g. inactive mandate)', async () => {
     const { fetch } = makeFetch(() => res(422, { error: { message: 'mandate is not active', code: 422 } }));
     const adapter = new GoCardlessAdapter({ ...baseCfg, fetch });
-    await expect(adapter.attemptCharge(invoice, method, 'lift_charge_abc')).rejects.toThrow(/mandate is not active/);
+    await expect(adapter.attemptCharge(invoice, method, 'ax10m_charge_abc')).rejects.toThrow(/mandate is not active/);
   });
 });
 
@@ -139,7 +139,7 @@ describe('reconciliation & mandates', () => {
     });
     const adapter = new GoCardlessAdapter({ ...baseCfg, fetch });
     const customer: Customer = {
-      id: 'lift_cus_CU1', merchantId: 'mrc_1', processorRef: 'CU1', issuerRegion: 'unknown',
+      id: 'ax10m_cus_CU1', merchantId: 'mrc_1', processorRef: 'CU1', issuerRegion: 'unknown',
       createdAt: '2026-01-01T00:00:00.000Z', consent: { email: true, sms: false, whatsapp: false, push: false, globallyOptedOut: false },
     };
     const methods = await adapter.listPaymentMethods(customer);

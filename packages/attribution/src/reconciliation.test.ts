@@ -57,7 +57,7 @@ function makeArm(params: {
 
 const epoch: EpochDisclosure = {
   epochId: 'ep_2026_11',
-  saltRevealed: 'lift-holdout-v1',
+  saltRevealed: 'ax10m-holdout-v1',
   controlFraction: 0.1,
   windowDays: 21,
   alpha: 0.05,

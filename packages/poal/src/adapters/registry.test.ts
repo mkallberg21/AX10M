@@ -86,6 +86,6 @@ describe('BaseAdapter default (unimplemented drive/co-drive skeleton)', () => {
 
   it('surfaces an unimplemented (not advisory) error on attemptCharge', async () => {
     const skeleton = new SkeletonAdapter();
-    await expect(skeleton.attemptCharge({} as never, {} as never, 'idem_2')).rejects.toThrow(/TODO\(lift\)/);
+    await expect(skeleton.attemptCharge({} as never, {} as never, 'idem_2')).rejects.toThrow(/TODO\(ax10m\)/);
   });
 });

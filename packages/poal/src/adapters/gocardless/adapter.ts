@@ -33,7 +33,7 @@ import {
   type Money,
   type PaymentMethod,
   type Subscription,
-} from '@lift/canonical';
+} from '@ax10m/canonical';
 import type {
   CapabilityMatrix,
   ChargeResult,
@@ -48,7 +48,7 @@ import { mapGoCardlessCause, verifyGoCardlessSignature } from './cause-map.js';
 export interface GoCardlessAdapterConfig {
   accessToken: string;
   webhookSecret: string;
-  /** Lift-internal merchant id this adapter instance serves. */
+  /** AX10M-internal merchant id this adapter instance serves. */
   merchantId: string;
   environment?: 'sandbox' | 'live';
   /** Leave Success+ on (co-drive NSF failures) or take full control (drive). */
@@ -134,7 +134,7 @@ export class GoCardlessAdapter implements ProcessorAdapter {
 
     const out: CanonicalEvent[] = [];
     for (const event of parsed.events ?? []) {
-      if (event.resource_type !== 'payments') continue; // mandate events: TODO(lift) re-auth flow
+      if (event.resource_type !== 'payments') continue; // mandate events: TODO(ax10m) re-auth flow
       if (event.action !== 'failed' && event.action !== 'confirmed') continue;
       const paymentId = event.links?.payment;
       if (!paymentId) continue;
@@ -156,7 +156,7 @@ export class GoCardlessAdapter implements ProcessorAdapter {
     const invoice = this.mapInvoice(payment, occurredAt, failed);
     const attempt = this.buildAttempt({
       invoiceId: invoice.id,
-      paymentMethodId: payment.links?.mandate ? `lift_pm_${payment.links.mandate}` : '',
+      paymentMethodId: payment.links?.mandate ? `ax10m_pm_${payment.links.mandate}` : '',
       idempotencyKey: '',
       amount: invoice.amount,
       status: failed ? 'failed' : 'succeeded',
@@ -165,7 +165,7 @@ export class GoCardlessAdapter implements ProcessorAdapter {
       attemptedAt: occurredAt,
     });
     const base = {
-      id: `lift_evt_${event.id ?? payment.id}`,
+      id: `ax10m_evt_${event.id ?? payment.id}`,
       merchantId: this.config.merchantId,
       processorEventId: event.id ?? '',
       occurredAt,
@@ -244,7 +244,7 @@ export class GoCardlessAdapter implements ProcessorAdapter {
     return mandates
       .filter((m) => m.id)
       .map((m) => ({
-        id: `lift_pm_${m.id}`,
+        id: `ax10m_pm_${m.id}`,
         customerId: customer.id,
         processorRef: m.id!,
         token: m.id!, // the mandate id is the reusable credential — no card, no PAN
@@ -262,9 +262,9 @@ export class GoCardlessAdapter implements ProcessorAdapter {
 
   private mapInvoice(p: GcPayment, occurredAt: string, failed: boolean): Invoice {
     return {
-      id: `lift_inv_${p.id}`,
-      subscriptionId: p.links?.subscription ? `lift_sub_${p.links.subscription}` : undefined,
-      customerId: p.links?.customer ? `lift_cus_${p.links.customer}` : '',
+      id: `ax10m_inv_${p.id}`,
+      subscriptionId: p.links?.subscription ? `ax10m_sub_${p.links.subscription}` : undefined,
+      customerId: p.links?.customer ? `ax10m_cus_${p.links.customer}` : '',
       merchantId: this.config.merchantId,
       processorRef: p.id,
       amount: { amount: CENTS(p.amount), currency: p.currency ?? 'GBP' },
@@ -285,7 +285,7 @@ export class GoCardlessAdapter implements ProcessorAdapter {
     attemptedAt: string;
   }): ChargeAttempt {
     return {
-      id: `lift_att_${p.txnId ?? (p.idempotencyKey || 'unknown')}`,
+      id: `ax10m_att_${p.txnId ?? (p.idempotencyKey || 'unknown')}`,
       invoiceId: p.invoiceId,
       paymentMethodId: p.paymentMethodId,
       idempotencyKey: p.idempotencyKey,
@@ -300,7 +300,7 @@ export class GoCardlessAdapter implements ProcessorAdapter {
   private buildDecline(event: GcEvent, invoiceId: string, chargeAttemptId: string, occurredAt: string): DeclineEvent {
     const code = mapGoCardlessCause(event.details?.cause);
     return {
-      id: `lift_dec_${event.id ?? invoiceId}`,
+      id: `ax10m_dec_${event.id ?? invoiceId}`,
       invoiceId,
       chargeAttemptId,
       code,

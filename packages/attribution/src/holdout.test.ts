@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DeclineFamily } from '@lift/canonical';
+import { DeclineFamily } from '@ax10m/canonical';
 import {
   assign,
   DEFAULT_HOLDOUT_CONFIG,

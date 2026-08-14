@@ -9,9 +9,9 @@ import {
 /**
  * Shadow-mode dashboard (ARCHITECTURE.md §6, §12 Phase 0).
  *
- * Server component. Shows the merchant, before activating, what Lift's engine
+ * Server component. Shows the merchant, before activating, what AX10M's engine
  * would have produced: projected monthly uplift (the mSPRT lower bound) and the
- * 12% fee we would have charged — computed by the REAL @lift/attribution billing
+ * 12% fee we would have charged — computed by the REAL @ax10m/attribution billing
  * engine (CUPED + cluster-robust + always-valid confidence sequence) over mocked
  * cohorts. The cohort table breaks it down per stratum so a skeptical CFO can see
  * exactly where the lift comes from.
@@ -32,7 +32,7 @@ export default function Page() {
             Shadow mode · day {day} of {onb.state.shadowWindowDays} · measuring your true baseline
           </span>
           <button className="activate" disabled={!onb.readiness.ready} title={onb.readiness.reasons.join(' · ')}>
-            {onb.readiness.ready ? 'Activate Lift →' : `Activate at day ${onb.state.shadowWindowDays}`}
+            {onb.readiness.ready ? 'Activate AX10M →' : `Activate at day ${onb.state.shadowWindowDays}`}
           </button>
         </div>
         <div className="progress" role="progressbar" aria-valuenow={Math.round(onb.progress.pctComplete * 100)}>
@@ -56,7 +56,7 @@ export default function Page() {
       <p className="subtitle">
         We ran a live randomized holdout alongside your existing Stripe Smart
         Retries for <strong>{statement.period}</strong>. Below is the incremental
-        recovery Lift&apos;s engine produced beyond your baseline — billed on the
+        recovery AX10M&apos;s engine produced beyond your baseline — billed on the
         <strong> always-valid lower bound</strong>, so the number is one your
         auditor can reconcile.
       </p>
@@ -174,7 +174,7 @@ export default function Page() {
         Every recovered charge carries its processor transaction id. Filter your Stripe payout
         export to those ids — the settled amounts sum to our recovered total, penny for penny. We
         disclose the epoch salt so you can recompute every control/treatment assignment yourself.
-        Nothing here requires trusting Lift&apos;s dashboard.
+        Nothing here requires trusting AX10M&apos;s dashboard.
       </p>
 
       <p className="ledger-note">

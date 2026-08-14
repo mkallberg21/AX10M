@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { DeclineCode } from '@lift/canonical';
+import { DeclineCode } from '@ax10m/canonical';
 import {
   activate,
   beginOnboarding,
@@ -13,7 +13,7 @@ import {
   type ShadowObservation,
   type ShadowProgress,
   type ShadowProjection,
-} from '@lift/onboarding';
+} from '@ax10m/onboarding';
 
 /** The status view returned to the dashboard / onboarding UI. */
 export interface OnboardingStatusView {
@@ -38,7 +38,7 @@ interface MerchantOnboarding {
  * "see the money before you pay" moment — and gates `activate` on the shadow
  * window completing with a positive projection.
  *
- * TODO(lift): persist onboarding state + observations (Postgres); one instance
+ * TODO(ax10m): persist onboarding state + observations (Postgres); one instance
  * currently keeps them in memory.
  */
 @Injectable()
@@ -51,14 +51,14 @@ export class OnboardingService {
       throw new BadRequestException('merchantId and processor are required');
     }
     const now = new Date().toISOString();
-    // TODO(lift): real OAuth token exchange + webhook registration with the processor.
+    // TODO(ax10m): real OAuth token exchange + webhook registration with the processor.
     const state = beginOnboarding({ merchantId: params.merchantId, processor: params.processor, now });
     this.store.set(params.merchantId, { state, observations: new Map() });
     this.logger.log(`Onboarding ${params.merchantId} (${params.processor}) → shadow mode`);
     return this.buildStatus(params.merchantId, now);
   }
 
-  /** Record a baseline failure observed during shadow (Lift is NOT acting yet). */
+  /** Record a baseline failure observed during shadow (AX10M is NOT acting yet). */
   recordFailure(merchantId: string, params: { invoiceId: string; declineCode: DeclineCode; amount: number }): void {
     const m = this.store.get(merchantId);
     if (!m || m.state.status !== 'shadow') return;

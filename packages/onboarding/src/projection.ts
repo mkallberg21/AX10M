@@ -1,12 +1,12 @@
 /**
  * Shadow-mode projection (ARCHITECTURE.md §6, dominance-backlog #2).
  *
- * The "see the proven money before you pay a cent" number. During onboarding Lift
+ * The "see the proven money before you pay a cent" number. During onboarding AX10M
  * runs in SHADOW MODE: it observes the merchant's existing recovery stack for a
  * window (default 14 days) without touching a charge, and PROJECTS the incremental
  * uplift its engine would add. This is deliberately a *projection*, not the
  * holdout-verified number — it is clearly labeled `holdoutVerified: false`. Once
- * the merchant activates, the live randomized holdout (see @lift/attribution)
+ * the merchant activates, the live randomized holdout (see @ax10m/attribution)
  * replaces the priors below with a measured lower bound, which is the only thing
  * we ever bill on.
  *
@@ -25,9 +25,9 @@ import {
   familyOf,
   type CurrencyCode,
   type Money,
-} from '@lift/canonical';
+} from '@ax10m/canonical';
 
-/** One observed baseline failure during the shadow window (baseline-only; Lift did NOT act). */
+/** One observed baseline failure during the shadow window (baseline-only; AX10M did NOT act). */
 export interface ShadowObservation {
   declineCode: DeclineCode;
   /** Invoice face value, minor units. */
@@ -37,7 +37,7 @@ export interface ShadowObservation {
 }
 
 /**
- * Prior P(Lift recovers | baseline missed it), by decline code (falling back to
+ * Prior P(AX10M recovers | baseline missed it), by decline code (falling back to
  * family). Conservative, cross-merchant-derived; used ONLY for the pre-activation
  * projection. The live holdout replaces these with a measured number once active.
  */
@@ -56,7 +56,7 @@ const CAPTURE_OF_REMAINING_BY_FAMILY: Record<DeclineFamily, number> = {
   [DeclineFamily.Hard]: 0.02, // suppress retries; an occasional card-update comm win
 };
 
-/** Prior probability Lift recovers an invoice the baseline missed, given its decline code. */
+/** Prior probability AX10M recovers an invoice the baseline missed, given its decline code. */
 export function captureOfRemaining(code: DeclineCode): number {
   return CAPTURE_OF_REMAINING_BY_CODE[code] ?? CAPTURE_OF_REMAINING_BY_FAMILY[familyOf(code)];
 }
@@ -95,7 +95,7 @@ export interface ShadowProjection {
   baselineRecoveryRate: number;
   /** $ value of invoices the baseline missed over the window (minor units). */
   missedValue: Money;
-  /** Expected count of incremental recoveries Lift would add. */
+  /** Expected count of incremental recoveries AX10M would add. */
   projectedIncrementalRecoveries: number;
   /** Expected incremental $ over the OBSERVED window (minor units). */
   projectedWindowValue: Money;
@@ -111,7 +111,7 @@ export interface ShadowProjection {
 }
 
 /**
- * Project the incremental uplift Lift would add, from baseline-only shadow data.
+ * Project the incremental uplift AX10M would add, from baseline-only shadow data.
  *
  * @param observations window-observed baseline failures + whether baseline recovered each.
  * @param elapsedDays days of shadow observation the window represents (for monthly scaling).
@@ -146,7 +146,7 @@ export function projectShadow(
     if (o.baselineRecovered) {
       f.baselineRecovered += 1;
       baselineRecovered += 1;
-      continue; // baseline already got it — Lift can add nothing here (no double-count)
+      continue; // baseline already got it — AX10M can add nothing here (no double-count)
     }
     const capture = captureOfRemaining(o.declineCode);
     const projected = o.amount * capture;

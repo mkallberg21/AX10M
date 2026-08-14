@@ -1,33 +1,33 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { CanonicalEvent, DeclineEvent, Invoice, MrrTier, PaymentMethod } from '@lift/canonical';
-import { DeclineCode, DeclineFamily, familyOf } from '@lift/canonical';
-import type { ProcessorAdapter, RawWebhook } from '@lift/poal';
-import { AdyenAdapter, BraintreeAdapter, ChargebeeAdapter, GoCardlessAdapter, idempotencyKey } from '@lift/poal';
+import type { CanonicalEvent, DeclineEvent, Invoice, MrrTier, PaymentMethod } from '@ax10m/canonical';
+import { DeclineCode, DeclineFamily, familyOf } from '@ax10m/canonical';
+import type { ProcessorAdapter, RawWebhook } from '@ax10m/poal';
+import { AdyenAdapter, BraintreeAdapter, ChargebeeAdapter, GoCardlessAdapter, idempotencyKey } from '@ax10m/poal';
 import {
   assign,
   HashChainedLedger,
   type HoldoutConfig,
   type Stratum,
-} from '@lift/attribution';
+} from '@ax10m/attribution';
 import {
   evaluate as evaluateGuardrail,
   type ProposedAction,
-} from '@lift/guardrail';
+} from '@ax10m/guardrail';
 import { OnboardingService } from '../onboarding/onboarding.service.js';
 
 /**
  * RecoveryCaseService — the integration seam of the Phase-0 proof engine.
  *
  * It wires the three domain packages together:
- *   1. POAL (@lift/poal)          — normalize webhooks, drive charges.
- *   2. Attribution (@lift/attribution) — holdout assignment + append to the ledger.
- *   3. Guardrail (@lift/guardrail) — hard-constraint gate before any action.
+ *   1. POAL (@ax10m/poal)          — normalize webhooks, drive charges.
+ *   2. Attribution (@ax10m/attribution) — holdout assignment + append to the ledger.
+ *   3. Guardrail (@ax10m/guardrail) — hard-constraint gate before any action.
  *
  * Phase 0 is SHADOW MODE: we assign holdout buckets and record everything to the
  * ledger to compute *projected* uplift, but we do NOT execute charges. Flipping
  * to active (Phase 1) enables the `attemptCharge` path guarded below.
  *
- * Business logic is deliberately stubbed with TODO(lift) markers; the wiring,
+ * Business logic is deliberately stubbed with TODO(ax10m) markers; the wiring,
  * types, and safety ordering (guardrail BEFORE execution) are real.
  */
 @Injectable()
@@ -36,10 +36,10 @@ export class RecoveryCaseService {
 
   constructor(private readonly onboarding: OnboardingService) {}
 
-  // TODO(lift): one ledger per merchant, persisted to append-only Postgres.
+  // TODO(ax10m): one ledger per merchant, persisted to append-only Postgres.
   private readonly ledger = new HashChainedLedger();
 
-  // TODO(lift): inject per-environment holdout config from env / config service.
+  // TODO(ax10m): inject per-environment holdout config from env / config service.
   private readonly holdoutConfig?: HoldoutConfig;
 
   private chargebee?: ChargebeeAdapter;
@@ -52,7 +52,7 @@ export class RecoveryCaseService {
    * each canonical event.
    */
   async ingestStripeWebhook(raw: RawWebhook): Promise<void> {
-    // TODO(lift): resolve the correct per-merchant StripeAdapter and call
+    // TODO(ax10m): resolve the correct per-merchant StripeAdapter and call
     // ingestWithAdapter. For the scaffold the Stripe adapter's normalization is
     // still TODO, so this short-circuits.
     this.logger.debug(`Received Stripe webhook (${raw.body.length} bytes)`);
@@ -89,7 +89,7 @@ export class RecoveryCaseService {
 
   private chargebeeAdapter(): ChargebeeAdapter {
     if (this.chargebee) return this.chargebee;
-    // TODO(lift): resolve the ChargebeeAdapter per merchant (by site / OAuth),
+    // TODO(ax10m): resolve the ChargebeeAdapter per merchant (by site / OAuth),
     // not from a single process-wide env. Restricted key only; never a PAN.
     this.chargebee = new ChargebeeAdapter({
       site: process.env.CHARGEBEE_SITE ?? '',
@@ -103,7 +103,7 @@ export class RecoveryCaseService {
 
   private adyenAdapter(): AdyenAdapter {
     if (this.adyen) return this.adyen;
-    // TODO(lift): resolve the AdyenAdapter per merchant (by merchantAccount / OAuth).
+    // TODO(ax10m): resolve the AdyenAdapter per merchant (by merchantAccount / OAuth).
     this.adyen = new AdyenAdapter({
       apiKey: process.env.ADYEN_API_KEY ?? '',
       merchantAccount: process.env.ADYEN_MERCHANT_ACCOUNT ?? '',
@@ -116,9 +116,9 @@ export class RecoveryCaseService {
 
   private braintreeAdapter(): BraintreeAdapter {
     if (this.braintree) return this.braintree;
-    // TODO(lift): resolve the BraintreeAdapter per merchant.
+    // TODO(ax10m): resolve the BraintreeAdapter per merchant.
     this.braintree = new BraintreeAdapter({
-      merchantId: process.env.BRAINTREE_LIFT_MERCHANT_ID ?? 'mrc_unknown',
+      merchantId: process.env.BRAINTREE_AX10M_MERCHANT_ID ?? 'mrc_unknown',
       braintreeMerchantId: process.env.BRAINTREE_MERCHANT_ID ?? '',
       publicKey: process.env.BRAINTREE_PUBLIC_KEY ?? '',
       privateKey: process.env.BRAINTREE_PRIVATE_KEY ?? '',
@@ -129,7 +129,7 @@ export class RecoveryCaseService {
 
   private gocardlessAdapter(): GoCardlessAdapter {
     if (this.gocardless) return this.gocardless;
-    // TODO(lift): resolve the GoCardlessAdapter per merchant (by OAuth/organisation).
+    // TODO(ax10m): resolve the GoCardlessAdapter per merchant (by OAuth/organisation).
     this.gocardless = new GoCardlessAdapter({
       accessToken: process.env.GOCARDLESS_ACCESS_TOKEN ?? '',
       webhookSecret: process.env.GOCARDLESS_WEBHOOK_SECRET ?? '',
@@ -158,12 +158,12 @@ export class RecoveryCaseService {
     if (event.type === 'invoice.paid') {
       const payload = event.payload as { invoice?: Invoice };
       if (payload.invoice) {
-        // During shadow, a paid invoice is a BASELINE recovery (Lift isn't acting).
+        // During shadow, a paid invoice is a BASELINE recovery (AX10M isn't acting).
         this.onboarding.recordBaselineRecovery(payload.invoice.merchantId, payload.invoice.id);
       }
       return;
     }
-    // TODO(lift): handle payment_method.updated (retry), subscription.updated (state sync).
+    // TODO(ax10m): handle payment_method.updated (retry), subscription.updated (state sync).
     this.logger.debug(`Handling ${event.type} for ${event.merchantId}`);
   }
 
@@ -255,7 +255,7 @@ export class RecoveryCaseService {
       return 'shadowed';
     }
 
-    // TODO(lift): Phase 1 — execute inside a Temporal activity for durability +
+    // TODO(ax10m): Phase 1 — execute inside a Temporal activity for durability +
     // exactly-once semantics, then record the outcome (succeeded/failed) to the
     // ledger and close the case on success.
     await params.adapter.attemptCharge(params.invoice, params.method, key);
@@ -271,7 +271,7 @@ export class RecoveryCaseService {
 /**
  * Derive a holdout stratum from a failed invoice + its decline. Scaffold-level:
  * MRR tier is proxied from the invoice amount and issuer region is unknown until
- * BIN metadata is joined. TODO(lift): use real MRR + issuer-region from the
+ * BIN metadata is joined. TODO(ax10m): use real MRR + issuer-region from the
  * subscription / payment-method BIN.
  */
 function deriveStratum(invoice: Invoice, decline?: DeclineEvent): Stratum {

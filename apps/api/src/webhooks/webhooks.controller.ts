@@ -21,7 +21,7 @@ export class WebhooksController {
     @Headers('stripe-signature') signature: string | undefined,
   ): Promise<{ received: true }> {
     const raw = req.rawBody?.toString('utf8') ?? '';
-    // TODO(lift): resolve which merchant/adapter this webhook belongs to (by
+    // TODO(ax10m): resolve which merchant/adapter this webhook belongs to (by
     // Connect account / endpoint) and pass the correct StripeAdapter instance.
     await this.recovery.ingestStripeWebhook({
       body: raw,
@@ -67,7 +67,7 @@ export class WebhooksController {
    * Braintree webhook ingress (PROCESSORS.md §3). Braintree POSTs a form-encoded
    * bt_signature + bt_payload (base64 XML); the adapter verifies the HMAC-SHA1
    * signature before trusting the payload. (Endpoint verification uses a separate
-   * GET bt_challenge handshake — TODO(lift).)
+   * GET bt_challenge handshake — TODO(ax10m).)
    */
   @Post('braintree')
   @HttpCode(200)
