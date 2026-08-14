@@ -164,6 +164,52 @@ tr:last-child td {
   font-weight: 600;
 }
 
+.recon-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-top: 12px;
+}
+
+@media (max-width: 760px) {
+  .recon-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.recon-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px;
+}
+
+.recon-card.ok {
+  border-color: rgba(74, 222, 128, 0.4);
+}
+
+.recon-card .label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.recon-card .big {
+  font-size: 22px;
+  font-weight: 700;
+  margin-top: 6px;
+}
+
+.recon-card.ok .big {
+  color: var(--accent);
+}
+
+.recon-card .hint {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
 .section-title {
   font-size: 15px;
   font-weight: 600;

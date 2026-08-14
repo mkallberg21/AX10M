@@ -1,34 +1,40 @@
 /**
- * Mocked shadow-mode attribution summary — BILLING-SAFE path.
+ * Mocked shadow-mode attribution + CFO-reconciliation summary — BILLING-SAFE path.
  *
- * Phase 0 shadow mode shows the merchant *projected* monthly uplift and the fee
- * Lift would have charged (12%) BEFORE they activate — the "here's the proof,
- * then decide" move (ARCHITECTURE.md §6). This module fabricates realistic
- * per-invoice observations and runs them through the REAL @lift/attribution
- * billing engine (`buildBillableStatement`: CUPED + cluster-robust + mSPRT
- * confidence sequence), so the dashboard numbers are computed exactly as a
- * production bill would be — lower bound, not point estimate.
+ * Phase 0 shadow mode shows the merchant, before they activate: (a) projected
+ * uplift + the 12% fee, computed by the REAL @lift/attribution billing engine
+ * (CUPED + cluster-robust + mSPRT), and (b) the CFO reconciliation — a signed
+ * statement whose recovered dollars tie, penny-for-penny, to the processor's own
+ * payout export (ATTRIBUTION.md §8.4). Both are derived from the SAME settlement
+ * rows, so the invoice and its evidence can never disagree.
  *
- * TODO(lift): replace the fabricated observations with a live query against the
- * API's window-closed outcome log.
+ * TODO(lift): replace fabricated SettledOutcomes with a live query against the
+ * API's window-closed outcome_log, and the mock payout with the processor's
+ * actual payout report.
  */
 
 import {
   buildBillableStatement,
+  buildReconciliationExport,
+  createEd25519Signer,
+  reconcileAgainstPayout,
+  settledOutcomeToObservation,
   HashChainedLedger,
   DEFAULT_SEQUENTIAL_CONFIG,
   type BillableStatement,
-  type UpliftObservation,
+  type EpochDisclosure,
+  type PayoutRow,
+  type ReconciliationExport,
+  type ReconResult,
+  type SettledOutcome,
 } from '@lift/attribution';
 
-/** One cohort's intended shape; we expand it into per-invoice observations. */
 interface CohortSpec {
   stratum: string;
   controlN: number;
   treatmentN: number;
   controlRate: number;
   treatmentRate: number;
-  /** Mean invoice face value in minor units. */
   meanAmount: number;
   spread: number;
 }
@@ -37,12 +43,19 @@ const COHORTS: CohortSpec[] = [
   { stratum: 'enterprise|soft|na', controlN: 240, treatmentN: 2160, controlRate: 0.45, treatmentRate: 0.58, meanAmount: 50_000, spread: 12_000 },
   { stratum: 'mid|soft|na', controlN: 520, treatmentN: 4680, controlRate: 0.4, treatmentRate: 0.52, meanAmount: 20_000, spread: 8_000 },
   { stratum: 'small|gray|emea', controlN: 610, treatmentN: 5490, controlRate: 0.32, treatmentRate: 0.45, meanAmount: 5_000, spread: 3_000 },
-  // Hard declines: treatment barely beats control — the engine suppresses retries
-  // and leans on card-update comms. Low lift; contributes little to the bill.
   { stratum: 'micro|hard|apac', controlN: 180, treatmentN: 1620, controlRate: 0.07, treatmentRate: 0.09, meanAmount: 3_000, spread: 1_500 },
 ];
 
-/** Deterministic PRNG (LCG) so the demo is stable across renders. */
+const EPOCH: EpochDisclosure = {
+  epochId: 'ep_2026_08',
+  saltRevealed: 'lift-holdout-v1',
+  controlFraction: 0.1,
+  windowDays: 21,
+  alpha: 0.05,
+  tau2: 4_000_000,
+  billingMode: 'conservative',
+};
+
 function lcg(seed: number): () => number {
   let s = seed >>> 0;
   return () => {
@@ -51,43 +64,45 @@ function lcg(seed: number): () => number {
   };
 }
 
-function expandArm(
-  spec: CohortSpec,
-  arm: 'control' | 'treatment',
-  seed: number,
-): UpliftObservation[] {
+let txn = 0;
+function expandArm(spec: CohortSpec, arm: 'control' | 'treatment', seed: number): SettledOutcome[] {
   const n = arm === 'control' ? spec.controlN : spec.treatmentN;
   const rate = arm === 'control' ? spec.controlRate : spec.treatmentRate;
   const rng = lcg(seed);
-  const obs: UpliftObservation[] = [];
+  const out: SettledOutcome[] = [];
   for (let i = 0; i < n; i++) {
     const recovered = rng() < rate;
-    const amount = Math.round(spec.meanAmount + (rng() - 0.5) * spec.spread);
-    obs.push({
+    const invoiceAmount = Math.round(spec.meanAmount + (rng() - 0.5) * spec.spread);
+    out.push({
+      invoiceId: `inv_${arm[0]}_${spec.stratum}_${i}`,
+      customerId: `${arm[0]}_${spec.stratum}_${i}`,
       arm,
-      cluster: `${arm[0]}_${spec.stratum}_${i}`,
       stratum: spec.stratum,
-      outcome: recovered ? amount : 0,
-      covariate: amount, // pre-failure covariate: invoice amount drives CUPED reduction
-      recovered,
+      declineCode: 'insufficient_funds',
+      outcome: recovered ? 'recovered' : 'failed',
+      invoiceAmount,
+      recoveredAmount: recovered ? invoiceAmount : 0,
+      currency: 'USD',
+      processorTxnId: recovered ? `txn_${txn++}` : undefined,
+      settledAt: recovered ? '2026-08-20T00:00:00.000Z' : undefined,
+      reversalType: 'none',
+      reversalAmount: 0,
     });
   }
-  return obs;
+  return out;
 }
 
-let cached: BillableStatement | undefined;
-
-/** Build (and cache) the mocked billing-safe projected statement for August 2026. */
-export function getProjectedStatement(): BillableStatement {
-  if (cached) return cached;
-
-  const observations: UpliftObservation[] = [];
+function buildOutcomes(): SettledOutcome[] {
+  txn = 0;
+  const outcomes: SettledOutcome[] = [];
   COHORTS.forEach((c, i) => {
-    observations.push(...expandArm(c, 'control', 1000 + i * 2));
-    observations.push(...expandArm(c, 'treatment', 1001 + i * 2));
+    outcomes.push(...expandArm(c, 'control', 1000 + i * 2));
+    outcomes.push(...expandArm(c, 'treatment', 1001 + i * 2));
   });
+  return outcomes;
+}
 
-  // A small mock ledger so the statement carries a real (verifiable) head hash.
+function buildLedger(): HashChainedLedger {
   const ledger = new HashChainedLedger();
   for (const c of COHORTS) {
     ledger.append({
@@ -97,25 +112,60 @@ export function getProjectedStatement(): BillableStatement {
       detail: { stratum: c.stratum, controlN: c.controlN, treatmentN: c.treatmentN },
     });
   }
+  return ledger;
+}
 
-  cached = buildBillableStatement({
+let cachedStatement: BillableStatement | undefined;
+let cachedRecon: { export: ReconciliationExport; recon: ReconResult } | undefined;
+
+/** Billing-safe projected statement (cohort table + KPIs). */
+export function getProjectedStatement(): BillableStatement {
+  if (cachedStatement) return cachedStatement;
+  const observations = buildOutcomes().map(settledOutcomeToObservation);
+  const ledger = buildLedger();
+  cachedStatement = buildBillableStatement({
     merchantId: 'mrc_demo',
     period: '2026-08',
     observations,
     priorBilledDollars: 0,
     ledger: ledger.all(),
     ledgerHead: ledger.head(),
-    // Overall control share ≈ 1550 / 15500 = 10%.
     config: { ...DEFAULT_SEQUENTIAL_CONFIG, expectedControlFraction: 0.1 },
   });
-  return cached;
+  return cachedStatement;
 }
 
-/** Format integer minor units as a currency string (display only). */
+/**
+ * Signed CFO reconciliation export + the penny-for-penny tie-out against a mock
+ * processor payout (built from the same recovered rows, so it ties out).
+ */
+export function getReconciliation(): { export: ReconciliationExport; recon: ReconResult } {
+  if (cachedRecon) return cachedRecon;
+  const outcomes = buildOutcomes();
+  const ledger = buildLedger();
+  const { signer } = createEd25519Signer('kms-demo-key-1');
+  const exportDoc = buildReconciliationExport({
+    merchantId: 'mrc_demo',
+    period: '2026-08',
+    outcomes,
+    epoch: EPOCH,
+    ledger: ledger.all(),
+    ledgerHead: ledger.head(),
+    signer,
+    generatedAt: '2026-09-01T00:00:00.000Z',
+  });
+  // The processor's own payout export: one row per settled recovery (+ an unrelated charge).
+  const payout: PayoutRow[] = outcomes
+    .filter((o) => o.outcome === 'recovered')
+    .map((o) => ({ key: o.processorTxnId!, settledAmount: o.recoveredAmount }));
+  payout.push({ key: 'txn_unrelated_fee', settledAmount: 1299 });
+  const recon = reconcileAgainstPayout(outcomes, payout);
+  cachedRecon = { export: exportDoc, recon };
+  return cachedRecon;
+}
+
 export function formatMoney(minorUnits: number, currency = 'USD'): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(
-    minorUnits / 100,
-  );
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(minorUnits / 100);
 }
 
 export function formatPct(rate: number): string {

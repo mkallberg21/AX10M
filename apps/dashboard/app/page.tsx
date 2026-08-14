@@ -2,6 +2,7 @@ import {
   formatMoney,
   formatPct,
   getProjectedStatement,
+  getReconciliation,
 } from './mock-data.js';
 
 /**
@@ -18,6 +19,7 @@ export default function Page() {
   const statement = getProjectedStatement();
   const r = statement.result;
   const currency = statement.currency;
+  const { export: recon, recon: tie } = getReconciliation();
 
   return (
     <main className="container">
@@ -108,10 +110,50 @@ export default function Page() {
         mix shift can never flip the sign of the reported lift.
       </p>
 
+      <div className="section-title">CFO reconciliation — tie every dollar to your processor</div>
+      <div className="method-strip">
+        <span>Signed statement <strong>{recon.statementHash.slice(0, 16)}…</strong></span>
+        <span>Signing key <strong>{recon.signingKeyId}</strong></span>
+        <span>Ledger <strong>{recon.ledgerVerified ? 'verified ✓' : 'FAILED ✗'}</strong></span>
+        <span>Epoch salt <strong>disclosed</strong></span>
+      </div>
+      <div className="recon-grid">
+        <div className={`recon-card${tie.tiesOut ? ' ok' : ''}`}>
+          <div className="label">Reconciles against processor payout</div>
+          <div className="big">{tie.tiesOut ? 'Ties out ✓' : 'Discrepancy ✗'}</div>
+          <div className="hint">
+            {tie.matched.toLocaleString()} recovered txns · {formatMoney(tie.oursTotal, currency)} ={' '}
+            {formatMoney(tie.theirsTotal, currency)} settled
+          </div>
+        </div>
+        <div className="recon-card">
+          <div className="label">Recovered value (treatment)</div>
+          <div className="big">{formatMoney(recon.summary.treatment.recoveredAmount, currency)}</div>
+          <div className="hint">
+            Control {formatMoney(recon.summary.control.recoveredAmount, currency)} · net of{' '}
+            {formatMoney(recon.summary.treatment.reversedAmount, currency)} reversed
+          </div>
+        </div>
+        <div className="recon-card">
+          <div className="label">Fee = 12% × proven increment</div>
+          <div className="big">{formatMoney(recon.fee.fee, currency)}</div>
+          <div className="hint">
+            on {formatMoney(recon.fee.billableIncrement, currency)} newly proven · recomputable by hand
+          </div>
+        </div>
+      </div>
+      <p className="subtitle" style={{ fontSize: 13, marginTop: 12 }}>
+        Every recovered charge carries its processor transaction id. Filter your Stripe payout
+        export to those ids — the settled amounts sum to our recovered total, penny for penny. We
+        disclose the epoch salt so you can recompute every control/treatment assignment yourself.
+        Nothing here requires trusting Lift&apos;s dashboard.
+      </p>
+
       <p className="ledger-note">
         Uplift Statement notarized against hash-chained ledger head:{' '}
         {statement.ledgerHead.slice(0, 24)}… · ledger integrity:{' '}
-        {statement.ledgerVerified ? 'verified ✓' : 'FAILED ✗'}
+        {statement.ledgerVerified ? 'verified ✓' : 'FAILED ✗'} · statement signed{' '}
+        {recon.signingKeyId}
       </p>
     </main>
   );
