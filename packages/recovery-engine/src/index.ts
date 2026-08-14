@@ -15,3 +15,13 @@
 export * from './recoverability.js';
 export * from './timing.js';
 export * from './policy.js';
+// Learning: feature encoding, the trained logistic model, the trainer, the online
+// bandit, the real ledger→corpus pipeline, and the shipped bootstrap prior.
+export * from './features.js';
+export * from './logistic.js';
+export * from './training.js';
+export * from './simulate.js';
+export * from './ledger-samples.js';
+export * from './bandit.js';
+export * from './bootstrap-weights.js';
+export { trainBootstrap, type BootstrapResult } from './train-cli.js';

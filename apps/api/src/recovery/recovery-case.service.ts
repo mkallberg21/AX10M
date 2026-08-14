@@ -15,7 +15,9 @@ import {
   type ProposedAction,
 } from '@ax10m/guardrail';
 import {
+  BOOTSTRAP_RECOVERABILITY_WEIGHTS,
   HeuristicPolicy,
+  LogisticRecoverability,
   type AvailableMethod,
   type RecoveryDecision,
   type RecoveryFeatures,
@@ -56,9 +58,14 @@ export class RecoveryCaseService {
   private gocardless?: GoCardlessAdapter;
   private stripe?: stripe.StripeAdapter;
 
-  // The recovery brain. Cold-start heuristic today; swap for a trained
-  // ContextualBanditPolicy without touching this wiring.
-  private readonly policy: RetryPolicy = new HeuristicPolicy();
+  // The recovery brain. Same guardrail-safe decision surface (HeuristicPolicy), but its
+  // recoverability model is the TRAINED LogisticRecoverability (bootstrap prior fit by
+  // @ax10m/recovery-engine's trainer; held-out AUC 0.881 vs 0.869 heuristic). Retrain on
+  // the live ledger via samplesFromLedger, or swap in an online BanditPolicy — the
+  // RetryPolicy/RecoverabilityModel seam means neither touches this wiring.
+  private readonly policy: RetryPolicy = new HeuristicPolicy(
+    new LogisticRecoverability(BOOTSTRAP_RECOVERABILITY_WEIGHTS),
+  );
 
   // Invoices whose holdout assignment has already been recorded — webhooks are
   // at-least-once, so we must not double-append to the tamper-evident ledger.
@@ -363,6 +370,9 @@ export class RecoveryCaseService {
         recoverabilityScore: decision.recoverabilityScore,
         expectedValueMinor: decision.expectedValueMinor,
         rationale: decision.rationale,
+        // Feature snapshot → the label (case.recovered / charge.failed) makes this a
+        // training row. samplesFromLedger() rebuilds the corpus for retraining.
+        features,
         shadow: true,
       },
     });
@@ -411,6 +421,7 @@ export class RecoveryCaseService {
         retryAt: decision.retryAt ?? null,
         expectedValueMinor: decision.expectedValueMinor,
         rationale: decision.rationale,
+        features, // training-row feature snapshot (see planAttempt)
         shadow,
       },
     });
