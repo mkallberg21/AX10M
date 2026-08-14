@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { CanonicalEvent, DeclineEvent, Invoice, MrrTier, PaymentMethod } from '@ax10m/canonical';
 import { DeclineCode, DeclineFamily, familyOf } from '@ax10m/canonical';
 import type { ProcessorAdapter, RawWebhook } from '@ax10m/poal';
-import { AdyenAdapter, BraintreeAdapter, ChargebeeAdapter, GoCardlessAdapter, idempotencyKey, stripe } from '@ax10m/poal';
+import { idempotencyKey } from '@ax10m/poal';
 import {
   assign,
   HashChainedLedger,
@@ -54,12 +54,6 @@ export class RecoveryCaseService {
   // TODO(ax10m): inject per-environment holdout config from env / config service.
   private readonly holdoutConfig?: HoldoutConfig;
 
-  private chargebee?: ChargebeeAdapter;
-  private adyen?: AdyenAdapter;
-  private braintree?: BraintreeAdapter;
-  private gocardless?: GoCardlessAdapter;
-  private stripe?: stripe.StripeAdapter;
-
   // The recovery brain. Same guardrail-safe decision surface (HeuristicPolicy), but its
   // recoverability model is the TRAINED LogisticRecoverability (bootstrap prior fit by
   // @ax10m/recovery-engine's trainer; held-out AUC 0.881 vs 0.869 heuristic). Retrain on
@@ -83,104 +77,16 @@ export class RecoveryCaseService {
   private readonly attempts = new Map<string, number>();
 
   /**
-   * Entry point from the webhook controller. Verify + normalize, then process
-   * each canonical event.
+   * Generic ingress: any adapter → canonical events → recovery cases. Called by the
+   * per-merchant WebhookRouterService, which resolves the merchant + builds the adapter
+   * from that merchant's stored credentials (see @ax10m/poal `buildAdapter`).
    */
-  async ingestStripeWebhook(raw: RawWebhook): Promise<void> {
-    await this.ingestWithAdapter(this.stripeAdapter(), raw);
-  }
-
-  private stripeAdapter(): stripe.StripeAdapter {
-    if (this.stripe) return this.stripe;
-    // TODO(ax10m): resolve the StripeAdapter per merchant (by Connect account).
-    this.stripe = new stripe.StripeAdapter({
-      secretKey: process.env.STRIPE_SECRET_KEY ?? '',
-      webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? '',
-      merchantId: process.env.STRIPE_MERCHANT_ID ?? 'mrc_unknown',
-      apiVersion: process.env.STRIPE_API_VERSION,
-    });
-    return this.stripe;
-  }
-
-  /** Chargebee ingress — the first fully-wired non-Stripe adapter (PROCESSORS.md §3). */
-  async ingestChargebeeWebhook(raw: RawWebhook): Promise<void> {
-    await this.ingestWithAdapter(this.chargebeeAdapter(), raw);
-  }
-
-  /** Adyen ingress (HMAC-verified notifications). */
-  async ingestAdyenWebhook(raw: RawWebhook): Promise<void> {
-    await this.ingestWithAdapter(this.adyenAdapter(), raw);
-  }
-
-  /** Braintree ingress (bt_signature-verified webhooks). */
-  async ingestBraintreeWebhook(raw: RawWebhook): Promise<void> {
-    await this.ingestWithAdapter(this.braintreeAdapter(), raw);
-  }
-
-  /** GoCardless ingress (Webhook-Signature-verified; bank debit). */
-  async ingestGoCardlessWebhook(raw: RawWebhook): Promise<void> {
-    await this.ingestWithAdapter(this.gocardlessAdapter(), raw);
-  }
-
-  /** Generic ingress: any adapter → canonical events → recovery cases. */
   async ingestWithAdapter(adapter: ProcessorAdapter, raw: RawWebhook): Promise<void> {
     const events = await adapter.ingestWebhook(raw);
     this.logger.debug(`${adapter.id}: normalized ${events.length} canonical event(s)`);
     for (const event of events) {
       await this.handleEvent(event);
     }
-  }
-
-  private chargebeeAdapter(): ChargebeeAdapter {
-    if (this.chargebee) return this.chargebee;
-    // TODO(ax10m): resolve the ChargebeeAdapter per merchant (by site / OAuth),
-    // not from a single process-wide env. Restricted key only; never a PAN.
-    this.chargebee = new ChargebeeAdapter({
-      site: process.env.CHARGEBEE_SITE ?? '',
-      apiKey: process.env.CHARGEBEE_API_KEY ?? '',
-      merchantId: process.env.CHARGEBEE_MERCHANT_ID ?? 'mrc_unknown',
-      webhookUser: process.env.CHARGEBEE_WEBHOOK_USER,
-      webhookPassword: process.env.CHARGEBEE_WEBHOOK_PASSWORD,
-    });
-    return this.chargebee;
-  }
-
-  private adyenAdapter(): AdyenAdapter {
-    if (this.adyen) return this.adyen;
-    // TODO(ax10m): resolve the AdyenAdapter per merchant (by merchantAccount / OAuth).
-    this.adyen = new AdyenAdapter({
-      apiKey: process.env.ADYEN_API_KEY ?? '',
-      merchantAccount: process.env.ADYEN_MERCHANT_ACCOUNT ?? '',
-      merchantId: process.env.ADYEN_MERCHANT_ID ?? 'mrc_unknown',
-      hmacKey: process.env.ADYEN_HMAC_KEY,
-      baseUrl: process.env.ADYEN_CHECKOUT_URL,
-    });
-    return this.adyen;
-  }
-
-  private braintreeAdapter(): BraintreeAdapter {
-    if (this.braintree) return this.braintree;
-    // TODO(ax10m): resolve the BraintreeAdapter per merchant.
-    this.braintree = new BraintreeAdapter({
-      merchantId: process.env.BRAINTREE_AX10M_MERCHANT_ID ?? 'mrc_unknown',
-      braintreeMerchantId: process.env.BRAINTREE_MERCHANT_ID ?? '',
-      publicKey: process.env.BRAINTREE_PUBLIC_KEY ?? '',
-      privateKey: process.env.BRAINTREE_PRIVATE_KEY ?? '',
-      environment: process.env.BRAINTREE_ENVIRONMENT === 'production' ? 'production' : 'sandbox',
-    });
-    return this.braintree;
-  }
-
-  private gocardlessAdapter(): GoCardlessAdapter {
-    if (this.gocardless) return this.gocardless;
-    // TODO(ax10m): resolve the GoCardlessAdapter per merchant (by OAuth/organisation).
-    this.gocardless = new GoCardlessAdapter({
-      accessToken: process.env.GOCARDLESS_ACCESS_TOKEN ?? '',
-      webhookSecret: process.env.GOCARDLESS_WEBHOOK_SECRET ?? '',
-      merchantId: process.env.GOCARDLESS_MERCHANT_ID ?? 'mrc_unknown',
-      environment: process.env.GOCARDLESS_ENVIRONMENT === 'live' ? 'live' : 'sandbox',
-    });
-    return this.gocardless;
   }
 
   private async handleEvent(event: CanonicalEvent): Promise<void> {

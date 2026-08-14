@@ -1,99 +1,59 @@
-import { Controller, Headers, HttpCode, Post, Req } from '@nestjs/common';
+import { Controller, HttpCode, Param, Post, Req } from '@nestjs/common';
 import type { RawBodyRequest } from '@nestjs/common';
 import type { Request } from 'express';
-import { RecoveryCaseService } from '../recovery/recovery-case.service.js';
+import { WebhookRouterService } from './webhook-router.service.js';
 
 /**
- * Stripe webhook ingress (ARCHITECTURE.md §4.1).
+ * Universal webhook ingress (ARCHITECTURE.md §4.1).
  *
- * The raw body is required for signature verification — do NOT let a JSON parser
- * consume it first. The adapter verifies the signature, normalizes to canonical
- * events, and hands them to the recovery-case service.
+ * Every processor posts to `/webhooks/:processor/:connectionId` (per-merchant) or
+ * `/webhooks/:processor` (single-tenant default). The raw body is preserved for
+ * signature verification; ALL headers are forwarded so each adapter can read whatever
+ * signature header it uses. The router resolves the merchant + credentials and the
+ * adapter verifies + normalizes. Adyen requires the literal `[accepted]` ack; every
+ * other processor gets `{ received: true }`. We always answer 200 fast — the reconciler
+ * catches anything missed.
  */
 @Controller('webhooks')
 export class WebhooksController {
-  constructor(private readonly recovery: RecoveryCaseService) {}
+  constructor(private readonly router: WebhookRouterService) {}
 
-  @Post('stripe')
+  @Post(':processor/:connectionId')
   @HttpCode(200)
-  async stripe(
+  async perMerchant(
+    @Param('processor') processor: string,
+    @Param('connectionId') connectionId: string,
     @Req() req: RawBodyRequest<Request>,
-    @Headers('stripe-signature') signature: string | undefined,
-  ): Promise<{ received: true }> {
-    const raw = req.rawBody?.toString('utf8') ?? '';
-    // TODO(ax10m): resolve which merchant/adapter this webhook belongs to (by
-    // Connect account / endpoint) and pass the correct StripeAdapter instance.
-    await this.recovery.ingestStripeWebhook({
-      body: raw,
-      headers: { 'stripe-signature': signature ?? '' },
-    });
-    // Always 200 quickly; heavy work is enqueued. Reconciler catches anything missed.
-    return { received: true };
+  ): Promise<string | { received: true }> {
+    return this.dispatch(processor, connectionId, req);
   }
 
-  /**
-   * Chargebee webhook ingress (PROCESSORS.md §3). Chargebee authenticates its
-   * webhooks with HTTP Basic auth (not a signature), which the adapter verifies
-   * against the configured credentials before trusting the body.
-   */
-  @Post('chargebee')
+  @Post(':processor')
   @HttpCode(200)
-  async chargebee(
+  async singleTenant(
+    @Param('processor') processor: string,
     @Req() req: RawBodyRequest<Request>,
-    @Headers('authorization') authorization: string | undefined,
-  ): Promise<{ received: true }> {
-    const raw = req.rawBody?.toString('utf8') ?? '';
-    await this.recovery.ingestChargebeeWebhook({
-      body: raw,
-      headers: { authorization: authorization ?? '' },
-    });
-    return { received: true };
+  ): Promise<string | { received: true }> {
+    return this.dispatch(processor, null, req);
   }
 
-  /**
-   * Adyen notification ingress (PROCESSORS.md §3). Adyen signs each notification
-   * item with HMAC (verified in the adapter), so no header auth is needed. Adyen
-   * requires the literal `[accepted]` acknowledgement in the response body.
-   */
-  @Post('adyen')
-  @HttpCode(200)
-  async adyen(@Req() req: RawBodyRequest<Request>): Promise<string> {
-    const raw = req.rawBody?.toString('utf8') ?? '';
-    await this.recovery.ingestAdyenWebhook({ body: raw, headers: {} });
-    return '[accepted]';
+  private async dispatch(
+    processor: string,
+    connectionId: string | null,
+    req: RawBodyRequest<Request>,
+  ): Promise<string | { received: true }> {
+    const raw = { body: req.rawBody?.toString('utf8') ?? '', headers: flattenHeaders(req.headers) };
+    await this.router.ingest(processor, connectionId, raw);
+    return processor === 'adyen' ? '[accepted]' : { received: true };
   }
+}
 
-  /**
-   * Braintree webhook ingress (PROCESSORS.md §3). Braintree POSTs a form-encoded
-   * bt_signature + bt_payload (base64 XML); the adapter verifies the HMAC-SHA1
-   * signature before trusting the payload. (Endpoint verification uses a separate
-   * GET bt_challenge handshake — TODO(ax10m).)
-   */
-  @Post('braintree')
-  @HttpCode(200)
-  async braintree(@Req() req: RawBodyRequest<Request>): Promise<{ received: true }> {
-    const raw = req.rawBody?.toString('utf8') ?? '';
-    await this.recovery.ingestBraintreeWebhook({ body: raw, headers: {} });
-    return { received: true };
+/** Express headers can be string | string[]; adapters expect Record<string,string>. */
+function flattenHeaders(headers: Request['headers']): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(headers)) {
+    if (typeof v === 'string') out[k] = v;
+    else if (Array.isArray(v)) out[k] = v.join(',');
   }
-
-  /**
-   * GoCardless webhook ingress (PROCESSORS.md §3, bank debit). GoCardless signs the
-   * raw body with HMAC-SHA256 in the `Webhook-Signature` header; the adapter verifies
-   * it before trusting the payload, and honors `retry_if_possible` to deconflict with
-   * GoCardless's own Success+ retries.
-   */
-  @Post('gocardless')
-  @HttpCode(200)
-  async gocardless(
-    @Req() req: RawBodyRequest<Request>,
-    @Headers('webhook-signature') signature: string | undefined,
-  ): Promise<{ received: true }> {
-    const raw = req.rawBody?.toString('utf8') ?? '';
-    await this.recovery.ingestGoCardlessWebhook({
-      body: raw,
-      headers: { 'webhook-signature': signature ?? '' },
-    });
-    return { received: true };
-  }
+  return out;
 }

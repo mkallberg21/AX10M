@@ -8,4 +8,5 @@
 export * from './adapter.js';
 export * from './idempotency.js';
 export * from './adapters/index.js';
+export * from './factory.js';
 export * as stripe from './stripe/index.js';
