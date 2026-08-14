@@ -112,10 +112,10 @@ platform run a retry/dunning engine Lift must disable or coexist with.
 
 Prioritized by market share × ease × capability completeness:
 
-1. **Stripe** (done — reference adapter). Largest SaaS footprint; drive; the coexistence-with-Smart-Retries story.
-2. **Adyen** — clean drive, no competing dunning, enterprise volume, excellent reconciliation.
+1. **Stripe** — reference adapter *skeleton* (capability matrix real; API calls TODO). Largest SaaS footprint; drive; the coexistence-with-Smart-Retries story.
+2. **Adyen** — ✅ **implemented end-to-end** (Checkout `/payments` idempotent token retries, HMAC-verified notification ingestion, stored-method listing). Clean drive, no competing dunning.
 3. **Braintree/PayPal** — huge footprint, auto network tokens.
-4. **Chargebee** — best billing-platform drive surface; opens the whole subscription-platform segment.
+4. **Chargebee** — ✅ **implemented end-to-end** (`collect_payment` on a stored token, webhook Basic-auth verify, reconciliation poll). Best billing-platform drive surface.
 5. **Recurly** — rich webhooks + native updater.
 6. **Checkout.com / Cybersource** — enterprise acquirers, drive.
 7. **GoCardless** — opens bank-debit (EU/UK/ANZ) recovery, a segment most card-only competitors ignore.

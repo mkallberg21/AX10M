@@ -5,7 +5,7 @@
  */
 export * from './base.js';
 export * from './registry.js';
-export * from './adyen.js';
+export * from './adyen/index.js';
 export * from './braintree.js';
 export * from './chargebee/index.js';
 export * from './gocardless.js';

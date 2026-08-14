@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { PROCESSOR_REGISTRY, coverageSummary, getProcessor } from './registry.js';
-import { AdyenAdapter } from './adyen.js';
+import { AdyenAdapter } from './adyen/index.js';
 import { BraintreeAdapter } from './braintree.js';
 import { ChargebeeAdapter } from './chargebee/index.js';
 import { GoCardlessAdapter } from './gocardless.js';
@@ -29,7 +29,7 @@ describe('processor registry', () => {
 
 describe('adapter ↔ registry consistency', () => {
   const cases = [
-    new AdyenAdapter({ apiKey: 'x', merchantAccount: 'x', hmacKey: 'x' }),
+    new AdyenAdapter({ apiKey: 'x', merchantAccount: 'x', merchantId: 'm', hmacKey: 'x' }),
     new BraintreeAdapter({ merchantId: 'x', publicKey: 'x', privateKey: 'x' }),
     new ChargebeeAdapter({ site: 'x', apiKey: 'x', merchantId: 'm' }),
     new GoCardlessAdapter({ accessToken: 'x', webhookSecret: 'x' }),
@@ -63,9 +63,10 @@ describe('advisory-mode safety', () => {
   });
 });
 
-describe('drive-mode adapters', () => {
+describe('skeleton drive adapters', () => {
   it('surface an unimplemented (not advisory) error on attemptCharge', async () => {
-    const adyen = new AdyenAdapter({ apiKey: 'x', merchantAccount: 'x', hmacKey: 'x' });
-    await expect(adyen.attemptCharge({} as never, {} as never, 'idem_2')).rejects.toThrow(/TODO\(lift\)/);
+    // Braintree is still a capability-only skeleton; Adyen & Chargebee are implemented.
+    const braintree = new BraintreeAdapter({ merchantId: 'x', publicKey: 'x', privateKey: 'x' });
+    await expect(braintree.attemptCharge({} as never, {} as never, 'idem_2')).rejects.toThrow(/TODO\(lift\)/);
   });
 });

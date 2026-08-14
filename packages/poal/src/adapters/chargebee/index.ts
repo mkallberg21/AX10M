@@ -3,5 +3,4 @@
  * wired end-to-end). See ./adapter.ts.
  */
 export * from './adapter.js';
-export * from './client.js';
 export * from './decline-map.js';

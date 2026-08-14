@@ -49,4 +49,17 @@ export class WebhooksController {
     });
     return { received: true };
   }
+
+  /**
+   * Adyen notification ingress (PROCESSORS.md §3). Adyen signs each notification
+   * item with HMAC (verified in the adapter), so no header auth is needed. Adyen
+   * requires the literal `[accepted]` acknowledgement in the response body.
+   */
+  @Post('adyen')
+  @HttpCode(200)
+  async adyen(@Req() req: RawBodyRequest<Request>): Promise<string> {
+    const raw = req.rawBody?.toString('utf8') ?? '';
+    await this.recovery.ingestAdyenWebhook({ body: raw, headers: {} });
+    return '[accepted]';
+  }
 }

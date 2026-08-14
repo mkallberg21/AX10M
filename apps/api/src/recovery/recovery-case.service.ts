@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { CanonicalEvent, DeclineEvent, Invoice, MrrTier, PaymentMethod } from '@lift/canonical';
 import { DeclineCode, DeclineFamily, familyOf } from '@lift/canonical';
 import type { ProcessorAdapter, RawWebhook } from '@lift/poal';
-import { ChargebeeAdapter, idempotencyKey } from '@lift/poal';
+import { AdyenAdapter, ChargebeeAdapter, idempotencyKey } from '@lift/poal';
 import {
   assign,
   HashChainedLedger,
@@ -43,6 +43,7 @@ export class RecoveryCaseService {
   private readonly holdoutConfig?: HoldoutConfig;
 
   private chargebee?: ChargebeeAdapter;
+  private adyen?: AdyenAdapter;
 
   /**
    * Entry point from the webhook controller. Verify + normalize, then process
@@ -58,6 +59,11 @@ export class RecoveryCaseService {
   /** Chargebee ingress — the first fully-wired non-Stripe adapter (PROCESSORS.md §3). */
   async ingestChargebeeWebhook(raw: RawWebhook): Promise<void> {
     await this.ingestWithAdapter(this.chargebeeAdapter(), raw);
+  }
+
+  /** Adyen ingress (HMAC-verified notifications). */
+  async ingestAdyenWebhook(raw: RawWebhook): Promise<void> {
+    await this.ingestWithAdapter(this.adyenAdapter(), raw);
   }
 
   /** Generic ingress: any adapter → canonical events → recovery cases. */
@@ -81,6 +87,19 @@ export class RecoveryCaseService {
       webhookPassword: process.env.CHARGEBEE_WEBHOOK_PASSWORD,
     });
     return this.chargebee;
+  }
+
+  private adyenAdapter(): AdyenAdapter {
+    if (this.adyen) return this.adyen;
+    // TODO(lift): resolve the AdyenAdapter per merchant (by merchantAccount / OAuth).
+    this.adyen = new AdyenAdapter({
+      apiKey: process.env.ADYEN_API_KEY ?? '',
+      merchantAccount: process.env.ADYEN_MERCHANT_ACCOUNT ?? '',
+      merchantId: process.env.ADYEN_MERCHANT_ID ?? 'mrc_unknown',
+      hmacKey: process.env.ADYEN_HMAC_KEY,
+      baseUrl: process.env.ADYEN_CHECKOUT_URL,
+    });
+    return this.adyen;
   }
 
   private async handleEvent(event: CanonicalEvent): Promise<void> {
