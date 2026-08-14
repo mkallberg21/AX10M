@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { CanonicalEvent, DeclineEvent, Invoice, MrrTier, PaymentMethod } from '@lift/canonical';
 import { DeclineCode, DeclineFamily, familyOf } from '@lift/canonical';
 import type { ProcessorAdapter, RawWebhook } from '@lift/poal';
-import { AdyenAdapter, BraintreeAdapter, ChargebeeAdapter, idempotencyKey } from '@lift/poal';
+import { AdyenAdapter, BraintreeAdapter, ChargebeeAdapter, GoCardlessAdapter, idempotencyKey } from '@lift/poal';
 import {
   assign,
   HashChainedLedger,
@@ -45,6 +45,7 @@ export class RecoveryCaseService {
   private chargebee?: ChargebeeAdapter;
   private adyen?: AdyenAdapter;
   private braintree?: BraintreeAdapter;
+  private gocardless?: GoCardlessAdapter;
 
   /**
    * Entry point from the webhook controller. Verify + normalize, then process
@@ -70,6 +71,11 @@ export class RecoveryCaseService {
   /** Braintree ingress (bt_signature-verified webhooks). */
   async ingestBraintreeWebhook(raw: RawWebhook): Promise<void> {
     await this.ingestWithAdapter(this.braintreeAdapter(), raw);
+  }
+
+  /** GoCardless ingress (Webhook-Signature-verified; bank debit). */
+  async ingestGoCardlessWebhook(raw: RawWebhook): Promise<void> {
+    await this.ingestWithAdapter(this.gocardlessAdapter(), raw);
   }
 
   /** Generic ingress: any adapter → canonical events → recovery cases. */
@@ -119,6 +125,18 @@ export class RecoveryCaseService {
       environment: process.env.BRAINTREE_ENVIRONMENT === 'production' ? 'production' : 'sandbox',
     });
     return this.braintree;
+  }
+
+  private gocardlessAdapter(): GoCardlessAdapter {
+    if (this.gocardless) return this.gocardless;
+    // TODO(lift): resolve the GoCardlessAdapter per merchant (by OAuth/organisation).
+    this.gocardless = new GoCardlessAdapter({
+      accessToken: process.env.GOCARDLESS_ACCESS_TOKEN ?? '',
+      webhookSecret: process.env.GOCARDLESS_WEBHOOK_SECRET ?? '',
+      merchantId: process.env.GOCARDLESS_MERCHANT_ID ?? 'mrc_unknown',
+      environment: process.env.GOCARDLESS_ENVIRONMENT === 'live' ? 'live' : 'sandbox',
+    });
+    return this.gocardless;
   }
 
   private async handleEvent(event: CanonicalEvent): Promise<void> {

@@ -56,7 +56,7 @@ export const PROCESSOR_REGISTRY: readonly ProcessorDescriptor[] = [
   { id: 'stripe-billing', displayName: 'Stripe Billing', segment: 'billing-platform', mode: 'co-drive', status: 'planned' },
   { id: 'vindicia', displayName: 'Vindicia', segment: 'billing-platform', mode: 'advisory', status: 'planned' },
   // Bank debit
-  { id: 'gocardless', displayName: 'GoCardless', segment: 'bank-debit', mode: 'co-drive', status: 'skeleton' },
+  { id: 'gocardless', displayName: 'GoCardless', segment: 'bank-debit', mode: 'co-drive', status: 'implemented' },
   // Merchant of Record
   { id: 'paddle', displayName: 'Paddle', segment: 'merchant-of-record', mode: 'advisory', status: 'skeleton' },
   // App stores (advisory-only, measurement + prompt)

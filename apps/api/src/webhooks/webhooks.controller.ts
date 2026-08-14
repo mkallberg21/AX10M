@@ -76,4 +76,24 @@ export class WebhooksController {
     await this.recovery.ingestBraintreeWebhook({ body: raw, headers: {} });
     return { received: true };
   }
+
+  /**
+   * GoCardless webhook ingress (PROCESSORS.md §3, bank debit). GoCardless signs the
+   * raw body with HMAC-SHA256 in the `Webhook-Signature` header; the adapter verifies
+   * it before trusting the payload, and honors `retry_if_possible` to deconflict with
+   * GoCardless's own Success+ retries.
+   */
+  @Post('gocardless')
+  @HttpCode(200)
+  async gocardless(
+    @Req() req: RawBodyRequest<Request>,
+    @Headers('webhook-signature') signature: string | undefined,
+  ): Promise<{ received: true }> {
+    const raw = req.rawBody?.toString('utf8') ?? '';
+    await this.recovery.ingestGoCardlessWebhook({
+      body: raw,
+      headers: { 'webhook-signature': signature ?? '' },
+    });
+    return { received: true };
+  }
 }

@@ -3,8 +3,10 @@ import { PROCESSOR_REGISTRY, coverageSummary, getProcessor } from './registry.js
 import { AdyenAdapter } from './adyen/index.js';
 import { BraintreeAdapter } from './braintree/index.js';
 import { ChargebeeAdapter } from './chargebee/index.js';
-import { GoCardlessAdapter } from './gocardless.js';
+import { GoCardlessAdapter } from './gocardless/index.js';
 import { PaddleAdapter } from './paddle.js';
+import { BaseAdapter } from './base.js';
+import type { CapabilityMatrix } from '../adapter.js';
 
 describe('processor registry', () => {
   it('every processor is drive, co-drive, or advisory and the counts sum to the total', () => {
@@ -32,7 +34,7 @@ describe('adapter ↔ registry consistency', () => {
     new AdyenAdapter({ apiKey: 'x', merchantAccount: 'x', merchantId: 'm', hmacKey: 'x' }),
     new BraintreeAdapter({ merchantId: 'm', braintreeMerchantId: 'x', publicKey: 'x', privateKey: 'x' }),
     new ChargebeeAdapter({ site: 'x', apiKey: 'x', merchantId: 'm' }),
-    new GoCardlessAdapter({ accessToken: 'x', webhookSecret: 'x' }),
+    new GoCardlessAdapter({ accessToken: 'x', webhookSecret: 'x', merchantId: 'm' }),
     new PaddleAdapter({ apiKey: 'x', webhookSecret: 'x' }),
   ];
 
@@ -63,10 +65,27 @@ describe('advisory-mode safety', () => {
   });
 });
 
-describe('skeleton drive/co-drive adapters', () => {
-  it('surface an unimplemented (not advisory) error on attemptCharge', async () => {
-    // GoCardless is still a capability-only skeleton; Adyen/Braintree/Chargebee are implemented.
-    const gocardless = new GoCardlessAdapter({ accessToken: 'x', webhookSecret: 'x' });
-    await expect(gocardless.attemptCharge({} as never, {} as never, 'idem_2')).rejects.toThrow(/TODO\(lift\)/);
+describe('BaseAdapter default (unimplemented drive/co-drive skeleton)', () => {
+  // All real drive/co-drive adapters are now implemented; this verifies the base
+  // class default: a non-advisory skeleton surfaces a clear TODO error, never a no-op.
+  class SkeletonAdapter extends BaseAdapter {
+    readonly id = 'skeleton';
+    capabilities(): CapabilityMatrix {
+      return {
+        integrationMode: 'co-drive',
+        externalRetryControl: true,
+        accountUpdater: false,
+        networkTokens: false,
+        partialCapture: false,
+        pauseNativeDunning: false,
+        webhooks: true,
+        listPaymentMethods: false,
+      };
+    }
+  }
+
+  it('surfaces an unimplemented (not advisory) error on attemptCharge', async () => {
+    const skeleton = new SkeletonAdapter();
+    await expect(skeleton.attemptCharge({} as never, {} as never, 'idem_2')).rejects.toThrow(/TODO\(lift\)/);
   });
 });

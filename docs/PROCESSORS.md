@@ -118,7 +118,7 @@ Prioritized by market share × ease × capability completeness:
 4. **Chargebee** — ✅ **implemented end-to-end** (`collect_payment` on a stored token, webhook Basic-auth verify, reconciliation poll). Best billing-platform drive surface.
 5. **Recurly** — rich webhooks + native updater.
 6. **Checkout.com / Cybersource** — enterprise acquirers, drive.
-7. **GoCardless** — opens bank-debit (EU/UK/ANZ) recovery, a segment most card-only competitors ignore.
+7. **GoCardless** — ✅ **implemented end-to-end** (retry-action co-drive with `will_attempt_retry`/Success+ deconfliction, HMAC-SHA256-signed webhooks, real failed-payment reconciliation poll, mandate listing). Opens bank-debit (EU/UK/ANZ) recovery, a segment most card-only competitors ignore.
 8. **Zuora / Stripe Billing** — enterprise co-drive.
 9. **Square / Nuvei / Global Payments / Worldpay** — breadth.
 10. **Advisory tier** (Paddle, Apple, Google, Vindicia, PayU) — measurement + prompt integrations; ship after the drive tier proves the engine.

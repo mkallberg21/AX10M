@@ -8,5 +8,5 @@ export * from './registry.js';
 export * from './adyen/index.js';
 export * from './braintree/index.js';
 export * from './chargebee/index.js';
-export * from './gocardless.js';
+export * from './gocardless/index.js';
 export * from './paddle.js';
