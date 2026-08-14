@@ -19,6 +19,8 @@ export type ProcessorSegment =
   | 'billing-platform'
   | 'bank-debit'
   | 'merchant-of-record'
+  | 'ecommerce-platform'
+  | 'creator-commerce'
   | 'app-store';
 
 export type AdapterStatus = 'implemented' | 'skeleton' | 'planned';
@@ -37,10 +39,13 @@ export const PROCESSOR_REGISTRY: readonly ProcessorDescriptor[] = [
   { id: 'stripe', displayName: 'Stripe', segment: 'card-gateway', mode: 'drive', status: 'implemented' },
   { id: 'adyen', displayName: 'Adyen', segment: 'card-gateway', mode: 'drive', status: 'implemented' },
   { id: 'braintree', displayName: 'Braintree (PayPal)', segment: 'card-gateway', mode: 'drive', status: 'implemented' },
-  { id: 'checkout', displayName: 'Checkout.com', segment: 'card-gateway', mode: 'drive', status: 'planned' },
+  { id: 'paypal', displayName: 'PayPal', segment: 'card-gateway', mode: 'drive', status: 'implemented' },
+  { id: 'checkout', displayName: 'Checkout.com', segment: 'card-gateway', mode: 'drive', status: 'implemented' },
+  { id: 'worldpay', displayName: 'Worldpay / FIS', segment: 'card-gateway', mode: 'drive', status: 'implemented' },
+  { id: 'tsys', displayName: 'TSYS (Global Payments)', segment: 'card-gateway', mode: 'drive', status: 'implemented' },
+  { id: 'elavon', displayName: 'Elavon (Converge)', segment: 'card-gateway', mode: 'drive', status: 'implemented' },
   { id: 'cybersource', displayName: 'Cybersource (Visa)', segment: 'card-gateway', mode: 'drive', status: 'planned' },
   { id: 'authorizenet', displayName: 'Authorize.Net', segment: 'card-gateway', mode: 'drive', status: 'planned' },
-  { id: 'worldpay', displayName: 'Worldpay / FIS', segment: 'card-gateway', mode: 'drive', status: 'planned' },
   { id: 'fiserv', displayName: 'Fiserv', segment: 'card-gateway', mode: 'co-drive', status: 'planned' },
   { id: 'globalpayments', displayName: 'Global Payments', segment: 'card-gateway', mode: 'drive', status: 'planned' },
   { id: 'square', displayName: 'Square', segment: 'card-gateway', mode: 'drive', status: 'planned' },
@@ -50,15 +55,38 @@ export const PROCESSOR_REGISTRY: readonly ProcessorDescriptor[] = [
   { id: 'payu', displayName: 'PayU', segment: 'card-gateway', mode: 'advisory', status: 'planned' },
   // Subscription-billing platforms
   { id: 'chargebee', displayName: 'Chargebee', segment: 'billing-platform', mode: 'drive', status: 'implemented' },
-  { id: 'recurly', displayName: 'Recurly', segment: 'billing-platform', mode: 'co-drive', status: 'planned' },
-  { id: 'zuora', displayName: 'Zuora', segment: 'billing-platform', mode: 'co-drive', status: 'planned' },
-  { id: 'maxio', displayName: 'Maxio (Chargify/SaaSOptics)', segment: 'billing-platform', mode: 'drive', status: 'planned' },
+  { id: 'recurly', displayName: 'Recurly', segment: 'billing-platform', mode: 'co-drive', status: 'implemented' },
+  { id: 'zuora', displayName: 'Zuora', segment: 'billing-platform', mode: 'co-drive', status: 'implemented' },
+  { id: 'maxio', displayName: 'Maxio (Chargify/SaaSOptics)', segment: 'billing-platform', mode: 'drive', status: 'implemented' },
   { id: 'stripe-billing', displayName: 'Stripe Billing', segment: 'billing-platform', mode: 'co-drive', status: 'planned' },
   { id: 'vindicia', displayName: 'Vindicia', segment: 'billing-platform', mode: 'advisory', status: 'planned' },
+  // Enterprise billing / monetization platforms (co-drive; skeleton connectors — capability
+  // matrix real, live API integration TODO given proprietary/partner-gated APIs).
+  { id: 'appdirect', displayName: 'AppDirect', segment: 'billing-platform', mode: 'co-drive', status: 'skeleton' },
+  { id: 'aria', displayName: 'Aria Systems', segment: 'billing-platform', mode: 'co-drive', status: 'skeleton' },
+  { id: 'billingplatform', displayName: 'BillingPlatform', segment: 'billing-platform', mode: 'co-drive', status: 'skeleton' },
+  { id: 'blulogix', displayName: 'BluLogix', segment: 'billing-platform', mode: 'co-drive', status: 'skeleton' },
+  { id: 'frisbii', displayName: 'Frisbii (Reepay/Billwerk)', segment: 'billing-platform', mode: 'co-drive', status: 'skeleton' },
+  { id: 'gotransverse', displayName: 'Gotransverse', segment: 'billing-platform', mode: 'co-drive', status: 'skeleton' },
+  { id: 'keylight', displayName: 'Keylight', segment: 'billing-platform', mode: 'co-drive', status: 'skeleton' },
+  { id: 'logisense', displayName: 'LogiSense', segment: 'billing-platform', mode: 'co-drive', status: 'skeleton' },
+  { id: 'oracle-brm', displayName: 'Oracle (BRM / Subscription Mgmt)', segment: 'billing-platform', mode: 'co-drive', status: 'skeleton' },
+  { id: 'recvue', displayName: 'RecVue', segment: 'billing-platform', mode: 'co-drive', status: 'skeleton' },
+  { id: 'sap-brim', displayName: 'SAP (BRIM / Subscription Billing)', segment: 'billing-platform', mode: 'co-drive', status: 'skeleton' },
+  { id: 'salesforce-revenue-cloud', displayName: 'Salesforce Revenue Cloud Billing', segment: 'billing-platform', mode: 'co-drive', status: 'skeleton' },
+  { id: 'onebill', displayName: 'OneBill', segment: 'billing-platform', mode: 'co-drive', status: 'skeleton' },
   // Bank debit
   { id: 'gocardless', displayName: 'GoCardless', segment: 'bank-debit', mode: 'co-drive', status: 'implemented' },
   // Merchant of Record
   { id: 'paddle', displayName: 'Paddle', segment: 'merchant-of-record', mode: 'advisory', status: 'skeleton' },
+  // E-commerce / storefront platforms
+  { id: 'shopify', displayName: 'Shopify', segment: 'ecommerce-platform', mode: 'co-drive', status: 'implemented' },
+  { id: 'woocommerce', displayName: 'WooCommerce', segment: 'ecommerce-platform', mode: 'co-drive', status: 'implemented' },
+  { id: 'bigcommerce', displayName: 'BigCommerce', segment: 'ecommerce-platform', mode: 'advisory', status: 'implemented' },
+  // Creator-commerce / cart platforms (advisory: platform owns token + dunning; measure + advise)
+  { id: 'kajabi', displayName: 'Kajabi', segment: 'creator-commerce', mode: 'advisory', status: 'implemented' },
+  { id: 'thrivecart', displayName: 'ThriveCart', segment: 'creator-commerce', mode: 'advisory', status: 'implemented' },
+  { id: 'samcart', displayName: 'SamCart', segment: 'creator-commerce', mode: 'advisory', status: 'implemented' },
   // App stores (advisory-only, measurement + prompt)
   { id: 'apple-iap', displayName: 'Apple App Store', segment: 'app-store', mode: 'advisory', status: 'planned' },
   { id: 'google-play', displayName: 'Google Play', segment: 'app-store', mode: 'advisory', status: 'planned' },

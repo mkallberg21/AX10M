@@ -108,20 +108,45 @@ platform run a retry/dunning engine AX10M must disable or coexist with.
 
 ---
 
-## 4. Adapter rollout order
+## 4. Adapter coverage
 
-Prioritized by market share × ease × capability completeness:
+The machine-readable roster is `PROCESSOR_REGISTRY` (`@ax10m/poal`), with `status ∈
+{implemented, skeleton, planned}` and `coverageSummary()` for live counts. Current state:
 
-1. **Stripe** — ✅ **implemented end-to-end** (invoice `/pay` retries on a stored PaymentMethod, Stripe-Signature-verified webhooks, open-invoice reconciliation poll, card listing). Largest SaaS footprint; drive; the coexistence-with-Smart-Retries story.
-2. **Adyen** — ✅ **implemented end-to-end** (Checkout `/payments` idempotent token retries, HMAC-verified notification ingestion, stored-method listing). Clean drive, no competing dunning.
-3. **Braintree/PayPal** — ✅ **implemented end-to-end** (classic-gateway `sale` on a vault token, HMAC-SHA1-signed webhook ingestion, vaulted-card listing). Huge footprint, auto network tokens.
-4. **Chargebee** — ✅ **implemented end-to-end** (`collect_payment` on a stored token, webhook Basic-auth verify, reconciliation poll). Best billing-platform drive surface.
-5. **Recurly** — rich webhooks + native updater.
-6. **Checkout.com / Cybersource** — enterprise acquirers, drive.
-7. **GoCardless** — ✅ **implemented end-to-end** (retry-action co-drive with `will_attempt_retry`/Success+ deconfliction, HMAC-SHA256-signed webhooks, real failed-payment reconciliation poll, mandate listing). Opens bank-debit (EU/UK/ANZ) recovery, a segment most card-only competitors ignore.
-8. **Zuora / Stripe Billing** — enterprise co-drive.
-9. **Square / Nuvei / Global Payments / Worldpay** — breadth.
-10. **Advisory tier** (Paddle, Apple, Google, Vindicia, PayU) — measurement + prompt integrations; ship after the drive tier proves the engine.
+**Implemented end-to-end** (real transport, fail-closed webhook verification, token-only
+SAQ-A charge/collect with a deterministic idempotency key, decline-vs-error split, tests):
+
+- **Card gateways (drive):** Stripe, Adyen, Braintree, **PayPal**, **Checkout.com**,
+  **Worldpay**, **TSYS**, **Elavon**. (Stripe/Adyen: `/pay`·`/payments`; Braintree vault
+  `sale`; PayPal Orders create+capture on a vault token; Checkout `/payments` on a source
+  id; Worldpay Access `/api/payments` on a token; TSYS/Elavon token card-on-file sale.)
+- **Billing platforms:** **Chargebee** (drive), **Recurly** (co-drive), **Zuora**
+  (co-drive), **Maxio/Chargify** (drive) — collect/retry an invoice or subscription balance.
+- **Bank debit:** **GoCardless** (co-drive; `will_attempt_retry`/Success+ deconfliction).
+- **E-commerce (co-drive):** **Shopify** (`subscriptionBillingAttemptCreate`),
+  **WooCommerce** (Subscriptions renewal retry). Co-drive = AX10M triggers the billing
+  attempt; the platform's gateway performs the charge (result settles via webhook → `pending`).
+- **Advisory (measure + prompt; platform owns token + dunning):** **BigCommerce**,
+  **Kajabi**, **ThriveCart**, **SamCart** — fail-closed webhook verification + canonical
+  normalization so the holdout runs on the comms we control. `attemptCharge` intentionally
+  throws (BaseAdapter advisory guard). Paddle stays advisory-skeleton.
+
+**Skeleton connectors** (capability matrix real, live API integration TODO — proprietary /
+partner-gated APIs whose exact endpoint/field/version contract must be established with the
+vendor): AppDirect, Aria Systems, BillingPlatform, BluLogix, Frisbii, Gotransverse, Keylight,
+LogiSense, Oracle (BRM), RecVue, SAP (BRIM), Salesforce Revenue Cloud, OneBill — all co-drive
+billing platforms that collect through an underlying gateway.
+
+**Planned:** Cybersource, Authorize.Net, Fiserv, Global Payments, Square, Mollie, Nuvei,
+Razorpay, PayU, Stripe Billing, Vindicia, Apple/Google IAP (advisory).
+
+> **Charge scheduling.** Implemented adapters are driven by the durable charge scheduler
+> (`@ax10m/scheduler`): a runtime-agnostic recovery saga (plan → sleep-until-`retryAt` →
+> execute → loop-on-failure → stop) hosted by Temporal, with exactly-once charging via the
+> saga-owned `attemptNumber` → deterministic idempotency key. See ARCHITECTURE.md §4.3.
+
+Per-merchant webhook ingestion resolves the right adapter by Connect account / site / OAuth
+(TODO(ax10m) — the class + capability set exist for every implemented processor above).
 
 ---
 

@@ -258,7 +258,7 @@ export class RecoveryCaseService {
     proposed: ProposedAction;
     attemptNumber: number;
     shadow: boolean;
-  }): Promise<'suppressed' | 'shadowed' | 'attempted'> {
+  }): Promise<{ result: 'suppressed' | 'shadowed' | 'attempted'; outcome?: ChargeOutcome }> {
     const decision = evaluateGuardrail(params.proposed);
     if (!decision.allow) {
       this.ledger.append({
@@ -272,7 +272,7 @@ export class RecoveryCaseService {
         },
       });
       this.logger.debug(`Suppressed: ${decision.reason}`);
-      return 'suppressed';
+      return { result: 'suppressed' };
     }
 
     // Sanity: the decline family the guardrail saw should match the taxonomy.
@@ -293,7 +293,7 @@ export class RecoveryCaseService {
         occurredAt: new Date().toISOString(),
         detail: { invoiceId: params.invoice.id, idempotencyKey: key, shadow: true },
       });
-      return 'shadowed';
+      return { result: 'shadowed' };
     }
 
     // Phase 1 — move money. `attemptNumber` is owned by the caller (the durable
@@ -327,7 +327,7 @@ export class RecoveryCaseService {
         },
       });
     }
-    return 'attempted';
+    return { result: 'attempted', outcome: result.outcome };
   }
 
   /**
@@ -337,9 +337,21 @@ export class RecoveryCaseService {
    * later compare "what we'd have done" against the control arm's realized outcome.
    */
   private planRecovery(invoice: Invoice, decline?: DeclineEvent): RecoveryDecision {
-    const attemptsSoFar = this.attempts.get(invoice.id) ?? 0;
-    const features = deriveFeatures(invoice, decline, attemptsSoFar);
-    const decision = this.policy.decide(features, { now: new Date().toISOString(), methods: [] });
+    return this.planAttempt({ invoice, decline, attemptNumber: (this.attempts.get(invoice.id) ?? 0) + 1 });
+  }
+
+  /**
+   * Run the recovery engine for one attempt and RECORD its decision — no money, no
+   * guardrail. This is the scheduler's `plan` step (it reads `retryAt` to decide when
+   * to sleep) and shadow-mode's brain. Pure w.r.t. money; only appends a ledger note.
+   */
+  planAttempt(params: { invoice: Invoice; method?: PaymentMethod; decline?: DeclineEvent; attemptNumber: number }): RecoveryDecision {
+    const { invoice, method, decline, attemptNumber } = params;
+    const features = deriveFeatures(invoice, decline, attemptNumber - 1);
+    const methods: AvailableMethod[] = method
+      ? [{ ref: method.processorRef, isDefault: true, autoUpdated: method.autoUpdated }]
+      : [];
+    const decision = this.policy.decide(features, { now: new Date().toISOString(), methods });
     this.ledger.append({
       merchantId: invoice.merchantId,
       type: 'recovery.planned',
@@ -380,7 +392,7 @@ export class RecoveryCaseService {
     localHour?: number;
     minutesSinceLastAttempt?: number;
     shadow: boolean;
-  }): Promise<{ action: RecoveryActionOutcome; decision: RecoveryDecision }> {
+  }): Promise<{ action: RecoveryActionOutcome; outcome?: ChargeOutcome; decision: RecoveryDecision }> {
     const { adapter, invoice, method, attemptNumber, shadow } = params;
     const attemptsSoFar = attemptNumber - 1;
     const features = deriveFeatures(invoice, params.decline, attemptsSoFar);
@@ -427,8 +439,8 @@ export class RecoveryCaseService {
       hasConsent: true,
       globallyOptedOut: false,
     };
-    const result = await this.attemptRecovery({ adapter, invoice, method, proposed, attemptNumber, shadow });
-    return { action: result, decision };
+    const exec = await this.attemptRecovery({ adapter, invoice, method, proposed, attemptNumber, shadow });
+    return { action: exec.result, outcome: exec.outcome, decision };
   }
 
   /** Expose the ledger head so callers can notarize / build statements. */
@@ -439,6 +451,9 @@ export class RecoveryCaseService {
 
 /** Outcome of an end-to-end recovery decision — engine verdict OR guardrail/execution result. */
 type RecoveryActionOutcome = 'card_update_comms' | 'suppress' | 'suppressed' | 'shadowed' | 'attempted';
+
+/** Realized processor outcome of a charge attempt. */
+type ChargeOutcome = 'succeeded' | 'failed' | 'pending';
 
 /**
  * Derive the recovery-engine feature vector from a failed invoice + its decline.

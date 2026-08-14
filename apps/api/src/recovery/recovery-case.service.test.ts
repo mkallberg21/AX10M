@@ -152,7 +152,7 @@ describe('RecoveryCaseService.executeRecovery', () => {
     const adapter = new FakeAdapter('failed');
     // The guardrail is the hard-constraint layer: even a proposed retry is blocked
     // once the all-time cap (DEFAULT_GUARDRAIL_POLICY.maxRetryAttempts = 8) is passed.
-    const action = await svc.attemptRecovery({
+    const { result } = await svc.attemptRecovery({
       adapter,
       invoice,
       method,
@@ -170,7 +170,7 @@ describe('RecoveryCaseService.executeRecovery', () => {
         globallyOptedOut: false,
       },
     });
-    expect(action).toBe('suppressed');
+    expect(result).toBe('suppressed');
     expect(adapter.charges).toHaveLength(0);
   });
 });
