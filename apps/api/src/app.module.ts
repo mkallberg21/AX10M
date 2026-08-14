@@ -3,15 +3,17 @@ import { HealthModule } from './health/health.module.js';
 import { WebhooksModule } from './webhooks/webhooks.module.js';
 import { ReconcilerModule } from './reconciler/reconciler.module.js';
 import { RecoveryModule } from './recovery/recovery.module.js';
+import { OnboardingModule } from './onboarding/onboarding.module.js';
 
 /**
  * Root module wiring the Phase-0 proof engine:
- *  - Webhooks: Stripe ingress → canonical events.
+ *  - Webhooks: Stripe + Chargebee ingress → canonical events.
  *  - Reconciler: polling truth source (dual ingestion).
  *  - Recovery: wires POAL + attribution + guardrail into a RecoveryCase service.
+ *  - Onboarding: shadow-first onboarding (connect → shadow → activate).
  *  - Health: liveness/readiness.
  */
 @Module({
-  imports: [HealthModule, WebhooksModule, ReconcilerModule, RecoveryModule],
+  imports: [HealthModule, WebhooksModule, ReconcilerModule, RecoveryModule, OnboardingModule],
 })
 export class AppModule {}

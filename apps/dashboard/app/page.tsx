@@ -1,6 +1,7 @@
 import {
   formatMoney,
   formatPct,
+  getOnboarding,
   getProjectedStatement,
   getReconciliation,
 } from './mock-data.js';
@@ -20,10 +21,37 @@ export default function Page() {
   const r = statement.result;
   const currency = statement.currency;
   const { export: recon, recon: tie } = getReconciliation();
+  const onb = getOnboarding();
+  const day = Math.floor(onb.progress.elapsedDays);
 
   return (
     <main className="container">
-      <span className="badge">Shadow mode · measuring your true baseline</span>
+      <div className="onboard">
+        <div className="onboard-top">
+          <span className="badge">
+            Shadow mode · day {day} of {onb.state.shadowWindowDays} · measuring your true baseline
+          </span>
+          <button className="activate" disabled={!onb.readiness.ready} title={onb.readiness.reasons.join(' · ')}>
+            {onb.readiness.ready ? 'Activate Lift →' : `Activate at day ${onb.state.shadowWindowDays}`}
+          </button>
+        </div>
+        <div className="progress" role="progressbar" aria-valuenow={Math.round(onb.progress.pctComplete * 100)}>
+          <div className="fill" style={{ width: `${Math.round(onb.progress.pctComplete * 100)}%` }} />
+        </div>
+        <div className="onboard-stats">
+          <div><span className="k">Projected monthly uplift</span><span className="v accent">{formatMoney(onb.projection.projectedMonthlyValue.amount)}</span></div>
+          <div><span className="k">Would-be fee (12%)</span><span className="v">{formatMoney(onb.projection.projectedMonthlyFee.amount)}</span></div>
+          <div><span className="k">Conservative low end</span><span className="v">{formatMoney(onb.projection.projectedMonthlyConservative.amount)}</span></div>
+          <div><span className="k">Your baseline recovery</span><span className="v">{formatPct(onb.projection.baselineRecoveryRate)}</span></div>
+        </div>
+        <p className="onboard-note">
+          Projected from {onb.projection.observedFailures.toLocaleString()} observed failures — a model
+          estimate, <strong>not yet holdout-verified</strong>. Activate to begin the live randomized
+          holdout; you&apos;re then billed only 12% of the proven lower bound. You&apos;ve seen the money
+          before paying a cent.
+        </p>
+      </div>
+
       <h1>Projected monthly uplift</h1>
       <p className="subtitle">
         We ran a live randomized holdout alongside your existing Stripe Smart

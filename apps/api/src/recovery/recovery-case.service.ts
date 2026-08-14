@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { CanonicalEvent, DeclineEvent, Invoice, MrrTier, PaymentMethod } from '@lift/canonical';
-import { DeclineFamily, familyOf } from '@lift/canonical';
+import { DeclineCode, DeclineFamily, familyOf } from '@lift/canonical';
 import type { ProcessorAdapter, RawWebhook } from '@lift/poal';
 import { ChargebeeAdapter, idempotencyKey } from '@lift/poal';
 import {
@@ -13,6 +13,7 @@ import {
   evaluate as evaluateGuardrail,
   type ProposedAction,
 } from '@lift/guardrail';
+import { OnboardingService } from '../onboarding/onboarding.service.js';
 
 /**
  * RecoveryCaseService — the integration seam of the Phase-0 proof engine.
@@ -32,6 +33,8 @@ import {
 @Injectable()
 export class RecoveryCaseService {
   private readonly logger = new Logger(RecoveryCaseService.name);
+
+  constructor(private readonly onboarding: OnboardingService) {}
 
   // TODO(lift): one ledger per merchant, persisted to append-only Postgres.
   private readonly ledger = new HashChainedLedger();
@@ -86,12 +89,25 @@ export class RecoveryCaseService {
       if (payload.invoice) {
         const stratum = deriveStratum(payload.invoice, payload.decline);
         const { bucket } = this.openCase({ invoice: payload.invoice, stratum, occurredAt: event.occurredAt });
+        // Feed the shadow-mode baseline measurement (no-op unless the merchant is onboarding).
+        this.onboarding.recordFailure(payload.invoice.merchantId, {
+          invoiceId: payload.invoice.id,
+          declineCode: payload.decline?.code ?? DeclineCode.Unknown,
+          amount: payload.invoice.amount.amount,
+        });
         this.logger.debug(`Opened recovery case for ${payload.invoice.id} → ${bucket}`);
       }
       return;
     }
-    // TODO(lift): handle invoice.paid (close case), payment_method.updated (retry),
-    // subscription.updated (state sync).
+    if (event.type === 'invoice.paid') {
+      const payload = event.payload as { invoice?: Invoice };
+      if (payload.invoice) {
+        // During shadow, a paid invoice is a BASELINE recovery (Lift isn't acting).
+        this.onboarding.recordBaselineRecovery(payload.invoice.merchantId, payload.invoice.id);
+      }
+      return;
+    }
+    // TODO(lift): handle payment_method.updated (retry), subscription.updated (state sync).
     this.logger.debug(`Handling ${event.type} for ${event.merchantId}`);
   }
 

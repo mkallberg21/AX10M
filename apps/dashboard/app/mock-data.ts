@@ -28,6 +28,18 @@ import {
   type ReconResult,
   type SettledOutcome,
 } from '@lift/attribution';
+import { DeclineCode } from '@lift/canonical';
+import {
+  beginOnboarding,
+  projectShadow,
+  readiness,
+  shadowProgress,
+  type OnboardingState,
+  type Readiness,
+  type ShadowObservation,
+  type ShadowProgress,
+  type ShadowProjection,
+} from '@lift/onboarding';
 
 interface CohortSpec {
   stratum: string;
@@ -162,6 +174,52 @@ export function getReconciliation(): { export: ReconciliationExport; recon: Reco
   const recon = reconcileAgainstPayout(outcomes, payout);
   cachedRecon = { export: exportDoc, recon };
   return cachedRecon;
+}
+
+// ── Shadow-first onboarding (the "see the money before you pay" banner) ─────────
+
+const SHADOW_START = '2026-08-06T00:00:00.000Z';
+const SHADOW_NOW = '2026-08-15T00:00:00.000Z'; // day 9 of 14
+
+const DECLINE_BY_STRATUM: Record<string, DeclineCode> = {
+  'enterprise|soft|na': DeclineCode.InsufficientFunds,
+  'mid|soft|na': DeclineCode.InsufficientFunds,
+  'small|gray|emea': DeclineCode.ExpiredCard, // card-updatable — a big projected win
+  'micro|hard|apac': DeclineCode.LostCard, // hard: projected ~zero, we suppress
+};
+
+/** Baseline-only failures observed over the shadow window (the merchant's own stack). */
+function buildShadowObservations(): ShadowObservation[] {
+  const obs: ShadowObservation[] = [];
+  for (const c of COHORTS) {
+    const total = c.controlN + c.treatmentN; // the merchant's whole failure volume
+    const recovered = Math.round(total * c.controlRate); // baseline recovery rate
+    const code = DECLINE_BY_STRATUM[c.stratum] ?? DeclineCode.Unknown;
+    for (let i = 0; i < total; i++) {
+      obs.push({ declineCode: code, amount: c.meanAmount, baselineRecovered: i < recovered });
+    }
+  }
+  return obs;
+}
+
+export interface OnboardingView {
+  state: OnboardingState;
+  progress: ShadowProgress;
+  projection: ShadowProjection;
+  readiness: Readiness;
+}
+
+let cachedOnboarding: OnboardingView | undefined;
+
+/** Mocked shadow-first onboarding status at day 9 of the 14-day window. */
+export function getOnboarding(): OnboardingView {
+  if (cachedOnboarding) return cachedOnboarding;
+  const state = beginOnboarding({ merchantId: 'mrc_demo', processor: 'chargebee', now: SHADOW_START });
+  const progress = shadowProgress(state, SHADOW_NOW);
+  const projection = projectShadow(buildShadowObservations(), progress.elapsedDays);
+  const ready = readiness(state, projection, progress);
+  cachedOnboarding = { state, progress, projection, readiness: ready };
+  return cachedOnboarding;
 }
 
 export function formatMoney(minorUnits: number, currency = 'USD'): string {
