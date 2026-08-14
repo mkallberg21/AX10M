@@ -74,4 +74,35 @@ describe('guardrail.evaluate', () => {
     expect(d.allow).toBe(false);
     if (!d.allow) expect(d.reason).toBe(SuppressionReason.NoConsent);
   });
+
+  it('fails closed on an unrecognized action kind', () => {
+    const d = evaluate({ ...retryAction, kind: 'chargeback_dispute' as never });
+    expect(d.allow).toBe(false);
+    if (!d.allow) expect(d.reason).toBe(SuppressionReason.UnknownAction);
+  });
+});
+
+describe('card-network retry-cap compliance', () => {
+  it('suppresses a retry once the network window cap is reached', () => {
+    const d = evaluate({ ...retryAction, cardNetwork: 'visa', attemptsInWindow: 15 });
+    expect(d.allow).toBe(false);
+    if (!d.allow) expect(d.reason).toBe(SuppressionReason.NetworkWindowCapReached);
+  });
+
+  it('allows a retry still under the network window cap', () => {
+    expect(evaluate({ ...retryAction, cardNetwork: 'visa', attemptsInWindow: 3 })).toEqual({ allow: true });
+  });
+
+  it('suppresses a retry attempted before the min inter-attempt interval', () => {
+    const d = evaluate({ ...retryAction, cardNetwork: 'mastercard', minutesSinceLastAttempt: 5 });
+    expect(d.allow).toBe(false);
+    if (!d.allow) expect(d.reason).toBe(SuppressionReason.MinIntervalNotElapsed);
+  });
+
+  it('respects tighter per-network caps (mastercard 10 < visa 15)', () => {
+    const mc = evaluate({ ...retryAction, cardNetwork: 'mastercard', attemptsInWindow: 10 });
+    expect(mc.allow).toBe(false);
+    const visa = evaluate({ ...retryAction, cardNetwork: 'visa', attemptsInWindow: 10 });
+    expect(visa.allow).toBe(true);
+  });
 });

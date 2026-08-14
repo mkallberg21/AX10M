@@ -5,14 +5,25 @@
 > recorded in a signed, reconcilable ledger. The only recovery engine that proves
 > its lift with a live control group instead of a trust-me baseline.
 
-The end-to-end proof engine: a merchant connects (OAuth, zero code), AX10M measures
-their true baseline in **shadow mode** for 14 days and shows the *projected* uplift
-and would-be fee **before** activation, then — once live — runs a stratified
-randomized holdout, bills only the statistically-proven lower bound, and hands the
-CFO a signed statement they can reconcile penny-for-penny against the processor's
-own payout report.
+A merchant connects (OAuth, zero code), AX10M measures their true baseline in
+**shadow mode**, shows the *projected* uplift and would-be fee **before** activation,
+then — once live — runs a stratified randomized holdout, drives recovery with the
+retry engine, bills only the statistically-proven lower bound, and hands the CFO a
+signed statement they can reconcile **penny-for-penny against the processor's own
+payout**. That reconcilable ledger is the defensible edge; the statistics are how we
+keep the bill honest.
 
-**Design & specs:** [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) ·
+> ### Honest status (read `docs/STRATEGY.md`)
+> The **product is the recovery engine** — the retry brain that must beat Stripe
+> Smart Retries. The measurement (holdout + mSPRT + signed ledger) is the **pricing
+> and trust mechanism**, not the product. Today the measurement is rigorous and the
+> engine (`@ax10m/recovery-engine`) is a **grounded cold-start baseline, not yet a
+> proven winner** — the charge path and a learned policy are the top priorities.
+> AX10M's value is *measured incremental lift over the baseline*, and that must be
+> proven with a live design partner. See [`docs/STRATEGY.md`](docs/STRATEGY.md).
+
+**Design & specs:** [`docs/STRATEGY.md`](docs/STRATEGY.md) (honest positioning &
+roadmap) · [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) ·
 [`docs/ATTRIBUTION.md`](docs/ATTRIBUTION.md) (the mSPRT + CUPED math) ·
 [`docs/PROCESSORS.md`](docs/PROCESSORS.md) (per-processor capability matrix) ·
 [`docs/COMPETITIVE.md`](docs/COMPETITIVE.md) (teardown) · `docs/pitch.html`.
@@ -27,8 +38,9 @@ lift/
 │  ├─ poal/                       # Payment Orchestration Abstraction Layer + adapters
 │  │  ├─ stripe/                  # Stripe adapter (reference skeleton)
 │  │  └─ adapters/                # adyen · braintree · chargebee · gocardless · paddle · registry
-│  ├─ attribution/               # ★ holdout · mSPRT+CUPED uplift · hash-chained ledger · statement · CFO reconciliation
-│  ├─ guardrail/                  # compliance hard-constraint layer (caps, quiet hours, consent)
+│  ├─ recovery-engine/           # ★ the recovery brain: recoverability · retry-timing · method selection · bandit-ready
+│  ├─ attribution/               # holdout · mSPRT+CUPED uplift · hash-chained ledger · statement · CFO reconciliation
+│  ├─ guardrail/                  # compliance hard-constraints (card-network retry caps, quiet hours, consent, fraud)
 │  └─ onboarding/                 # shadow-first lifecycle + projection ("see the money before you pay")
 └─ apps/
    ├─ api/                        # NestJS: webhook ingress (5 processors) · reconciler · recovery · onboarding
@@ -45,7 +57,13 @@ lift/
   (`integrationMode: drive | co-drive | advisory`) that make AX10M processor-agnostic,
   deterministic idempotency keys (exactly-once), a **registry** of 24 processors,
   and the adapters (see coverage table).
-- **`@ax10m/attribution`** — the crown jewel. Deterministic customer-clustered,
+- **`@ax10m/recovery-engine`** — the product core: given a failed invoice, decide
+  WHETHER to retry, WHEN (decline-aware timing — NSF→payday, issuer-error→quick,
+  do-not-honor→escalating backoff), WITH WHICH credential, or route to card-update
+  comms — plus the expected-value reward. Ships a `RetryPolicy`/`ContextualBanditPolicy`
+  interface so a learned policy replaces the cold-start heuristic unchanged. The
+  engine PROPOSES; the guardrail DISPOSES.
+- **`@ax10m/attribution`** — measurement + billing. Deterministic customer-clustered,
   stratified holdout assignment; the **billing-safe estimator** (CUPED variance
   reduction + cluster-robust variance + an always-valid **mSPRT confidence
   sequence**, billed on the lower bound); an append-only **hash-chained ledger**

@@ -60,12 +60,33 @@ export function evaluate(
         `Decline code ${action.declineCode} is not retriable on the same card.`,
       );
     }
-    // 4. Network attempt cap.
+    // 4. Global fallback attempt cap.
     if (action.attemptsSoFar >= policy.maxRetryAttempts) {
       return suppress(
         SuppressionReason.RetryCapReached,
         `Retry cap reached (${action.attemptsSoFar}/${policy.maxRetryAttempts}).`,
       );
+    }
+    // 5. Card-network retry-cap compliance (attempts within the rolling window and
+    //    minimum inter-attempt interval) — prevents network fines / acquirer scrutiny.
+    const cap = policy.networkCaps?.[action.cardNetwork ?? 'other'];
+    if (cap) {
+      if (
+        action.minutesSinceLastAttempt !== undefined &&
+        action.minutesSinceLastAttempt < cap.minMinutesBetween
+      ) {
+        return suppress(
+          SuppressionReason.MinIntervalNotElapsed,
+          `Only ${action.minutesSinceLastAttempt}min since last attempt; ${action.cardNetwork ?? 'network'} requires ≥${cap.minMinutesBetween}min.`,
+        );
+      }
+      const inWindow = action.attemptsInWindow ?? action.attemptsSoFar;
+      if (inWindow >= cap.maxAttemptsPerWindow) {
+        return suppress(
+          SuppressionReason.NetworkWindowCapReached,
+          `${action.cardNetwork ?? 'network'} retry cap reached (${inWindow}/${cap.maxAttemptsPerWindow} in ${cap.windowDays}d).`,
+        );
+      }
     }
     return ALLOW;
   }

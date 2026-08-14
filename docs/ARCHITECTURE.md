@@ -1,8 +1,16 @@
 # AX10M — AI-Native Failed-Payment Recovery
 
-> Working codename: **AX10M** (recovers involuntary churn, bills only on verified *uplift*).
-> Alt names to consider: Reclaim, Recoup, Cadence, Salvage, Grace, Reflow.
+> Product name: **AX10M** (recovers involuntary churn, bills only on verified *uplift*).
 > Document owner: founding eng. Status: architecture v0.1. Date: 2026-08-14.
+>
+> ⚠️ **Reality check — read [`STRATEGY.md`](./STRATEGY.md) alongside this.** This
+> document is the confident design vision. The honest status is: the **recovery
+> engine is the product** (and is currently a cold-start baseline in
+> `@ax10m/recovery-engine`); the measurement below is the **pricing/trust layer**,
+> not the product; and AX10M's edge is *measured incremental lift* over the baseline
+> plus the reconcilable ledger — both of which still need a live design partner to
+> prove. `STRATEGY.md` carries the reordered roadmap (recovery engine + Stripe
+> adapter first) and the holdout-economics answer.
 
 ---
 
