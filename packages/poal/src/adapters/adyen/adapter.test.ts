@@ -101,14 +101,16 @@ describe('ingestWebhook', () => {
     expect(events[0]!.type).toBe('invoice.paid');
   });
 
-  it('skips HMAC verification when no key is configured, and ignores non-AUTHORISATION events', async () => {
+  it('refuses to process a notification when no hmacKey is configured (fail closed)', async () => {
     const { fetch } = makeFetch(() => res(200, {}));
     const adapter = new AdyenAdapter({ ...baseCfg, fetch }); // no hmacKey
-    const unsigned: AdyenNotificationItem = { eventCode: 'AUTHORISATION', success: 'false', merchantReference: 'inv_9', amount: { value: 500, currency: 'USD' }, reason: 'Refused', eventDate: '2026-08-14T10:00:00Z' };
-    const events = await adapter.ingestWebhook({ body: notification(unsigned), headers: {} });
-    expect(events[0]!.type).toBe('invoice.failed');
+    await expect(adapter.ingestWebhook({ body: notification(signedItem()), headers: {} })).rejects.toThrow(/not configured/);
+  });
 
-    const refund: AdyenNotificationItem = { eventCode: 'REFUND', success: 'true', merchantReference: 'inv_9' };
+  it('ignores non-AUTHORISATION events (still HMAC-verified)', async () => {
+    const { fetch } = makeFetch(() => res(200, {}));
+    const adapter = new AdyenAdapter({ ...baseCfg, fetch, hmacKey: KEY });
+    const refund = signedItem({ eventCode: 'REFUND', success: 'true', reason: '' });
     const none = await adapter.ingestWebhook({ body: notification(refund), headers: {} });
     expect(none).toEqual([]);
   });

@@ -308,8 +308,13 @@ export function computeBillableUplift(
   config: SequentialUpliftConfig = DEFAULT_SEQUENTIAL_CONFIG,
   priorBilledDollars = 0,
 ): BillableUpliftResult {
+  // Config validation — a misconfigured alpha/tau2 would silently produce a NaN or
+  // wrong bill, so fail fast on the billing path.
+  if (!(config.alpha > 0 && config.alpha < 1)) throw new RangeError(`alpha must be in (0,1); got ${config.alpha}`);
+  if (!(config.tau2 > 0)) throw new RangeError(`tau2 must be > 0; got ${config.tau2}`);
+  if (!(config.feeRate >= 0 && config.feeRate <= 1)) throw new RangeError(`feeRate must be in [0,1]; got ${config.feeRate}`);
+
   const currency = config.currency;
-  const zeroMoney: Money = { amount: 0, currency };
 
   // 1. CUPED fit on the pooled sample (arm-independent by construction).
   const rawOutcomes = observations.map((o) => o.outcome);
@@ -363,10 +368,17 @@ export function computeBillableUplift(
   // 4. Post-stratified point estimate + cluster-robust variance (§4.4–§4.5).
   let deltaPer = 0;
   let varDelta = 0;
+  // A stratum with an empty arm (mean of [] = 0 → inflated delta) or a single
+  // cluster per arm (cluster-robust variance is 0 by construction → understated
+  // SE → over-bill) is UNESTIMABLE; we gate billing off it rather than trust it.
+  let anyStratumUnestimable = false;
   const perStratum: StratumLine[] = [];
   for (const [key, cell] of strata) {
     const nT = cell.treatment.values.length;
     const nC = cell.control.values.length;
+    const gT = new Set(cell.treatment.clusters).size;
+    const gC = new Set(cell.control.clusters).size;
+    if (nT < 1 || nC < 1 || gT < 2 || gC < 2) anyStratumUnestimable = true;
     const wS = treatedInvoices > 0 ? nT / treatedInvoices : 0;
     const ybarT = mean(cell.treatment.values);
     const ybarC = mean(cell.control.values);
@@ -390,9 +402,12 @@ export function computeBillableUplift(
   const se = Math.sqrt(Math.max(0, varDelta));
 
   // 5. mSPRT confidence sequence → per-invoice lower bound (§5.2–§5.3).
+  // Compute the half-width directly from the cluster-robust SE. The (σ²/SE²)
+  // effective-N round-trip could overflow to Infinity for a tiny SE → a NaN fee
+  // that slips the gate; the SE form is finite and degrades to 0 when SE=0.
   const perObsVar = variance(observations.map(adj));
-  const effectiveN = perObsVar > 0 && se > 0 ? perObsVar / (se * se) : 0;
-  const halfWidth = msprtHalfWidth(perObsVar, effectiveN, config.tau2, config.alpha);
+  const effectiveN = perObsVar > 0 && se > 0 ? perObsVar / (se * se) : 0; // reported for transparency only
+  const halfWidth = msprtHalfWidthFromSe(se, config.tau2, config.alpha);
   const lowerPer = Math.max(0, deltaPer - halfWidth);
 
   // 6. Diagnostics: pooled recovery rates (headline, not billed).
@@ -410,16 +425,21 @@ export function computeBillableUplift(
     gateReasons.push(`control customers ${controlClusters} < ${config.minControlClusters}`);
   if (treatedInvoices < config.minTreatedInvoices)
     gateReasons.push(`treated invoices ${treatedInvoices} < ${config.minTreatedInvoices}`);
+  if (se <= 0 || !Number.isFinite(halfWidth)) gateReasons.push('standard error unestimable (insufficient variation)');
+  if (anyStratumUnestimable) gateReasons.push('a stratum has an empty arm or <2 clusters (variance unestimable)');
   if (lowerPer <= 0) gateReasons.push('lower bound not yet positive (lift unproven)');
   if (srm.breached) gateReasons.push(`SRM breached (χ²=${srm.chiSquare.toFixed(2)})`);
   const anyFloorStratumMissing = perStratum.some((l) => l.pooled && l.treatmentInvoices + l.controlInvoices > 0 && (l.treatmentInvoices < config.perStratumFloor || l.controlInvoices < config.perStratumFloor));
   if (anyFloorStratumMissing) gateReasons.push('pooled residual stratum below floor');
   const billable = gateReasons.length === 0;
 
-  // 9. Fee on the newly-proven increment (§7.4). Never re-bill; credits allowed.
+  // 9. Fee on the newly-proven increment (§7.4). Never re-bill; credits ALWAYS
+  // settle: a negative increment (clawback) is issued as a credit even when the
+  // positive-lift gate fails, never silently absorbed to 0.
   const lowerDollarsCum = Math.round(lowerPer * treatedInvoices);
   const billableIncrement = lowerDollarsCum - priorBilledDollars;
-  const fee = billable ? Math.round(config.feeRate * billableIncrement) : 0;
+  const shouldSettle = billable || billableIncrement < 0;
+  const fee = shouldSettle ? Math.round(config.feeRate * billableIncrement) : 0;
 
   return {
     controlRate,
@@ -437,7 +457,7 @@ export function computeBillableUplift(
     lowerDollarsCum: { amount: lowerDollarsCum, currency },
     priorBilledDollars: { amount: priorBilledDollars, currency },
     billableIncrement: { amount: billableIncrement, currency },
-    fee: billable ? { amount: fee, currency } : zeroMoney,
+    fee: { amount: fee, currency },
     srm,
     billable,
     gateReasons,

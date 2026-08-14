@@ -41,9 +41,14 @@ export class GoCardlessError extends Error {
     this.name = 'GoCardlessError';
   }
 
-  /** True when a retried request with the same Idempotency-Key hit an existing resource. */
+  /**
+   * True only for a genuine idempotency replay — a request with a reused
+   * Idempotency-Key that hit an existing resource. We check the specific error
+   * reason, NOT the bare 409 status, because GoCardless also returns 409 for
+   * other conflicts (e.g. a payment no longer in a retriable state) that must be
+   * surfaced, not silently swallowed as a replay.
+   */
   isIdempotentConflict(): boolean {
-    if (this.httpStatus === 409) return true;
     return (this.body.error?.errors ?? []).some((e) => e.reason === 'idempotent_creation_conflict');
   }
 }

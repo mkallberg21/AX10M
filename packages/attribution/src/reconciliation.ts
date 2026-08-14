@@ -193,8 +193,10 @@ function armSummary(rows: readonly SettledOutcome[]): ArmSummary {
   let recoveredAmount = 0;
   let reversedAmount = 0;
   for (const o of rows) {
-    if (o.outcome === 'recovered') recovered += 1;
-    recoveredAmount += o.recoveredAmount;
+    if (o.outcome === 'recovered') {
+      recovered += 1;
+      recoveredAmount += o.recoveredAmount; // only recovered rows count toward recovered $
+    }
     reversedAmount += o.reversalAmount ?? 0;
   }
   return { invoices: rows.length, recovered, recoveredAmount, reversedAmount };
@@ -305,7 +307,11 @@ export function verifyReconciliationSignature(
 // ─────────────────────────────────────────────────────────────────────────────
 
 function csvCell(v: unknown): string {
-  const s = v == null ? '' : String(v);
+  let s = v == null ? '' : String(v);
+  // Neutralize CSV formula/DDE injection: a cell a spreadsheet would evaluate as a
+  // formula (leading = + - @, tab, or CR) is prefixed with a quote so Excel/Sheets
+  // treats it as text. Merchant-controlled fields (invoiceId, etc.) can be hostile.
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 function csvRow(cells: readonly unknown[]): string {
@@ -408,11 +414,24 @@ export function reconcileAgainstPayout(
   opts: { toleranceMinor?: number } = {},
 ): ReconResult {
   const tolerance = opts.toleranceMinor ?? 0;
+
+  // Aggregate BOTH sides by key. Comparing per-key totals (not per-row against the
+  // full balance) is what prevents a duplicate/shared processor_txn_id from tying
+  // out falsely: two claimed rows on one settlement sum to 2× ours vs 1× theirs and
+  // correctly mismatch, instead of each row independently "matching" the balance.
   const payoutByKey = new Map<string, number>();
   for (const p of payout) payoutByKey.set(p.key, (payoutByKey.get(p.key) ?? 0) + p.settledAmount);
 
   const claimed = recovered.filter((o) => o.outcome === 'recovered' && o.recoveredAmount > 0);
-  const usedKeys = new Set<string>();
+  const oursByKey = new Map<string, { ours: number; invoiceIds: string[] }>();
+  for (const o of claimed) {
+    const key = o.processorTxnId ?? o.invoiceId;
+    const agg = oursByKey.get(key) ?? { ours: 0, invoiceIds: [] };
+    agg.ours += o.recoveredAmount;
+    agg.invoiceIds.push(o.invoiceId);
+    oursByKey.set(key, agg);
+  }
+
   const lines: ReconLine[] = [];
   let oursTotal = 0;
   let theirsTotal = 0;
@@ -420,11 +439,9 @@ export function reconcileAgainstPayout(
   let mismatched = 0;
   let missingInPayout = 0;
 
-  for (const o of claimed) {
-    const key = o.processorTxnId ?? o.invoiceId;
-    const ours = o.recoveredAmount;
+  for (const [key, agg] of oursByKey) {
+    const ours = agg.ours;
     const theirs = payoutByKey.has(key) ? payoutByKey.get(key)! : null;
-    if (theirs !== null) usedKeys.add(key);
     const delta = ours - (theirs ?? 0);
     const match = theirs !== null && Math.abs(delta) <= tolerance;
     if (theirs === null) missingInPayout += 1;
@@ -432,11 +449,12 @@ export function reconcileAgainstPayout(
     else mismatched += 1;
     oursTotal += ours;
     if (theirs !== null) theirsTotal += theirs;
-    lines.push({ key, invoiceId: o.invoiceId, ours, theirs, delta, match });
+    lines.push({ key, invoiceId: agg.invoiceIds.join(','), ours, theirs, delta, match });
   }
 
-  const extraInPayout = [...payoutByKey.keys()].filter((k) => !usedKeys.has(k)).length;
-  const tiesOut = mismatched === 0 && missingInPayout === 0 && Math.abs(oursTotal - theirsTotal) <= tolerance;
+  const extraInPayout = [...payoutByKey.keys()].filter((k) => !oursByKey.has(k)).length;
+  const tiesOut =
+    mismatched === 0 && missingInPayout === 0 && Math.abs(oursTotal - theirsTotal) <= tolerance;
 
   return { lines, oursTotal, theirsTotal, matched, mismatched, missingInPayout, extraInPayout, tiesOut };
 }

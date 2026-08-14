@@ -28,8 +28,9 @@ function makeFetch(handler: (url: string, init: { method?: string; headers?: Rec
   return { fetch, calls };
 }
 
-const baseCfg = { site: 'acme', apiKey: 'test_key', merchantId: 'mrc_1', baseUrl: 'https://acme.test/api/v2' };
 const basicAuth = (u: string, p: string) => `Basic ${Buffer.from(`${u}:${p}`).toString('base64')}`;
+const baseCfg = { site: 'acme', apiKey: 'test_key', merchantId: 'mrc_1', baseUrl: 'https://acme.test/api/v2', webhookUser: 'u', webhookPassword: 'p' };
+const AUTH = { authorization: basicAuth('u', 'p') };
 
 const invoice: Invoice = {
   id: 'ax10m_inv_inv_1', customerId: 'ax10m_cus_c1', merchantId: 'mrc_1', processorRef: 'inv_1',
@@ -60,7 +61,7 @@ describe('ingestWebhook', () => {
   it('normalizes payment_failed into a canonical invoice.failed with a mapped decline', async () => {
     const { fetch } = makeFetch(() => res(200, {}));
     const adapter = new ChargebeeAdapter({ ...baseCfg, fetch });
-    const events = await adapter.ingestWebhook({ body: failedBody, headers: {} });
+    const events = await adapter.ingestWebhook({ body: failedBody, headers: AUTH });
     expect(events).toHaveLength(1);
     const ev = events[0]!;
     expect(ev.type).toBe('invoice.failed');
@@ -89,15 +90,21 @@ describe('ingestWebhook', () => {
     expect(events).toHaveLength(1);
   });
 
+  it('refuses to process when no webhook credentials are configured (fail closed)', async () => {
+    const { fetch } = makeFetch(() => res(200, {}));
+    const adapter = new ChargebeeAdapter({ site: 'acme', apiKey: 'k', merchantId: 'mrc_1', baseUrl: 'https://acme.test/api/v2', fetch });
+    await expect(adapter.ingestWebhook({ body: failedBody, headers: {} })).rejects.toThrow(/not configured/);
+  });
+
   it('maps payment_succeeded to invoice.paid and ignores unhandled events', async () => {
     const { fetch } = makeFetch(() => res(200, {}));
     const adapter = new ChargebeeAdapter({ ...baseCfg, fetch });
     const paid = await adapter.ingestWebhook({
       body: JSON.stringify({ id: 'ev_2', occurred_at: 1, event_type: 'payment_succeeded', content: { invoice: { id: 'inv_1', customer_id: 'c1', currency_code: 'USD', amount_due: 0, status: 'paid' } } }),
-      headers: {},
+      headers: AUTH,
     });
     expect(paid[0]!.type).toBe('invoice.paid');
-    const noop = await adapter.ingestWebhook({ body: JSON.stringify({ id: 'ev_3', event_type: 'something_else', content: {} }), headers: {} });
+    const noop = await adapter.ingestWebhook({ body: JSON.stringify({ id: 'ev_3', event_type: 'something_else', content: {} }), headers: AUTH });
     expect(noop).toEqual([]);
   });
 });

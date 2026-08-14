@@ -102,11 +102,15 @@ export class AdyenAdapter implements ProcessorAdapter {
       throw new Error('AdyenAdapter.ingestWebhook: body is not valid JSON');
     }
     const items = parsed.notificationItems ?? [];
+    // Fail CLOSED: an unconfigured HMAC key must not mean "accept any webhook".
+    if (!this.config.hmacKey) {
+      throw new Error('AdyenAdapter.ingestWebhook: hmacKey not configured — refusing to process unverified notification');
+    }
     const events: CanonicalEvent[] = [];
     for (const wrap of items) {
       const item = wrap.NotificationRequestItem;
       if (!item) continue;
-      if (this.config.hmacKey && !verifyAdyenHmac(item, this.config.hmacKey)) {
+      if (!verifyAdyenHmac(item, this.config.hmacKey)) {
         throw new Error(`AdyenAdapter.ingestWebhook: HMAC verification failed (psp=${item.pspReference ?? '?'})`);
       }
       const ev = this.mapItem(item);

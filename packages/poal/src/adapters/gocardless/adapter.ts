@@ -77,6 +77,15 @@ interface GcEvent {
 
 const CENTS = (n: number | undefined): number => (typeof n === 'number' ? n : 0);
 
+/** Case-insensitive header lookup (proxies vary the casing of Webhook-Signature). */
+function headerLookup(headers: Record<string, string>, name: string): string | undefined {
+  const lower = name.toLowerCase();
+  for (const [k, v] of Object.entries(headers)) {
+    if (k.toLowerCase() === lower) return v;
+  }
+  return undefined;
+}
+
 function statusToOutcome(status: string | undefined): ChargeResult['outcome'] {
   switch (status) {
     case 'confirmed':
@@ -121,7 +130,7 @@ export class GoCardlessAdapter implements ProcessorAdapter {
   // ── ingress ────────────────────────────────────────────────────────────────
 
   async ingestWebhook(raw: RawWebhook): Promise<CanonicalEvent[]> {
-    const signature = raw.headers['webhook-signature'] ?? raw.headers['Webhook-Signature'];
+    const signature = headerLookup(raw.headers, 'webhook-signature');
     if (!verifyGoCardlessSignature(raw.body, signature, this.config.webhookSecret)) {
       throw new Error('GoCardlessAdapter.ingestWebhook: Webhook-Signature verification failed');
     }
@@ -138,9 +147,15 @@ export class GoCardlessAdapter implements ProcessorAdapter {
       if (event.action !== 'failed' && event.action !== 'confirmed') continue;
       const paymentId = event.links?.payment;
       if (!paymentId) continue;
-      const payment = await this.getPayment(paymentId);
-      if (!payment) continue;
-      out.push(this.mapPaymentEvent(event, payment));
+      // Isolate per-event fetch failures: a transient error on one payment must not
+      // discard every already-mapped event in the (batched) webhook. GoCardless
+      // re-delivers, so a skipped event is retried; aborting the batch loses all.
+      try {
+        const payment = await this.getPayment(paymentId);
+        if (payment) out.push(this.mapPaymentEvent(event, payment));
+      } catch {
+        // swallow; the event will be re-delivered and reprocessed
+      }
     }
     return out;
   }
@@ -172,12 +187,18 @@ export class GoCardlessAdapter implements ProcessorAdapter {
     };
     if (failed) {
       const decline = this.buildDecline(event, invoice.id, attempt.id, occurredAt);
-      // willAutoRetry: GoCardless Success+ (NSF-only) will auto-retry when the
-      // payment was created with retry_if_possible — the engine must NOT double-collect.
+      // willAutoRetry: GoCardless Success+ auto-retries ONLY insufficient-funds
+      // failures whose payment was created with retry_if_possible. It will NOT
+      // retry other causes (dead mandate, closed account, …), so we must gate on
+      // BOTH the flag and the cause — otherwise a non-NSF failure is wrongly
+      // deferred to a retry that never happens, and the recovery is lost.
+      const willAutoRetry =
+        payment.retry_if_possible === true &&
+        (event.details?.cause ?? '').trim().toLowerCase() === 'insufficient_funds';
       return {
         ...base,
         type: 'invoice.failed',
-        payload: { invoice, attempt, decline, willAutoRetry: payment.retry_if_possible === true },
+        payload: { invoice, attempt, decline, willAutoRetry },
       };
     }
     return { ...base, type: 'invoice.paid', payload: { invoice, attempt } };

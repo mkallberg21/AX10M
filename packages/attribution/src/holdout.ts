@@ -125,11 +125,16 @@ export function assign(
   }
   const key = stratumKey(input.stratum);
   const isGuest = input.customerId == null || input.customerId === '';
-  // Salt first so it dominates re-randomization; stratum folded so each stratum is
-  // an independent stream. Customer grain excludes invoiceId; guest grain uses it.
+  // Bucket key is (salt, merchant, customer) per ATTRIBUTION.md §2.2 — the stratum
+  // is DELIBERATELY excluded so a customer's arm never depends on which stratum an
+  // invoice lands in (folding a non-sticky stratum in would flip the customer's
+  // arm between invoices, breaking customer-level clustering). Stratification is
+  // achieved by per-stratum control fraction + post-stratified estimation, and the
+  // stratumKey is still returned below for that. Guests (no customer) fall back to
+  // invoice grain, which needs invoiceId to randomize independently.
   const material = isGuest
-    ? [config.salt, key, input.merchantId, 'guest', input.invoiceId].join(':')
-    : [config.salt, key, input.merchantId, input.customerId].join(':');
+    ? [config.salt, input.merchantId, 'guest', input.invoiceId].join(':')
+    : [config.salt, input.merchantId, input.customerId].join(':');
   const position = hashToUnitInterval(material);
   const bucket: Bucket = position < config.controlFraction ? 'control' : 'treatment';
   return {

@@ -55,6 +55,8 @@ export enum SuppressionReason {
   NoConsent = 'no_consent',
   GlobalOptOut = 'global_opt_out',
   NonRetriableCode = 'non_retriable_code',
+  /** An action kind the guardrail does not recognize — fail closed. */
+  UnknownAction = 'unknown_action',
 }
 
 export type GuardrailDecision =

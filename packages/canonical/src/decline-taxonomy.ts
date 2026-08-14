@@ -95,5 +95,8 @@ export function isRetriable(code: DeclineCode): boolean {
   // ExpiredCard is technically "gray" but a same-card retry is pointless — the
   // path to recovery is a card update, not a retry. Treat as non-retriable.
   if (code === DeclineCode.ExpiredCard) return false;
+  // Fraudulent (gray for stratification) must never be retried — retrying a
+  // fraud-flagged decline is exactly the network penalty the guardrail prevents.
+  if (code === DeclineCode.Fraudulent) return false;
   return true;
 }

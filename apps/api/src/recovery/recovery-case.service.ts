@@ -47,6 +47,10 @@ export class RecoveryCaseService {
   private braintree?: BraintreeAdapter;
   private gocardless?: GoCardlessAdapter;
 
+  // Invoices whose holdout assignment has already been recorded — webhooks are
+  // at-least-once, so we must not double-append to the tamper-evident ledger.
+  private readonly openedInvoices = new Set<string>();
+
   /**
    * Entry point from the webhook controller. Verify + normalize, then process
    * each canonical event.
@@ -178,6 +182,8 @@ export class RecoveryCaseService {
     occurredAt: string;
   }): { bucket: 'control' | 'treatment' } {
     const { invoice, stratum } = params;
+    // Assignment is a deterministic pure function, so recomputing on a redelivered
+    // webhook yields the same bucket; only the ledger append must be de-duplicated.
     const assignment = assign(
       {
         merchantId: invoice.merchantId,
@@ -187,6 +193,11 @@ export class RecoveryCaseService {
       },
       this.holdoutConfig,
     );
+
+    if (this.openedInvoices.has(invoice.id)) {
+      return { bucket: assignment.bucket };
+    }
+    this.openedInvoices.add(invoice.id);
 
     this.ledger.append({
       merchantId: invoice.merchantId,

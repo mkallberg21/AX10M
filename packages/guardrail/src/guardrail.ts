@@ -90,5 +90,10 @@ export function evaluate(
     return ALLOW;
   }
 
-  return ALLOW;
+  // Fail CLOSED: an inviolable constraint layer must never allow an action kind it
+  // does not recognize (a new/typo'd kind would otherwise bypass every constraint).
+  return suppress(
+    SuppressionReason.UnknownAction,
+    `Unrecognized action kind '${(action as { kind?: string }).kind ?? 'undefined'}' — failing closed.`,
+  );
 }

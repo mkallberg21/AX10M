@@ -65,13 +65,25 @@ export interface BraintreeAdapterConfig {
 const SUCCESS_STATUSES = new Set(['authorized', 'submitted_for_settlement', 'settling', 'settlement_pending', 'settlement_confirmed', 'settled']);
 const FAILED_STATUSES = new Set(['processor_declined', 'gateway_rejected', 'settlement_declined', 'failed', 'authorization_expired', 'voided']);
 
-function decimalToMinor(v: string | undefined): number {
+// Currencies whose minor unit is NOT 1/100. Everything unlisted is 2-decimal.
+const CURRENCY_EXPONENT: Readonly<Record<string, number>> = {
+  JPY: 0, KRW: 0, VND: 0, CLP: 0, ISK: 0, XOF: 0, XAF: 0, XPF: 0, BIF: 0, DJF: 0,
+  GNF: 0, KMF: 0, MGA: 0, PYG: 0, RWF: 0, UGX: 0, VUV: 0,
+  BHD: 3, KWD: 3, OMR: 3, TND: 3, IQD: 3, JOD: 3, LYD: 3,
+};
+function currencyExponent(currency: string): number {
+  return CURRENCY_EXPONENT[currency.toUpperCase()] ?? 2;
+}
+/** Decimal string (Braintree's XML amount) → integer minor units, currency-aware. */
+function decimalToMinor(v: string | undefined, currency: string): number {
   if (!v) return 0;
   const n = Number.parseFloat(v);
-  return Number.isFinite(n) ? Math.round(n * 100) : 0;
+  return Number.isFinite(n) ? Math.round(n * 10 ** currencyExponent(currency)) : 0;
 }
-function minorToDecimal(minor: number): string {
-  return (minor / 100).toFixed(2);
+/** Integer minor units → Braintree's decimal amount string, currency-aware. */
+function minorToDecimal(minor: number, currency: string): string {
+  const e = currencyExponent(currency);
+  return (minor / 10 ** e).toFixed(e);
 }
 function mapTxnStatus(status: string | undefined): ChargeResult['outcome'] {
   const s = (status ?? '').toLowerCase();
@@ -130,11 +142,12 @@ export class BraintreeAdapter implements ProcessorAdapter {
       const sub = xmlInner(subject, 'subscription') ?? '';
       const subId = xmlLeaf(sub, 'id') ?? '';
       const txn = xmlInner(sub, 'transaction') ?? '';
+      const currency = xmlLeaf(txn, 'currency-iso-code') ?? 'USD';
       const invoice = this.buildInvoice({
         ref: subId,
         subscriptionId: subId,
-        amount: decimalToMinor(xmlLeaf(txn, 'amount')),
-        currency: xmlLeaf(txn, 'currency-iso-code') ?? 'USD',
+        amount: decimalToMinor(xmlLeaf(txn, 'amount'), currency),
+        currency,
         occurredAt,
         failed,
       });
@@ -181,28 +194,40 @@ export class BraintreeAdapter implements ProcessorAdapter {
     const body =
       `<transaction>` +
       `<type>sale</type>` +
-      `<amount>${minorToDecimal(invoice.amount.amount)}</amount>` +
+      `<amount>${minorToDecimal(invoice.amount.amount, invoice.amount.currency)}</amount>` +
       `<payment-method-token>${escapeXml(method.processorRef)}</payment-method-token>` +
       `<order-id>${escapeXml(invoice.processorRef)}</order-id>` +
       `<options><submit-for-settlement>true</submit-for-settlement></options>` +
       `</transaction>`;
     const res = await this.client.request('POST', `${this.mid()}/transactions`, body);
     const txn = xmlInner(res.xml, 'transaction');
-    if (txn) {
-      const outcome = mapTxnStatus(xmlLeaf(txn, 'status'));
+    const status = txn ? xmlLeaf(txn, 'status') : undefined;
+    // A charge RESULT always carries a <status>. A validation-error 422 also nests a
+    // <transaction> (inside <errors>) but WITHOUT a status — treat that as an error,
+    // not a 'pending' charge, by requiring a status here.
+    if (txn && status) {
+      const outcome = mapTxnStatus(status);
+      // An immediate replay of the same order-id is duplicate-rejected by Braintree
+      // (gateway_rejected, reason 'duplicate'); the original likely settled, so
+      // surface it as an idempotent replay rather than a fresh decline.
+      const isDuplicateReplay =
+        outcome === 'failed' &&
+        status.toLowerCase() === 'gateway_rejected' &&
+        xmlLeaf(txn, 'gateway-rejection-reason')?.toLowerCase() === 'duplicate';
+      const effectiveOutcome: ChargeResult['outcome'] = isDuplicateReplay ? 'pending' : outcome;
       const attempt = this.buildAttempt({
         invoiceId: invoice.id,
         paymentMethodId: method.id,
         idempotencyKey,
         amount: invoice.amount,
-        status: outcome,
-        declineCode: outcome === 'failed' ? mapBraintreeDeclineCode(xmlLeaf(txn, 'processor-response-code')) : undefined,
+        status: effectiveOutcome,
+        declineCode: effectiveOutcome === 'failed' ? mapBraintreeDeclineCode(xmlLeaf(txn, 'processor-response-code')) : undefined,
         txnId: xmlLeaf(txn, 'id'),
         attemptedAt: new Date().toISOString(),
       });
-      return { attempt, outcome, idempotentReplay: false };
+      return { attempt, outcome: effectiveOutcome, idempotentReplay: isDuplicateReplay };
     }
-    // No transaction in the body → auth/validation/infra error, not a decline.
+    // No transaction/status in the body → auth/validation/infra error, not a decline.
     throw new BraintreeError(res.status, xmlLeaf(res.xml, 'message') ?? `Braintree error ${res.status}`);
   }
 

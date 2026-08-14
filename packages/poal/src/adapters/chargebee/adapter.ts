@@ -17,6 +17,7 @@
  * an idempotent replay rather than a second charge.
  */
 
+import { timingSafeEqual } from 'node:crypto';
 import {
   DeclineCode,
   familyOf,
@@ -180,10 +181,17 @@ export class ChargebeeAdapter implements ProcessorAdapter {
 
   /** Chargebee authenticates its webhooks with HTTP Basic auth (configured in Chargebee). */
   private verifyWebhookAuth(headers: Record<string, string>): void {
-    if (!this.config.webhookUser && !this.config.webhookPassword) return; // no auth configured
-    const provided = headerLookup(headers, 'authorization');
+    // Fail CLOSED: refuse to process a webhook when no credentials are configured,
+    // rather than accepting a forged (unauthenticated) payload.
+    if (!this.config.webhookUser && !this.config.webhookPassword) {
+      throw new Error('ChargebeeAdapter.ingestWebhook: webhook Basic-auth credentials not configured — refusing unverified webhook');
+    }
+    const provided = headerLookup(headers, 'authorization') ?? '';
     const expected = `Basic ${Buffer.from(`${this.config.webhookUser ?? ''}:${this.config.webhookPassword ?? ''}`).toString('base64')}`;
-    if (provided !== expected) {
+    // Constant-time comparison to avoid leaking the secret via response timing.
+    const a = Buffer.from(provided);
+    const b = Buffer.from(expected);
+    if (a.length !== b.length || !timingSafeEqual(a, b)) {
       throw new Error('ChargebeeAdapter.ingestWebhook: webhook Basic auth verification failed');
     }
   }
