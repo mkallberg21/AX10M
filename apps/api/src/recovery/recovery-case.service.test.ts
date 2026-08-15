@@ -198,6 +198,84 @@ describe('RecoveryCaseService webhook ingress (shadow planning)', () => {
   });
 });
 
+describe('credential recovery in the live charge path (card_refresh + alternate_rail)', () => {
+  /** An adapter that can hand back an Account-Updater-refreshed card and/or backup methods. */
+  class CredentialAdapter implements ProcessorAdapter {
+    readonly id = 'cred';
+    readonly charges: Array<{ methodId: string; key: string }> = [];
+    constructor(
+      private readonly updated: PaymentMethod | null,
+      private readonly backups: PaymentMethod[] = [],
+    ) {}
+    async ingestWebhook(): Promise<CanonicalEvent[]> {
+      return [];
+    }
+    async listOpenFailures(): Promise<OpenFailuresPage> {
+      return { invoices: [], nextCursor: null };
+    }
+    async attemptCharge(inv: Invoice, m: PaymentMethod, key: string): Promise<ChargeResult> {
+      this.charges.push({ methodId: m.id, key });
+      return { outcome: 'succeeded', idempotentReplay: false, attempt: { id: `att_${this.charges.length}`, invoiceId: inv.id, paymentMethodId: m.id, idempotencyKey: key, amount: inv.amount, status: 'succeeded', attemptNumber: 1, attemptedAt: '2026-08-14T00:00:00.000Z' } };
+    }
+    async fetchUpdatedCard(): Promise<PaymentMethod | null> {
+      return this.updated;
+    }
+    async listPaymentMethods(): Promise<PaymentMethod[]> {
+      return this.backups;
+    }
+    async pauseNativeDunning(): Promise<void> {}
+    capabilities() {
+      return { integrationMode: 'drive' as const, externalRetryControl: true, accountUpdater: true, networkTokens: true, partialCapture: false, pauseNativeDunning: false, webhooks: true, listPaymentMethods: true };
+    }
+  }
+
+  const expired = { code: DeclineCode.ExpiredCard, family: DeclineFamily.Gray };
+  const closed = { code: DeclineCode.ClosedAccount, family: DeclineFamily.Hard };
+  const customer: Customer = { id: 'ax10m_cus_cus_1', merchantId: 'mrc_1', processorRef: 'cus_1', issuerRegion: 'na', createdAt: '2026-01-01T00:00:00.000Z', consent: { email: true, sms: false, whatsapp: false, push: false, globallyOptedOut: false } };
+
+  it('recovers an expired card by charging the Account-Updater-refreshed credential (card_refresh)', async () => {
+    const svc = new RecoveryCaseService(new OnboardingService());
+    const refreshed: PaymentMethod = { ...method, id: 'ax10m_pm_refreshed', token: 'tok_new' };
+    const adapter = new CredentialAdapter(refreshed);
+    const { action, outcome } = await svc.executeRecovery({ adapter, invoice, method, decline: expired, attemptNumber: 1, shadow: false });
+    expect(action).toBe('attempted');
+    expect(outcome).toBe('succeeded');
+    // It charged the REFRESHED method, not the dead one.
+    expect(adapter.charges).toHaveLength(1);
+    expect(adapter.charges[0]!.methodId).toBe('ax10m_pm_refreshed');
+    const types = (await svc.ledgerEntries()).map((e) => e.type);
+    expect(types).toContain('case.recovered');
+  });
+
+  it('recovers a CLOSED account via a backup rail — a same-card retry the guardrail would block', async () => {
+    const svc = new RecoveryCaseService(new OnboardingService());
+    const backup: PaymentMethod = { id: 'ax10m_pm_backup', customerId: invoice.customerId, processorRef: 'pm_backup', token: 'tok_backup', brand: 'visa' };
+    const adapter = new CredentialAdapter(null, [backup]); // no refreshed card; a backup exists
+    const { action, outcome } = await svc.executeRecovery({ adapter, invoice, method, decline: closed, attemptNumber: 1, customer, shadow: false });
+    expect(action).toBe('attempted');
+    expect(outcome).toBe('succeeded');
+    expect(adapter.charges).toHaveLength(1);
+    expect(adapter.charges[0]!.methodId).toBe('ax10m_pm_backup');
+  });
+
+  it('falls through to a dunning comm when no fresh credential is available', async () => {
+    const svc = new RecoveryCaseService(new OnboardingService());
+    const adapter = new CredentialAdapter(null, []); // no refreshed card, no backup
+    const { action } = await svc.executeRecovery({ adapter, invoice, method, decline: expired, attemptNumber: 1, shadow: false });
+    expect(action).toBe('card_update_comms');
+    expect(adapter.charges).toHaveLength(0);
+  });
+
+  it('SHADOW mode records the intent but performs no credential-recovery charge', async () => {
+    const svc = new RecoveryCaseService(new OnboardingService());
+    const refreshed: PaymentMethod = { ...method, id: 'ax10m_pm_refreshed', token: 'tok_new' };
+    const adapter = new CredentialAdapter(refreshed);
+    const { action } = await svc.executeRecovery({ adapter, invoice, method, decline: expired, attemptNumber: 1, shadow: true });
+    expect(action).toBe('card_update_comms');
+    expect(adapter.charges).toHaveLength(0);
+  });
+});
+
 describe('durable recovery dispatch (webhook → Temporal workflow)', () => {
   /** Records every dispatched workflow so we can assert on it. */
   class RecordingDispatcher implements RecoveryDispatcher {

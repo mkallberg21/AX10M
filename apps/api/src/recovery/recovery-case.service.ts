@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { CanonicalEvent, DeclineEvent, Invoice, MrrTier, PaymentMethod } from '@ax10m/canonical';
+import type { CanonicalEvent, Customer, DeclineEvent, Invoice, MrrTier, PaymentMethod } from '@ax10m/canonical';
 import { DeclineCode, DeclineFamily, familyOf } from '@ax10m/canonical';
 import type { ProcessorAdapter, RawWebhook } from '@ax10m/poal';
 import { idempotencyKey } from '@ax10m/poal';
@@ -403,6 +403,8 @@ export class RecoveryCaseService {
     attemptNumber: number;
     localHour?: number;
     minutesSinceLastAttempt?: number;
+    /** Customer (for alternate-rail backup-method discovery on dead credentials). */
+    customer?: Customer;
     shadow: boolean;
   }): Promise<{ action: RecoveryActionOutcome; outcome?: ChargeOutcome; decision: RecoveryDecision }> {
     const { adapter, invoice, method, attemptNumber, shadow } = params;
@@ -430,6 +432,14 @@ export class RecoveryCaseService {
 
     // The engine chose NOT to retry this card (dead credential, or EV ≤ threshold).
     if (decision.action !== 'retry') {
+      // Dead credential → try CREDENTIAL RECOVERY first (Account Updater card_refresh +
+      // alternate-rail backup method) — recoveries a same-card retry can't reach. Only in
+      // active mode; shadow just records the intent. If a fresh credential recovers, we're
+      // done; otherwise fall through to the dunning comm.
+      if (decision.action === 'card_update_comms' && !shadow) {
+        const rec = await this.executeCredentialRecovery({ adapter, invoice, method, features, attemptNumber, attemptsSoFar, customer: params.customer });
+        if (rec?.outcome === 'succeeded') return { action: 'attempted', outcome: 'succeeded', decision };
+      }
       await this.ledger.append({
         merchantId: invoice.merchantId,
         type: decision.action === 'card_update_comms' ? 'comms.sent' : 'action.suppressed',
@@ -454,6 +464,79 @@ export class RecoveryCaseService {
     };
     const exec = await this.attemptRecovery({ adapter, invoice, method, proposed, attemptNumber, shadow });
     return { action: exec.result, outcome: exec.outcome, decision };
+  }
+
+  /**
+   * CREDENTIAL RECOVERY (the dead-card overlay edge, live). For a dead-credential decline
+   * the same-card retry is hopeless, so we charge a DIFFERENT working credential:
+   *   1. `card_refresh`   — `adapter.fetchUpdatedCard` queries Account Updater / network
+   *                         tokens; if the card was refreshed, charge the new credential.
+   *   2. `alternate_rail` — `adapter.listPaymentMethods` finds a stored backup method;
+   *                         charge it (recovers closed accounts that never reissue).
+   * Each charge is guardrailed as a `fresh_credential_charge` (the hard-decline /
+   * non-retriable blocks don't apply to a NEW credential, but caps + opt-out still do) and
+   * carries a distinct idempotency key (keyed off the new method id) → exactly-once holds.
+   * Returns the first SUCCESS, or null (failed attempts are ledgered; caller sends dunning).
+   */
+  private async executeCredentialRecovery(p: {
+    adapter: ProcessorAdapter;
+    invoice: Invoice;
+    method: PaymentMethod;
+    features: RecoveryFeatures;
+    attemptNumber: number;
+    attemptsSoFar: number;
+    customer?: Customer;
+  }): Promise<{ outcome: ChargeOutcome } | null> {
+    const freshProposed = (m: PaymentMethod): ProposedAction => ({
+      kind: 'fresh_credential_charge',
+      declineCode: p.features.declineCode,
+      declineFamily: familyOf(p.features.declineCode),
+      attemptsSoFar: p.attemptsSoFar,
+      cardNetwork: mapCardNetwork(m.brand),
+      attemptsInWindow: p.attemptsSoFar,
+      localHour: new Date().getUTCHours(),
+      hasConsent: true,
+      globallyOptedOut: false,
+    });
+    const charge = async (m: PaymentMethod, via: 'card_refresh' | 'alternate_rail'): Promise<ChargeOutcome | undefined> => {
+      await this.ledger.append({
+        merchantId: p.invoice.merchantId,
+        type: 'recovery.planned',
+        occurredAt: new Date().toISOString(),
+        detail: { invoiceId: p.invoice.id, action: via, methodRef: m.processorRef },
+      });
+      const exec = await this.attemptRecovery({ adapter: p.adapter, invoice: p.invoice, method: m, proposed: freshProposed(m), attemptNumber: p.attemptNumber, shadow: false });
+      return exec.outcome;
+    };
+
+    // 1. Account Updater — charge the refreshed credential if the card was updated.
+    let updated: PaymentMethod | null = null;
+    try {
+      updated = await p.adapter.fetchUpdatedCard(p.method);
+    } catch (err) {
+      this.logger.debug(`fetchUpdatedCard failed for ${p.invoice.id}: ${String(err)}`);
+    }
+    if (updated && updated.token !== p.method.token) {
+      const outcome = await charge(updated, 'card_refresh');
+      if (outcome === 'succeeded') return { outcome };
+    }
+
+    // 2. Alternate rail — charge a stored backup method (needs the customer to list them).
+    if (p.customer) {
+      let methods: PaymentMethod[] = [];
+      try {
+        methods = await p.adapter.listPaymentMethods(p.customer);
+      } catch (err) {
+        this.logger.debug(`listPaymentMethods failed for ${p.invoice.id}: ${String(err)}`);
+      }
+      const backup = methods.find((m) => m.id !== p.method.id && (!updated || m.id !== updated!.id));
+      if (backup) {
+        const outcome = await charge(backup, 'alternate_rail');
+        if (outcome === 'succeeded') return { outcome };
+      }
+    }
+
+    return null; // no fresh credential recovered — caller falls through to dunning comms
   }
 
   /**

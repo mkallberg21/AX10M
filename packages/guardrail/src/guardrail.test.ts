@@ -51,6 +51,16 @@ describe('guardrail.evaluate', () => {
     if (!d.allow) expect(d.reason).toBe(SuppressionReason.HardDecline);
   });
 
+  it('ALLOWS a fresh-credential charge on a hard/dead-card decline (it is a NEW credential)', () => {
+    // Charging an Account-Updater-refreshed card / backup rail for a closed account is
+    // legitimate — the hard-decline block is only about re-hitting the DEAD card.
+    const d = evaluate({ ...retryAction, kind: 'fresh_credential_charge', declineCode: DeclineCode.ClosedAccount, declineFamily: DeclineFamily.Hard });
+    expect(d).toEqual({ allow: true });
+    // …but it still respects the opt-out and the attempt caps.
+    expect(evaluate({ ...retryAction, kind: 'fresh_credential_charge', declineFamily: DeclineFamily.Hard, globallyOptedOut: true }).allow).toBe(false);
+    expect(evaluate({ ...retryAction, kind: 'fresh_credential_charge', declineFamily: DeclineFamily.Hard, attemptsSoFar: 99 }).allow).toBe(false);
+  });
+
   it('suppresses a retry once the attempt cap is reached', () => {
     const d = evaluate({ ...retryAction, attemptsSoFar: 4 }, { maxRetryAttempts: 4, quietHours: { start: 21, end: 8 } });
     expect(d.allow).toBe(false);

@@ -45,36 +45,36 @@ export function evaluate(
     return suppress(SuppressionReason.GlobalOptOut, 'Customer has globally opted out of all contact.');
   }
 
+  // Charging the SAME dead card: block hard declines + non-retriable codes (retrying
+  // them burns attempts and triggers network penalties). These blocks do NOT apply to a
+  // fresh-credential charge, which is the intended lever for exactly these declines.
   if (action.kind === 'charge_retry') {
-    // 2. Hard declines are never retriable — retrying triggers network penalties.
     if (action.declineFamily === DeclineFamily.Hard) {
       return suppress(
         SuppressionReason.HardDecline,
-        `Hard decline (${action.declineCode}) — retries suppressed; route to card-update comms.`,
+        `Hard decline (${action.declineCode}) — same-card retries suppressed; route to card refresh / alternate rail / comms.`,
       );
     }
-    // 3. Taxonomy-level non-retriable codes (e.g. expired_card) — no same-card retry.
     if (!isRetriable(action.declineCode)) {
       return suppress(
         SuppressionReason.NonRetriableCode,
         `Decline code ${action.declineCode} is not retriable on the same card.`,
       );
     }
-    // 4. Global fallback attempt cap.
+  }
+
+  // Attempt caps + network compliance apply to BOTH charge kinds (a fresh-credential
+  // charge still hits the network and must not bypass rate limits or the opt-out).
+  if (action.kind === 'charge_retry' || action.kind === 'fresh_credential_charge') {
     if (action.attemptsSoFar >= policy.maxRetryAttempts) {
       return suppress(
         SuppressionReason.RetryCapReached,
         `Retry cap reached (${action.attemptsSoFar}/${policy.maxRetryAttempts}).`,
       );
     }
-    // 5. Card-network retry-cap compliance (attempts within the rolling window and
-    //    minimum inter-attempt interval) — prevents network fines / acquirer scrutiny.
     const cap = policy.networkCaps?.[action.cardNetwork ?? 'other'];
     if (cap) {
-      if (
-        action.minutesSinceLastAttempt !== undefined &&
-        action.minutesSinceLastAttempt < cap.minMinutesBetween
-      ) {
+      if (action.minutesSinceLastAttempt !== undefined && action.minutesSinceLastAttempt < cap.minMinutesBetween) {
         return suppress(
           SuppressionReason.MinIntervalNotElapsed,
           `Only ${action.minutesSinceLastAttempt}min since last attempt; ${action.cardNetwork ?? 'network'} requires ≥${cap.minMinutesBetween}min.`,

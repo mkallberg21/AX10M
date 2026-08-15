@@ -9,8 +9,17 @@
 
 import type { DeclineCode, DeclineFamily } from '@ax10m/canonical';
 
-/** A proposed action the decision core wants to take. */
-export type ProposedActionKind = 'charge_retry' | 'comms';
+/**
+ * A proposed action the decision core wants to take.
+ *  - `charge_retry`            — re-attempt the ORIGINAL credential (same card).
+ *  - `fresh_credential_charge` — charge a DIFFERENT working credential: an
+ *    Account-Updater-refreshed card (`card_refresh`) or a stored backup method
+ *    (`alternate_rail`). The hard-decline / non-retriable-code blocks (which exist to
+ *    stop pounding a dead card) do NOT apply — the whole point is that this is a new,
+ *    valid credential — but the attempt caps and opt-out still do.
+ *  - `comms`                   — a customer message (e.g. dunning card-update prompt).
+ */
+export type ProposedActionKind = 'charge_retry' | 'fresh_credential_charge' | 'comms';
 
 /** Communication channel for a comms action. */
 export type CommsChannel = 'email' | 'sms' | 'whatsapp' | 'push' | 'in_app';

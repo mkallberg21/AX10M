@@ -29,12 +29,15 @@ drives sequencing.
   saga only when the normalized failure event carries the failed payment method. Have each
   adapter's `ingestWebhook` include it so durable dispatch covers every processor (today it
   falls back to inline shadow planning when absent).
-- **Multi-method resolution at execution time.** ARSE plans credential rotation
-  (`RetryStep.methodRef`), but `executeRecovery` still charges the case's primary method.
-  Wire the alternate-credential selection through the charge path.
-- **Multi-method resolution at execution time.** ARSE plans credential rotation
-  (`RetryStep.methodRef`), but `executeRecovery` still charges the case's primary method.
-  Wire the alternate-credential selection through the charge path.
+- ~~**Credential recovery in the live charge path.**~~ **DONE** — `executeRecovery` now, for
+  dead-credential declines, runs `executeCredentialRecovery`: `card_refresh` (via
+  `adapter.fetchUpdatedCard` → charge the Account-Updater-refreshed credential) then
+  `alternate_rail` (via `adapter.listPaymentMethods` → charge a backup method), each
+  guardrailed as a `fresh_credential_charge` (a new guardrail kind that skips the dead-card
+  hard-decline / non-retriable blocks but keeps caps + opt-out), with distinct idempotency
+  keys per method. *Remaining: thread the `Customer` through the durable saga so `alternate_rail`
+  fires in the Temporal path too (today the saga passes no customer → card_refresh only there;
+  direct callers pass it); per-credential (not per-case) network-cap accounting is a refinement.*
 
 ## Hygiene / correctness
 - **`@ax10m/canonical` has no tests**, which breaks `pnpm -r test`. Add a trivial test
