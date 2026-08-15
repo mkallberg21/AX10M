@@ -5,11 +5,24 @@ phase (per the build-plan rule "no scope creep"). Not prioritized; the phased pl
 drives sequencing.
 
 ## Deferred from the phased plan / prior sessions
-- **Local Temporal harness.** A docker-compose Temporal dev server + a worker entrypoint
-  that registers the recovery activities + a smoke test running `recoverySequenceWorkflow`
-  against a fake adapter (no processor creds needed), to give the Temporal binding real
-  runtime coverage. Explicitly requested but deferred: it does not answer the core
-  question (does the engine beat the baseline), which is Phase 1's job.
+- ~~**Local Temporal harness + runnable worker.**~~ **DONE** — `docker-compose.temporal.yml`
+  (dev cluster + UI), a runnable worker entry (`apps/api` `run worker`), the API-side durable
+  dispatcher, and a real worker e2e (`packages/scheduler/src/temporal/worker.e2e.test.ts`,
+  time-skipping Temporal server) that proves the durable saga + exactly-once-under-retry.
+  See `docs/RUNBOOK-WORKER.md`. **Remaining to actually charge real money:** an operator
+  supplies real processor creds + a real cluster, and flips `AX10M_LIVE_CHARGING=true`.
+- **Shared persisted ledger across worker + API.** The live `RecoveryCaseService` ledger is
+  still in-process, so the worker and HTTP API hold separate in-memory ledgers. Back it with
+  the `@ax10m/persistence` `LedgerRepository` (already restart-safe) so both processes append
+  to one hash-chained ledger — the prerequisite for the worker's real charges to feed the
+  retrainer/flywheel the API reads. (This is what makes "a real ledger to retrain on" real.)
+- **Adapters populate `invoice.failed` payload.method.** The API auto-dispatches a durable
+  saga only when the normalized failure event carries the failed payment method. Have each
+  adapter's `ingestWebhook` include it so durable dispatch covers every processor (today it
+  falls back to inline shadow planning when absent).
+- **Multi-method resolution at execution time.** ARSE plans credential rotation
+  (`RetryStep.methodRef`), but `executeRecovery` still charges the case's primary method.
+  Wire the alternate-credential selection through the charge path.
 - **Multi-method resolution at execution time.** ARSE plans credential rotation
   (`RetryStep.methodRef`), but `executeRecovery` still charges the case's primary method.
   Wire the alternate-credential selection through the charge path.

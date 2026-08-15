@@ -28,9 +28,10 @@ export async function startRecoveryWorkflow(
   client: Client,
   workflowId: string,
   input: RecoveryWorkflowInput,
+  taskQueue: string = RECOVERY_TASK_QUEUE,
 ): Promise<WorkflowHandle> {
   return client.workflow.start('recoveryWorkflow', {
-    taskQueue: RECOVERY_TASK_QUEUE,
+    taskQueue,
     workflowId,
     args: [input],
     // Reuse-policy is deployment-specific; the caller can pass a richer options set.

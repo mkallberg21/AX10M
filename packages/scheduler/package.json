@@ -19,7 +19,7 @@
     "build": "tsc -b",
     "clean": "rimraf dist *.tsbuildinfo",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "tsc -b && vitest run"
   },
   "dependencies": {
     "@ax10m/canonical": "workspace:*",
@@ -29,6 +29,8 @@
     "@temporalio/workflow": "^1.11.0"
   },
   "devDependencies": {
+    "@temporalio/testing": "^1.11.0",
+    "@temporalio/worker": "^1.11.0",
     "rimraf": "^6.0.0",
     "typescript": "^5.5.4",
     "vitest": "^2.1.0"

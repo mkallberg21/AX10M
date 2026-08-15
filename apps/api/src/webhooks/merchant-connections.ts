@@ -11,7 +11,7 @@
  */
 
 import type { AdapterCredentials } from '@ax10m/poal';
-import type { ConnectionRepository } from '@ax10m/persistence';
+import { ConnectionRepository, applyMigrations, loadKeyFromEnv, openFromEnv } from '@ax10m/persistence';
 
 /** A merchant's connection to one processor account. */
 export interface MerchantConnection {
@@ -95,4 +95,20 @@ export async function seedConnectionsFromEnv(store: MerchantConnectionStore, env
   await def('adyen', env.ADYEN_MERCHANT_ID, { apiKey: env.ADYEN_API_KEY, merchantAccount: env.ADYEN_MERCHANT_ACCOUNT, hmacKey: env.ADYEN_HMAC_KEY, baseUrl: env.ADYEN_CHECKOUT_URL }, ['apiKey', 'merchantAccount']);
   await def('braintree', env.BRAINTREE_AX10M_MERCHANT_ID, { braintreeMerchantId: env.BRAINTREE_MERCHANT_ID, publicKey: env.BRAINTREE_PUBLIC_KEY, privateKey: env.BRAINTREE_PRIVATE_KEY, environment: env.BRAINTREE_ENVIRONMENT }, ['braintreeMerchantId', 'publicKey', 'privateKey']);
   await def('gocardless', env.GOCARDLESS_MERCHANT_ID, { accessToken: env.GOCARDLESS_ACCESS_TOKEN, webhookSecret: env.GOCARDLESS_WEBHOOK_SECRET, environment: env.GOCARDLESS_ENVIRONMENT }, ['accessToken', 'webhookSecret']);
+}
+
+/**
+ * Build the connection store for a process (HTTP API or worker). With `DATABASE_URL`
+ * set → Postgres-backed store with credentials encrypted at rest (@ax10m/persistence).
+ * Otherwise → in-memory, seeded from env for single-tenant deployments (local dev / tests).
+ */
+export async function buildConnectionStore(env: NodeJS.ProcessEnv = process.env): Promise<MerchantConnectionStore> {
+  if (env.DATABASE_URL) {
+    const { db } = await openFromEnv();
+    await applyMigrations(db);
+    return new DbMerchantConnectionStore(new ConnectionRepository(db, loadKeyFromEnv()));
+  }
+  const store = new InMemoryMerchantConnectionStore();
+  await seedConnectionsFromEnv(store, env);
+  return store;
 }

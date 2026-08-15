@@ -12,6 +12,7 @@ import {
 import type { Cursor, OpenFailuresPage, ProcessorAdapter, RawWebhook } from '@ax10m/poal';
 import { RecoveryCaseService } from './recovery-case.service.js';
 import { OnboardingService } from '../onboarding/onboarding.service.js';
+import type { DurableRecoveryRequest, RecoveryDispatcher } from './recovery-dispatcher.js';
 
 /**
  * A fake adapter that records every attemptCharge call (so we can assert the
@@ -194,6 +195,80 @@ describe('RecoveryCaseService webhook ingress (shadow planning)', () => {
     // holdout.assigned was appended regardless of bucket → the chain head moved.
     expect(svc.ledgerHead()).not.toBe(head0);
     expect((adapter as FakeAdapter).charges).toHaveLength(0);
+  });
+});
+
+describe('durable recovery dispatch (webhook → Temporal workflow)', () => {
+  /** Records every dispatched workflow so we can assert on it. */
+  class RecordingDispatcher implements RecoveryDispatcher {
+    readonly dispatched: DurableRecoveryRequest[] = [];
+    async dispatch(req: DurableRecoveryRequest): Promise<void> {
+      this.dispatched.push(req);
+    }
+  }
+
+  const failEvent = (inv: Invoice, withMethod: boolean): CanonicalEvent => ({
+    id: `ce_${inv.id}`,
+    type: 'invoice.failed',
+    merchantId: inv.merchantId,
+    occurredAt: '2026-08-14T00:00:00.000Z',
+    processorEventId: `evt_${inv.id}`,
+    payload: { invoice: inv, decline: softDecline, ...(withMethod ? { method: { ...method, customerId: inv.customerId } } : {}) },
+  });
+
+  const feed = async (svc: RecoveryCaseService, inv: Invoice, withMethod: boolean): Promise<void> => {
+    const adapter: ProcessorAdapter = Object.assign(new FakeAdapter('succeeded'), { ingestWebhook: async () => [failEvent(inv, withMethod)] });
+    await svc.ingestWithAdapter(adapter, { body: '{}', headers: {} });
+  };
+
+  // 30 distinct cases → both holdout buckets are present (assignment is deterministic).
+  const cases: Invoice[] = Array.from({ length: 30 }, (_, i) => ({
+    ...invoice,
+    id: `ax10m_inv_disp_${i}`,
+    customerId: `ax10m_cus_disp_${i}`,
+    processorRef: `in_disp_${i}`,
+  }));
+
+  it('dispatches a durable workflow only for TREATMENT cases, keyed by invoice id, in shadow when not live', async () => {
+    const svc = new RecoveryCaseService(new OnboardingService());
+    const dispatcher = new RecordingDispatcher();
+    svc.enableDurableDispatch(dispatcher, { liveCharging: false });
+    for (const c of cases) await feed(svc, c, /*withMethod*/ true);
+
+    // Some (not all) cases are treatment → a proper subset dispatched.
+    expect(dispatcher.dispatched.length).toBeGreaterThan(0);
+    expect(dispatcher.dispatched.length).toBeLessThan(cases.length);
+    // Every dispatch is idempotency-keyed to the invoice id, carries the method, and (not
+    // live) runs the durable saga in shadow.
+    for (const d of dispatcher.dispatched) {
+      expect(d.input.saga.attempt.invoice.id).toBe(d.workflowId);
+      expect(d.input.saga.attempt.method).toBeDefined();
+      expect(d.input.saga.shadow).toBe(true);
+    }
+  });
+
+  it('passes shadow=false to the durable saga when liveCharging is on', async () => {
+    const svc = new RecoveryCaseService(new OnboardingService());
+    const dispatcher = new RecordingDispatcher();
+    svc.enableDurableDispatch(dispatcher, { liveCharging: true });
+    for (const c of cases) await feed(svc, c, true);
+    expect(dispatcher.dispatched.length).toBeGreaterThan(0);
+    for (const d of dispatcher.dispatched) expect(d.input.saga.shadow).toBe(false);
+  });
+
+  it('does NOT dispatch when the normalized event carries no payment method', async () => {
+    const svc = new RecoveryCaseService(new OnboardingService());
+    const dispatcher = new RecordingDispatcher();
+    svc.enableDurableDispatch(dispatcher, { liveCharging: false });
+    for (const c of cases) await feed(svc, c, /*withMethod*/ false);
+    expect(dispatcher.dispatched).toHaveLength(0);
+  });
+
+  it('does NOT dispatch by default (no dispatcher configured → inline shadow-plan only)', async () => {
+    const svc = new RecoveryCaseService(new OnboardingService());
+    const dispatcher = new RecordingDispatcher();
+    for (const c of cases) await feed(svc, c, true); // durable NOT enabled
+    expect(dispatcher.dispatched).toHaveLength(0);
   });
 });
 

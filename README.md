@@ -216,15 +216,22 @@ must be **restricted, least-privilege** keys (ARCHITECTURE.md §7).
   online bandit + decline-code intelligence + network-aware **ARSE retry sequencer** +
   customer/issuer feature store (the flywheel) + ledger→corpus **retrain job** (champion/
   challenger gate).
-- **Durable scheduler** (`@ax10m/scheduler`): adaptive + ARSE-sequenced sagas with a
-  Temporal binding; exactly-once. *(Code exists; not deployed against a live cluster.)*
+- **Durable scheduler + runnable worker** (`@ax10m/scheduler`): adaptive + ARSE-sequenced
+  sagas with a Temporal binding; exactly-once. A runnable worker (`apps/api` `run worker`),
+  an API-side durable dispatcher, and a local Temporal harness (`docker-compose.temporal.yml`)
+  are wired. The worker is proven **against a real Temporal server** (time-skipping e2e:
+  runs the saga, fast-forwards the multi-day sleep, asserts an activity retry settles no
+  second charge). *(Runs in SHADOW by default; real money needs operator creds + a cluster —
+  see `docs/RUNBOOK-WORKER.md`.)*
 - **Shadow-first onboarding**: lifecycle + projection, wired to the webhook stream.
 - Dashboard renders the real attribution + onboarding + reconciliation engines.
 
 **Stubbed / not yet real (`TODO(ax10m)` markers):**
-- **Live active charging.** The charge path + durable scheduler exist in code, but nothing
-  runs them against a real processor — no live Temporal worker, no credentials. **Phase 0
-  runs shadow mode — measures, never moves money.**
+- **Live active charging (no real money moved from this repo).** The durable charge path is
+  now wired end-to-end and runs against a *real* Temporal server in tests — but only with
+  scripted/fake processors. Moving real money is gated (`AX10M_LIVE_CHARGING`, off by
+  default) and requires an operator to supply real processor credentials and a real cluster;
+  that has not been done here. **Default is shadow mode — measures, never moves money.**
 - **The engine is trained on synthetic data, not proven vs the incumbent** — see the
   honest-status block above; the backtest is what will test it.
 - Persistence (`@ax10m/persistence`): Postgres via Drizzle — **restart-safe hash-chained

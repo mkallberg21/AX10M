@@ -27,7 +27,9 @@ import {
   type RetryPolicy,
   type RetryStep,
 } from '@ax10m/recovery-engine';
+import type { RecoveryWorkflowInput } from '@ax10m/scheduler/temporal';
 import { OnboardingService } from '../onboarding/onboarding.service.js';
+import { NoopRecoveryDispatcher, type RecoveryDispatcher } from './recovery-dispatcher.js';
 
 /**
  * RecoveryCaseService — the integration seam of the Phase-0 proof engine.
@@ -79,6 +81,26 @@ export class RecoveryCaseService {
   // Highest attempt number executed per invoice (drives the guardrail's window count).
   private readonly attempts = new Map<string, number>();
 
+  // Durable charge path. Default = Noop (inline shadow-plan only, unchanged behavior).
+  // A deployment calls enableDurableDispatch() to route treatment cases to a Temporal
+  // workflow (see apps/api/src/worker + docs/RUNBOOK-WORKER.md). `liveCharging` controls
+  // whether the durable saga moves money (false → the saga runs in shadow).
+  private dispatcher: RecoveryDispatcher = new NoopRecoveryDispatcher();
+  private durableRecovery = false;
+  private liveCharging = false;
+
+  /**
+   * Route treatment cases through the durable Temporal saga instead of only planning
+   * inline. Idempotent at the workflow level (workflowId = invoice id). Safe by default:
+   * with `liveCharging: false` the durable saga measures but moves no money.
+   */
+  enableDurableDispatch(dispatcher: RecoveryDispatcher, opts: { liveCharging: boolean }): void {
+    this.dispatcher = dispatcher;
+    this.durableRecovery = true;
+    this.liveCharging = opts.liveCharging;
+    this.logger.log(`Durable recovery dispatch enabled (liveCharging=${opts.liveCharging}).`);
+  }
+
   /**
    * Generic ingress: any adapter → canonical events → recovery cases. Called by the
    * per-merchant WebhookRouterService, which resolves the merchant + builds the adapter
@@ -94,7 +116,7 @@ export class RecoveryCaseService {
 
   private async handleEvent(event: CanonicalEvent): Promise<void> {
     if (event.type === 'invoice.failed') {
-      const payload = event.payload as { invoice?: Invoice; decline?: DeclineEvent };
+      const payload = event.payload as { invoice?: Invoice; decline?: DeclineEvent; method?: PaymentMethod };
       if (payload.invoice) {
         const stratum = deriveStratum(payload.invoice, payload.decline);
         const { bucket } = this.openCase({ invoice: payload.invoice, stratum, occurredAt: event.occurredAt });
@@ -110,10 +132,18 @@ export class RecoveryCaseService {
           declineCode: payload.decline?.code ?? DeclineCode.Unknown,
           amount: payload.invoice.amount.amount,
         });
-        // TREATMENT cases get the recovery brain; CONTROL stays baseline-only. In
-        // shadow mode we PLAN (record the engine's decision) but never execute.
+        // TREATMENT cases get the recovery brain; CONTROL stays baseline-only. We always
+        // PLAN inline (records the engine's decision for measurement). When durable
+        // dispatch is enabled AND the normalized event carries the failed payment method,
+        // we ALSO hand the case to the durable Temporal saga, which owns the timed,
+        // exactly-once retry loop (and moves money only when liveCharging is on).
         if (bucket === 'treatment') {
           this.planRecovery(payload.invoice, payload.decline);
+          if (this.durableRecovery && payload.method) {
+            await this.dispatchDurableRecovery(payload.invoice, payload.method, payload.decline);
+          } else if (this.durableRecovery && !payload.method) {
+            this.logger.debug(`Durable dispatch skipped for ${payload.invoice.id}: no payment method on the normalized event.`);
+          }
         }
         this.logger.debug(`Opened recovery case for ${payload.invoice.id} → ${bucket}`);
       }
@@ -280,6 +310,19 @@ export class RecoveryCaseService {
    */
   private planRecovery(invoice: Invoice, decline?: DeclineEvent): RecoveryDecision {
     return this.planAttempt({ invoice, decline, attemptNumber: (this.attempts.get(invoice.id) ?? 0) + 1 });
+  }
+
+  /**
+   * Hand a treatment case to the durable Temporal saga. The workflowId is the invoice id
+   * so a redelivered webhook can't start a duplicate saga. `shadow` follows the
+   * deployment's liveCharging flag — false keeps the durable run measurement-only.
+   */
+  private async dispatchDurableRecovery(invoice: Invoice, method: PaymentMethod, decline?: DeclineEvent): Promise<void> {
+    const input: RecoveryWorkflowInput = {
+      saga: { attempt: { invoice, method, decline }, shadow: !this.liveCharging },
+    };
+    await this.dispatcher.dispatch({ workflowId: invoice.id, input });
+    this.logger.debug(`Dispatched durable recovery for ${invoice.id} (shadow=${!this.liveCharging}).`);
   }
 
   /**
