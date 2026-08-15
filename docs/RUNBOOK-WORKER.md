@@ -77,6 +77,22 @@ single-process and cannot be shared across the API and worker**, so the shared l
 requires Postgres. The worker's startup log prints `ledger=shared-postgres` or
 `ledger=in-memory(single-process)` so you can see which mode you're in.
 
+## Retrain (the flywheel)
+
+Once the shared ledger has accumulated enough labeled outcomes, retrain the recoverability
+model off it:
+
+```bash
+DATABASE_URL=... corepack pnpm --filter @ax10m/api run retrain
+```
+
+The job reads the persisted ledger, fits a challenger, and applies the champion/challenger
+promotion gate (never ships a regression or a model fit on too little/imbalanced data). On
+promotion it writes a new version to the `recovery_models` store and records a
+`model.promoted` event in the ledger. The API and worker load the **active** champion at
+startup, so the next restart runs the improved model. Schedule it (cron / Temporal
+schedule) to run periodically. Requires `DATABASE_URL` — it reads the shared ledger.
+
 ## Known limitations (honest)
 
 - **Auto-dispatch needs the failed payment method on the event.** The API enqueues a

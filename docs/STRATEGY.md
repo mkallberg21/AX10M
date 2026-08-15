@@ -190,7 +190,11 @@ hypothesis.
 The `ARCHITECTURE.md` phases are re-prioritized accordingly:
 
 1. **Recovery engine → real** — turn `@ax10m/recovery-engine` from cold-start
-   heuristic into a policy trained on real outcomes; instrument the reward.
+   heuristic into a policy trained on real outcomes; instrument the reward. The
+   **retrain loop is wired**: `run retrain` reads the persisted ledger, applies the
+   champion/challenger gate, persists a promoted champion to a versioned store, and the
+   API + worker load it at startup. What's still synthetic is the *data* — the ledger
+   fills with real outcomes only once live charging is on.
 2. **Stripe adapter → real** (done) + the "take control" charge path in a durable
    (Temporal) activity with exactly-once semantics — **wired and runnable**: a worker
    (`apps/api run worker`), an API durable dispatcher, a local cluster harness, and an

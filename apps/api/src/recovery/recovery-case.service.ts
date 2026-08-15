@@ -21,6 +21,7 @@ import {
   planRetrySequence,
   RecoveryFeatureStore,
   type AvailableMethod,
+  type RecoverabilityWeights,
   type RecoveryDecision,
   type RecoveryFeatures,
   type RetryPolicy,
@@ -75,9 +76,21 @@ export class RecoveryCaseService {
   // the live ledger via samplesFromLedger, or swap in an online BanditPolicy — the
   // RetryPolicy/RecoverabilityModel seam means neither touches this wiring.
   // The trained recoverability model, shared by the single-step policy AND the ARSE
-  // sequence planner so both speak with the same brain.
-  private readonly recoverabilityModel = new LogisticRecoverability(BOOTSTRAP_RECOVERABILITY_WEIGHTS);
-  private readonly policy: RetryPolicy = new HeuristicPolicy(this.recoverabilityModel);
+  // sequence planner so both speak with the same brain. Starts on the bootstrap prior;
+  // useChampion() swaps in a retrained model loaded from the persisted model store.
+  private recoverabilityModel = new LogisticRecoverability(BOOTSTRAP_RECOVERABILITY_WEIGHTS);
+  private policy: RetryPolicy = new HeuristicPolicy(this.recoverabilityModel);
+
+  /**
+   * Swap the recoverability model to a retrained champion (loaded from the persisted
+   * model store at startup). Rebuilds both the policy and the sequence planner's model so
+   * they share the new brain. The RecoverabilityModel seam means callers are unaffected.
+   */
+  useChampion(weights: RecoverabilityWeights): void {
+    this.recoverabilityModel = new LogisticRecoverability(weights);
+    this.policy = new HeuristicPolicy(this.recoverabilityModel);
+    this.logger.log(`Loaded retrained champion (meta: ${JSON.stringify(weights.meta ?? {})}).`);
+  }
 
   // Enrichment layer + data flywheel: turns a raw failure into the high-signal feature
   // vector (customer recovery rate, issuer/BIN approval prior + region, tenure) from

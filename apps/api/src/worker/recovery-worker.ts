@@ -20,6 +20,7 @@ import { OnboardingService } from '../onboarding/onboarding.service.js';
 import { RecoveryCaseService } from '../recovery/recovery-case.service.js';
 import { ServiceRecoveryCasePort, type AdapterResolver } from '../recovery/recovery-case.port.js';
 import { buildLedgerPort } from '../recovery/ledger-port.js';
+import { loadActiveChampion } from '../recovery/retrain-job.js';
 import { buildConnectionStore } from '../webhooks/merchant-connections.js';
 
 export interface RecoveryWorkerRuntime {
@@ -47,6 +48,9 @@ export async function buildRecoveryWorkerRuntime(env: NodeJS.ProcessEnv = proces
   const ledger = await buildLedgerPort(env);
   if (ledger) service.useLedger(ledger);
   const sharedLedger = ledger !== null;
+  // Load the active retrained champion (if any) so the worker charges with the latest model.
+  const champion = await loadActiveChampion({ env });
+  if (champion) service.useChampion(champion);
 
   // Preload the configured processor connections into a merchant→adapter map. The saga's
   // resolver is synchronous, so we resolve credentials up front (the worker starts with a

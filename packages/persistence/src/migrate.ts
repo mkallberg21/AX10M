@@ -43,6 +43,18 @@ const MIGRATIONS: Migration[] = [
       `CREATE INDEX IF NOT EXISTS idx_ledger_merchant ON ledger_entries (merchant_id)`,
     ],
   },
+  {
+    name: '0002_recovery_models',
+    statements: [
+      `CREATE TABLE IF NOT EXISTS recovery_models (
+        version integer PRIMARY KEY,
+        weights jsonb NOT NULL,
+        created_at text NOT NULL,
+        active boolean NOT NULL DEFAULT false
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_recovery_models_active ON recovery_models (active)`,
+    ],
+  },
 ];
 
 /** Apply all pending migrations. Returns the names actually run. Idempotent. */

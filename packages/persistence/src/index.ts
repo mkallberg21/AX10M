@@ -13,4 +13,5 @@ export * from './crypto.js';
 export * from './migrate.js';
 export * from './ledger-repo.js';
 export * from './connection-repo.js';
+export * from './model-repo.js';
 export * from './seed.js';

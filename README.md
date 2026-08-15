@@ -215,7 +215,9 @@ must be **restricted, least-privilege** keys (ARCHITECTURE.md §7).
 - **Recovery engine**: trained (on a *synthetic* corpus) logistic recoverability model +
   online bandit + decline-code intelligence + network-aware **ARSE retry sequencer** +
   customer/issuer feature store (the flywheel) + ledger→corpus **retrain job** (champion/
-  challenger gate).
+  challenger gate) that runs against the **persisted** ledger and persists a promoted
+  champion to a versioned model store; the API + worker load the active champion at startup
+  (`run retrain` → `model.promoted` ledger event → next start picks it up).
 - **Durable scheduler + runnable worker** (`@ax10m/scheduler`): adaptive + ARSE-sequenced
   sagas with a Temporal binding; exactly-once. A runnable worker (`apps/api` `run worker`),
   an API-side durable dispatcher, and a local Temporal harness (`docker-compose.temporal.yml`)

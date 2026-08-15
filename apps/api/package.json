@@ -8,6 +8,7 @@
     "dev": "nest start --watch",
     "start": "node dist/main.js",
     "worker": "node dist/worker/main.js",
+    "retrain": "node dist/recovery/retrain-main.js",
     "clean": "rimraf dist *.tsbuildinfo",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"

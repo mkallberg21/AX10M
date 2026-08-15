@@ -16,8 +16,15 @@ drives sequencing.
   With `DATABASE_URL` set, both the API and worker append to one shared hash-chained ledger,
   serialized by a transaction-scoped advisory lock (seq-collision retry backstop); proven
   contiguous + `verifyChain`-valid under concurrent writes in
-  `apps/api/src/recovery/shared-ledger.e2e.test.ts`. *Remaining downstream: run the retrainer
-  against the persisted (Postgres) ledger the worker fills once live charging is on.*
+  `apps/api/src/recovery/shared-ledger.e2e.test.ts`.
+- ~~**Run the retrainer against the persisted ledger.**~~ **DONE** — `runRetrainJob`
+  (`apps/api/src/recovery/retrain-job.ts`, `run retrain`) reads the persisted ledger, runs
+  the champion/challenger gate, and on promotion persists the new champion to a versioned
+  model store (`recovery_models`) + records a `model.promoted` ledger event. The API and
+  worker load the active champion at startup (`useChampion`), closing the flywheel. Proven
+  end-to-end in `apps/api/src/recovery/retrain-persisted.e2e.test.ts` (fills the persisted
+  ledger by running the service, promotes, persists, reloads). *Remaining downstream: run
+  it against real Postgres filled by real charges (needs live charging on).*
 - **Adapters populate `invoice.failed` payload.method.** The API auto-dispatches a durable
   saga only when the normalized failure event carries the failed payment method. Have each
   adapter's `ingestWebhook` include it so durable dispatch covers every processor (today it

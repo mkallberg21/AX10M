@@ -46,4 +46,17 @@ export const ledgerEntries = pgTable('ledger_entries', {
   hash: text('hash').notNull(),
 });
 
-export const schema = { merchants, merchantConnections, ledgerEntries };
+/**
+ * Versioned recovery-model store. The retrain job (@ax10m/recovery-engine
+ * `retrainFromLedger`) writes a new row when a challenger is promoted; the recovery
+ * service loads the `active` row at startup. Rollback = flip `active` to an older version.
+ * `weights` is the serialized `RecoverabilityWeights` ({ w, b, meta }).
+ */
+export const recoveryModels = pgTable('recovery_models', {
+  version: integer('version').primaryKey(),
+  weights: jsonb('weights').notNull(),
+  createdAt: text('created_at').notNull(),
+  active: boolean('active').notNull().default(false),
+});
+
+export const schema = { merchants, merchantConnections, ledgerEntries, recoveryModels };

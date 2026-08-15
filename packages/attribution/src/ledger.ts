@@ -29,6 +29,7 @@ export type LedgerEventType =
   | 'action.suppressed'
   | 'case.recovered'
   | 'case.abandoned'
+  | 'model.promoted'
   | 'uplift.statement';
 
 /** The immutable payload of a ledger entry (everything except the chain hash). */
