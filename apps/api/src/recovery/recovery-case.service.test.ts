@@ -206,6 +206,7 @@ describe('credential recovery in the live charge path (card_refresh + alternate_
     constructor(
       private readonly updated: PaymentMethod | null,
       private readonly backups: PaymentMethod[] = [],
+      private readonly failTokens: Set<string> = new Set(),
     ) {}
     async ingestWebhook(): Promise<CanonicalEvent[]> {
       return [];
@@ -215,7 +216,8 @@ describe('credential recovery in the live charge path (card_refresh + alternate_
     }
     async attemptCharge(inv: Invoice, m: PaymentMethod, key: string): Promise<ChargeResult> {
       this.charges.push({ methodId: m.id, key });
-      return { outcome: 'succeeded', idempotentReplay: false, attempt: { id: `att_${this.charges.length}`, invoiceId: inv.id, paymentMethodId: m.id, idempotencyKey: key, amount: inv.amount, status: 'succeeded', attemptNumber: 1, attemptedAt: '2026-08-14T00:00:00.000Z' } };
+      const outcome: ChargeResult['outcome'] = this.failTokens.has(m.token) ? 'failed' : 'succeeded';
+      return { outcome, idempotentReplay: false, attempt: { id: `att_${this.charges.length}`, invoiceId: inv.id, paymentMethodId: m.id, idempotencyKey: key, amount: inv.amount, status: outcome, attemptNumber: 1, attemptedAt: '2026-08-14T00:00:00.000Z' } };
     }
     async fetchUpdatedCard(): Promise<PaymentMethod | null> {
       return this.updated;
@@ -273,6 +275,31 @@ describe('credential recovery in the live charge path (card_refresh + alternate_
     const { action } = await svc.executeRecovery({ adapter, invoice, method, decline: expired, attemptNumber: 1, shadow: true });
     expect(action).toBe('card_update_comms');
     expect(adapter.charges).toHaveLength(0);
+  });
+
+  // ── Per-credential network-cap accounting ──
+  it('tracks the network-cap attempt count PER CREDENTIAL (card), not per case', async () => {
+    const svc = new RecoveryCaseService(new OnboardingService());
+    const adapter = new FakeAdapter('failed'); // soft decline keeps failing → stays recoverable
+    const otherCard: PaymentMethod = { ...method, id: 'ax10m_pm_other', token: 'tok_other' };
+    await svc.executeRecovery({ adapter, invoice, method, decline: softDecline, attemptNumber: 1, shadow: false });
+    await svc.executeRecovery({ adapter, invoice, method, decline: softDecline, attemptNumber: 2, shadow: false });
+    expect(svc.credentialAttemptCount(invoice.id, method)).toBe(2); // the charged card: 2 attempts
+    expect(svc.credentialAttemptCount(invoice.id, otherCard)).toBe(0); // a different card: independent window
+  });
+
+  it('a fresh credential starts a separate count — refresh + backup are tracked apart from the dead card', async () => {
+    const svc = new RecoveryCaseService(new OnboardingService());
+    const refreshed: PaymentMethod = { ...method, id: 'pm_refreshed', token: 'tok_new' };
+    const backup: PaymentMethod = { id: 'pm_backup', customerId: invoice.customerId, processorRef: 'pm_backup', token: 'tok_backup', brand: 'visa' };
+    // Refresh charge FAILS (so alt-rail runs), backup SUCCEEDS.
+    const adapter = new CredentialAdapter(refreshed, [backup], new Set(['tok_new']));
+    await svc.executeRecovery({ adapter, invoice, method, decline: expired, attemptNumber: 1, customer, shadow: false });
+    // Three distinct cards → three independent counts; the dead card was never charged, so
+    // the fresh cards' network-cap windows are not polluted by (nor pollute) it.
+    expect(svc.credentialAttemptCount(invoice.id, method)).toBe(0); // dead card: never charged
+    expect(svc.credentialAttemptCount(invoice.id, refreshed)).toBe(1); // refreshed card: 1 (failed) attempt
+    expect(svc.credentialAttemptCount(invoice.id, backup)).toBe(1); // backup card: 1 (succeeded) attempt
   });
 });
 

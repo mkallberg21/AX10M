@@ -102,8 +102,28 @@ export class RecoveryCaseService {
   // at-least-once, so we must not double-append to the tamper-evident ledger.
   private readonly openedInvoices = new Set<string>();
 
-  // Highest attempt number executed per invoice (drives the guardrail's window count).
+  // Highest attempt number executed per invoice (the per-CASE count → global attempt cap).
   private readonly attempts = new Map<string, number>();
+
+  // Per-CREDENTIAL (card) attempt accounting for the card-network retry-cap + min-interval.
+  // Network caps are per-card, so a refreshed / backup card starts fresh — its charges must
+  // NOT count against the dead card's exhausted window (and vice versa). Keyed by
+  // (invoice, method token). In-memory like `attempts`; persistence is a follow-up.
+  private readonly credentialAttempts = new Map<string, { count: number; lastAtMs: number }>();
+
+  private credentialKey(invoiceId: string, method: PaymentMethod): string {
+    return `${invoiceId}:${method.token}`;
+  }
+
+  /**
+   * Attempts recorded against a SPECIFIC credential (card) for an invoice — the count the
+   * network retry-cap uses. A refreshed / backup card starts at 0, independent of the dead
+   * card's count. (Min-interval spacing is the saga's job via its durable sleeps, so it is
+   * driven by the caller's `minutesSinceLastAttempt`, not the service's wall clock.)
+   */
+  credentialAttemptCount(invoiceId: string, method: PaymentMethod): number {
+    return this.credentialAttempts.get(this.credentialKey(invoiceId, method))?.count ?? 0;
+  }
 
   // Durable charge path. Default = Noop (inline shadow-plan only, unchanged behavior).
   // A deployment calls enableDurableDispatch() to route treatment cases to a Temporal
@@ -286,6 +306,9 @@ export class RecoveryCaseService {
     // TODO(ax10m): host this call inside a Temporal activity for crash durability.
     this.attempts.set(params.invoice.id, Math.max(this.attempts.get(params.invoice.id) ?? 0, params.attemptNumber));
     const result = await params.adapter.attemptCharge(params.invoice, params.method, key);
+    // Count this attempt against THIS credential's network-cap window (not the case's).
+    const ck = this.credentialKey(params.invoice.id, params.method);
+    this.credentialAttempts.set(ck, { count: (this.credentialAttempts.get(ck)?.count ?? 0) + 1, lastAtMs: Date.now() });
     await this.ledger.append({
       merchantId: params.invoice.merchantId,
       type: result.outcome === 'succeeded' ? 'charge.succeeded' : 'charge.failed',
@@ -456,10 +479,10 @@ export class RecoveryCaseService {
       kind: 'charge_retry',
       declineCode: features.declineCode,
       declineFamily: familyOf(features.declineCode),
-      attemptsSoFar,
+      attemptsSoFar, // per-CASE → global attempt cap
       cardNetwork: mapCardNetwork(method.brand),
-      attemptsInWindow: attemptsSoFar,
-      minutesSinceLastAttempt: params.minutesSinceLastAttempt,
+      attemptsInWindow: this.credentialAttemptCount(invoice.id, method), // per-CREDENTIAL → network retry cap
+      minutesSinceLastAttempt: params.minutesSinceLastAttempt, // saga-provided timing
       localHour: params.localHour ?? new Date().getUTCHours(),
       hasConsent: true,
       globallyOptedOut: false,
@@ -490,12 +513,15 @@ export class RecoveryCaseService {
     customer?: Customer;
   }): Promise<{ outcome: ChargeOutcome } | null> {
     const freshProposed = (m: PaymentMethod): ProposedAction => ({
+      // Per-credential window: a refreshed / backup card starts fresh (count 0), so its
+      // charges are NOT blocked by the dead card's exhausted network cap. Global cap
+      // (attemptsSoFar, per-case) still bounds total attempts to prevent infinite hopping.
       kind: 'fresh_credential_charge',
       declineCode: p.features.declineCode,
       declineFamily: familyOf(p.features.declineCode),
       attemptsSoFar: p.attemptsSoFar,
       cardNetwork: mapCardNetwork(m.brand),
-      attemptsInWindow: p.attemptsSoFar,
+      attemptsInWindow: this.credentialAttemptCount(p.invoice.id, m),
       localHour: new Date().getUTCHours(),
       hasConsent: true,
       globallyOptedOut: false,
