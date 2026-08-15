@@ -3,6 +3,7 @@ import { RecoveryCaseService } from './recovery-case.service.js';
 import { buildLedgerPort } from './ledger-port.js';
 import { buildCredentialAttemptStore } from './credential-attempt-store.js';
 import { buildFeatureStore } from './feature-store-builder.js';
+import { buildDunningComms } from './dunning-comms-builder.js';
 import { loadActiveChampion } from './retrain-job.js';
 import { OnboardingModule } from '../onboarding/onboarding.module.js';
 import { OnboardingService } from '../onboarding/onboarding.service.js';
@@ -28,6 +29,8 @@ import { OnboardingService } from '../onboarding/onboarding.service.js';
         if (featureStore) service.useFeatureStore(featureStore);
         const champion = await loadActiveChampion({ env: process.env });
         if (champion) service.useChampion(champion);
+        const { agent, config } = buildDunningComms(process.env);
+        service.useDunningAgent(agent, config);
         return service;
       },
       inject: [OnboardingService],

@@ -21,6 +21,7 @@
     "@ax10m/canonical": "workspace:*"
   },
   "devDependencies": {
+    "@types/node": "^20.14.0",
     "rimraf": "^6.0.0",
     "typescript": "^5.5.4",
     "vitest": "^2.1.0"

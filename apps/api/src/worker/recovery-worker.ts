@@ -22,6 +22,7 @@ import { ServiceRecoveryCasePort, type AdapterResolver } from '../recovery/recov
 import { buildLedgerPort } from '../recovery/ledger-port.js';
 import { buildCredentialAttemptStore } from '../recovery/credential-attempt-store.js';
 import { buildFeatureStore } from '../recovery/feature-store-builder.js';
+import { buildDunningComms } from '../recovery/dunning-comms-builder.js';
 import { loadActiveChampion } from '../recovery/retrain-job.js';
 import { buildConnectionStore } from '../webhooks/merchant-connections.js';
 
@@ -58,6 +59,10 @@ export async function buildRecoveryWorkerRuntime(env: NodeJS.ProcessEnv = proces
   // Load the active retrained champion (if any) so the worker charges with the latest model.
   const champion = await loadActiveChampion({ env });
   if (champion) service.useChampion(champion);
+  // Dunning comms: LLM personalization (real Anthropic client) when ANTHROPIC_API_KEY is set,
+  // else the deterministic template; composition is opt-in via AX10M_CARD_UPDATE_URL + opt-out.
+  const { agent: dunningAgent, config: dunningConfig } = buildDunningComms(env);
+  service.useDunningAgent(dunningAgent, dunningConfig);
 
   // Preload the configured processor connections into a merchant→adapter map. The saga's
   // resolver is synchronous, so we resolve credentials up front (the worker starts with a

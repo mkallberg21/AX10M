@@ -193,6 +193,9 @@ importers:
         specifier: workspace:*
         version: link:../canonical
     devDependencies:
+      '@types/node':
+        specifier: ^20.14.0
+        version: 20.19.43
       rimraf:
         specifier: ^6.0.0
         version: 6.1.3
