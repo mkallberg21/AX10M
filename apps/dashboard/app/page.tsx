@@ -38,13 +38,13 @@ export default function Page() {
           </a>
         </div>
         <p className="onboard-note" style={{ marginTop: 12 }}>
-          <strong>Honest status:</strong> the AX10M engine <strong>does not yet win on recovery rate</strong>.
-          A retry-timing fix closed the original gap (it now roughly matches Stripe Smart Retries&apos; default),
-          but against a baseline that simply retries as long, the engine <strong>loses</strong> — so its edge is
-          not raw recovery rate, and the signed statement below correctly bills <strong>$0</strong>. The top card
-          is the <em>projected opportunity</em> we&apos;d measure in shadow mode — a model estimate,
-          <strong>not holdout-verified</strong>. Both come from the same world model, so this demo cannot show a
-          number the backtest denies.
+          <strong>Honest status:</strong> the AX10M engine now <strong>beats Stripe Smart Retries on recovery
+          rate</strong> (+~13.8&nbsp;pp vs the default reach) via a capability a blanket retry can&apos;t copy —{' '}
+          <strong>dead-credential recovery</strong> (Account Updater, backup-rail fallback, dunning) recovers cards a
+          retry on the original number never reaches. The win <strong>survives the fairness sweep</strong> (it holds
+          against a baseline that retries just as long). But this is a <strong>modeled</strong> result on synthetic
+          data — the magnitude is assumption-driven, and a <strong>live holdout is what proves it</strong>. Both cards
+          come from the same world model, so this demo cannot show a number the backtest denies.
         </p>
       </div>
 
@@ -76,11 +76,13 @@ export default function Page() {
       <h1>Active-holdout statement (illustrative)</h1>
       <p className="subtitle">
         What an active month looks like: a live randomized holdout runs the AX10M engine against your Stripe
-        Smart Retries baseline, and we bill only the <strong>always-valid lower bound</strong>. In this demo the
-        engine recovered <strong>{formatPct(r.treatmentRate)}</strong> vs the baseline&apos;s{' '}
-        <strong>{formatPct(r.controlRate)}</strong> — a <strong>{formatPct(r.rateDiff)}</strong> difference — so the
-        proven lift is not positive and the fee is <strong>$0</strong>. That is the product working as designed:
-        an unproven month bills nothing.
+        Smart Retries baseline, and we bill only the <strong>always-valid lower bound</strong>. In this (simulated)
+        month the engine recovered <strong>{formatPct(r.treatmentRate)}</strong> vs the baseline&apos;s{' '}
+        <strong>{formatPct(r.controlRate)}</strong> — a <strong>{formatPct(r.rateDiff)}</strong> difference, driven by
+        dead-credential recovery — so the lower bound is positive and it would bill{' '}
+        <strong>{formatMoney(r.fee.amount, currency)}</strong>. On a real merchant the same machinery bills{' '}
+        <strong>$0</strong> until the lower bound clears; here it clears because the modeled lift is real (and still
+        needs a live holdout to prove the size).
       </p>
 
       <section className="kpis">
@@ -145,9 +147,10 @@ export default function Page() {
         </tbody>
       </table>
       <p className="subtitle" style={{ fontSize: 13, marginTop: 12 }}>
-        Treatment and control recover at nearly the same rate here — after the retry-timing fix the engine matches
-        the default baseline but does not beat one that retries as long, so it bills $0. The estimator reports that
-        faithfully rather than papering over it.
+        The gap concentrates in the <strong>dead-credential</strong> cohorts (expired / lost / stolen / closed cards),
+        where the engine&apos;s Account Updater + backup-rail + dunning recover invoices a retry on the original card
+        cannot. On the soft-decline majority the two are close. The estimator reports the difference faithfully; a live
+        holdout is what proves the magnitude.
       </p>
 
       <div className="section-title">CFO reconciliation — verify it yourself, trust nothing</div>

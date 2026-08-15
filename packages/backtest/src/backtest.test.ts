@@ -3,7 +3,9 @@ import { generateStream } from './world/world.js';
 import { EnginePolicy } from './policy/engine-policy.js';
 import { StripeSmartRetriesBaseline } from './baselines/smart-retries.js';
 import { runComparison } from './estimate.js';
-import { aaTest, fineSensitivity, netValueComparison } from './checks.js';
+import { aaTest, baselineReachSweep, fineSensitivity, netValueComparison } from './checks.js';
+import { runPolicy } from './sim/simulate.js';
+import { computeByCode } from './report.js';
 import { netValue } from './economics.js';
 import type { InvoiceOutcome } from './sim/simulate.js';
 import type { SimInvoice } from './world/world.js';
@@ -85,6 +87,36 @@ describe('net value (cost + compliance objective)', () => {
     for (let i = 1; i < pts.length; i++) {
       expect(pts[i]!.baselineNetPerInvoice).toBeLessThanOrEqual(pts[i - 1]!.baselineNetPerInvoice + 1e-9);
     }
+  });
+});
+
+describe('dead-credential recovery — a real edge vs the realistic baseline, parity vs max-persistence', () => {
+  it('beats the realistic (default-reach) baseline solidly; edge shrinks toward parity as the baseline reaches window-close', () => {
+    const sweep = baselineReachSweep(40_000, 4242);
+    const [d18, d28, d35] = sweep;
+    // Robust, material win vs a baseline that reaches ~day 18 (what merchants actually run).
+    expect(d18!.rateDiff).toBeGreaterThan(0.05);
+    // The edge is a FIXED capability (credential recovery); a longer-reaching baseline
+    // catches up on soft declines, so the margin monotonically shrinks…
+    expect(d18!.rateDiff).toBeGreaterThan(d28!.rateDiff);
+    expect(d28!.rateDiff).toBeGreaterThan(d35!.rateDiff);
+    // …to roughly PARITY vs a maximally-persistent baseline (NOT a claimed win — honest).
+    expect(Math.abs(d35!.rateDiff)).toBeLessThan(0.04);
+  });
+
+  it('the win concentrates in dead-credential codes a retry cannot reach', () => {
+    const invoices = generateStream(15_000, 99);
+    // Compare against the MOST persistent baseline, so any win here is a pure capability
+    // edge (not a window effect): even retrying to day 35 can't do AU / alt-rail / dunning.
+    const control = runPolicy(invoices, new StripeSmartRetriesBaseline([1, 4, 10, 18, 28, 35]), deriveSeed(99, 'c'));
+    const treatment = runPolicy(invoices, new EnginePolicy(), deriveSeed(99, 't'));
+    const byCode = computeByCode(control, treatment);
+    const expired = byCode.find((c) => c.code === DeclineCode.ExpiredCard)!;
+    const closed = byCode.find((c) => c.code === DeclineCode.ClosedAccount)!;
+    // Expired cards: the overlay recovers far more than even a max-persistent blanket retry.
+    expect(expired.treatmentRate).toBeGreaterThan(expired.controlRate + 0.2);
+    // Closed accounts don't reissue, so retries recover ~none; alt-rail/dunning recover some.
+    expect(closed.treatmentRate).toBeGreaterThan(closed.controlRate);
   });
 });
 

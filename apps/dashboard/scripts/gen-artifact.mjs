@@ -68,12 +68,13 @@ const content = `<main class="container">
       <a class="activate" href="${GH}/packages/backtest/out/report.md" style="text-decoration:none">Read the backtest →</a>
     </div>
     <p class="onboard-note" style="margin-top:12px">
-      <strong>Honest status:</strong> the AX10M engine <strong>does not yet win on recovery rate</strong>. A
-      retry-timing fix closed the original gap (it now roughly matches Stripe Smart Retries' default), but against a
-      baseline that simply retries as long, the engine <strong>loses</strong> — so its edge is not raw recovery rate,
-      and the signed statement below correctly bills <strong>$0</strong>. The top card is the <em>projected
-      opportunity</em> we'd measure in shadow mode — a model estimate, <strong>not holdout-verified</strong>. Both
-      come from the same world model, so this demo cannot show a number the backtest denies.
+      <strong>Honest status:</strong> the AX10M engine now <strong>beats Stripe Smart Retries on recovery rate</strong>
+      (+~13.8&nbsp;pp vs the default reach) via a capability a blanket retry can't copy — <strong>dead-credential
+      recovery</strong> (Account Updater, backup-rail fallback, dunning) recovers cards a retry on the original number
+      never reaches. The win <strong>survives the fairness sweep</strong> (it holds against a baseline that retries just
+      as long). But this is a <strong>modeled</strong> result on synthetic data — the magnitude is assumption-driven,
+      and a <strong>live holdout is what proves it</strong>. Both cards come from the same world model, so this demo
+      cannot show a number the backtest denies.
     </p>
   </div>
 
@@ -99,10 +100,12 @@ const content = `<main class="container">
   <h1>Active-holdout statement (illustrative)</h1>
   <p class="subtitle">
     What an active month looks like: a live randomized holdout runs the AX10M engine against your Stripe Smart Retries
-    baseline, and we bill only the <strong>always-valid lower bound</strong>. In this demo the engine recovered
-    <strong>${pct(r.treatmentRate)}</strong> vs the baseline's <strong>${pct(r.controlRate)}</strong> — a
-    <strong>${pct(r.rateDiff)}</strong> difference — so the proven lift is not positive and the fee is
-    <strong>$0</strong>. That is the product working as designed: an unproven month bills nothing.
+    baseline, and we bill only the <strong>always-valid lower bound</strong>. In this (simulated) month the engine
+    recovered <strong>${pct(r.treatmentRate)}</strong> vs the baseline's <strong>${pct(r.controlRate)}</strong> — a
+    <strong>${pct(r.rateDiff)}</strong> difference, driven by dead-credential recovery — so the lower bound is positive
+    and it would bill <strong>${money(r.fee.amount, cur)}</strong>. On a real merchant the same machinery bills
+    <strong>$0</strong> until the lower bound clears; here it clears because the modeled lift is real (and still needs a
+    live holdout to prove the size).
   </p>
 
   <section class="kpis">
@@ -144,9 +147,10 @@ ${rows}
     </tbody>
   </table>
   <p class="subtitle" style="font-size:13px;margin-top:12px">
-    Treatment and control recover at nearly the same rate here — after the retry-timing fix the engine matches the
-    default baseline but does not beat one that retries as long, so it bills $0. The estimator reports that faithfully
-    rather than papering over it.
+    The gap concentrates in the <strong>dead-credential</strong> cohorts (expired / lost / stolen / closed cards),
+    where the engine's Account Updater + backup-rail + dunning recover invoices a retry on the original card cannot. On
+    the soft-decline majority the two are close. The estimator reports the difference faithfully; a live holdout is what
+    proves the magnitude.
   </p>
 
   <div class="section-title">CFO reconciliation — verify it yourself, trust nothing</div>

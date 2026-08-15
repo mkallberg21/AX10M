@@ -73,6 +73,28 @@ whether we've succeeded — including telling us, early and cheaply, if we haven
 > until a live holdout proves incremental lift. See the "Net value" section of
 > `packages/backtest/out/report.md`.
 
+> **Update 4 — the recovery-rate win: dead-credential recovery.** We built the capability
+> that lets an overlay beat Smart Retries for a reason a longer retry can't copy: you cannot
+> retry your way to a card number that changed. For dead-credential declines (expired / lost /
+> stolen / closed) the engine now drives **Account Updater (`card_refresh`), a backup-rail
+> fallback (`alternate_rail`), and dunning** — recovering cards a retry on the original number
+> never reaches. The world model was corrected to stop handing the baseline free dead-card
+> recovery: it now splits *passive* network-token pass-through (what a blanket retry gets)
+> from *active* multi-processor Account Updater + alt-rail + dunning (what the overlay adds).
+> **Result: the engine beats the default Smart Retries baseline by ~13.8 pp on recovery rate
+> (50.2% vs 36.4%), and the win SURVIVES the fairness sweep** — it narrows to ~parity only
+> against a *maximally-persistent* day-35 baseline (which catches up on soft declines but never
+> on the dead-card book), and that all-out retrier is itself cost/compliance-infeasible. The
+> gain concentrates in the credential codes (expired +56 pp, lost/stolen/closed +30 pp). It
+> **also now wins on net value at every baseline reach** (more recovery, ~22% fewer attempts),
+> sign stable under ±30% on the credential params. This is the first time the engine wins on
+> the metric that matters. HONEST GUARDS: synthetic world; same author wrote the world's
+> dead-card dynamics and the engine's capability (the baseline still gets fair passive-AU
+> credit, and the fairness + sensitivity sweeps are the checks); the win's **magnitude** rests
+> on the passive-vs-active coverage gap and alt-rail/dunning levels — all labeled and swept —
+> so a **live holdout is what proves the size**. The demo statement now shows a positive lower
+> bound (it would bill), but that number is *modeled*, not live.
+
 ## 1. Lead with the ledger, not "we prove lift"
 
 "We prove incremental lift" is no longer an unoccupied position — Slicker (and

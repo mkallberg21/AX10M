@@ -1,19 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 420" font-family="ui-sans-serif,system-ui,sans-serif">
 <rect width="760" height="420" fill="#ffffff"/>
 <text x="64" y="24" font-size="15" font-weight="700" fill="#0f172a">Cumulative recovered $ per invoice, by arm</text>
-<text x="64" y="42" font-size="11" fill="#475569">VERDICT: inconclusive at this sample size — the point estimate favors the AX10M engine by 1.19 pp, but the mSPRT lower bound is not positive (lower bound not yet positive (lift unproven)), so it would bill $0. — BUT this edge is a longer-retry-window artifact: against a baseline that retries as far as the engine, the engine LOSES (see the fairness sweep). On recovery rate alone the engine does not beat a persistent baseline.</text>
+<text x="64" y="42" font-size="11" fill="#475569">VERDICT: under these assumptions the AX10M engine beats the baseline by 13.29 pp (recovery-rate), with a positive holdout-verified lower bound — it would bill $40,039. — CAVEAT: this 13.81 pp win is over the DEFAULT-reach baseline (what merchants run); against a maximally-persistent baseline it is ~parity on recovery rate (1.94 pp) — the durable edge is the dead-credential capability + cost/compliance, not raw rate vs an all-out retrier.</text>
 <line x1="64" y1="372.0" x2="736" y2="372.0" stroke="#e2e8f0"/><text x="56" y="375.0" font-size="10" fill="#94a3b8" text-anchor="end">$0.00</text>
-<line x1="64" y1="293.0" x2="736" y2="293.0" stroke="#e2e8f0"/><text x="56" y="296.0" font-size="10" fill="#94a3b8" text-anchor="end">$7.23</text>
-<line x1="64" y1="214.0" x2="736" y2="214.0" stroke="#e2e8f0"/><text x="56" y="217.0" font-size="10" fill="#94a3b8" text-anchor="end">$14.45</text>
-<line x1="64" y1="135.0" x2="736" y2="135.0" stroke="#e2e8f0"/><text x="56" y="138.0" font-size="10" fill="#94a3b8" text-anchor="end">$21.68</text>
-<line x1="64" y1="56.0" x2="736" y2="56.0" stroke="#e2e8f0"/><text x="56" y="59.0" font-size="10" fill="#94a3b8" text-anchor="end">$28.90</text>
+<line x1="64" y1="293.0" x2="736" y2="293.0" stroke="#e2e8f0"/><text x="56" y="296.0" font-size="10" fill="#94a3b8" text-anchor="end">$9.48</text>
+<line x1="64" y1="214.0" x2="736" y2="214.0" stroke="#e2e8f0"/><text x="56" y="217.0" font-size="10" fill="#94a3b8" text-anchor="end">$18.97</text>
+<line x1="64" y1="135.0" x2="736" y2="135.0" stroke="#e2e8f0"/><text x="56" y="138.0" font-size="10" fill="#94a3b8" text-anchor="end">$28.45</text>
+<line x1="64" y1="56.0" x2="736" y2="56.0" stroke="#e2e8f0"/><text x="56" y="59.0" font-size="10" fill="#94a3b8" text-anchor="end">$37.94</text>
 <text x="380" y="408" font-size="11" fill="#64748b" text-anchor="middle">days since decline</text>
-<line x1="64" y1="89.0" x2="736" y2="89.0" stroke="#cbd5e1" stroke-dasharray="4 3"/>
-<rect x="616.0" y="89.0" width="120" height="0.0" fill="#22c55e" opacity="0.14"/>
-<path d="M64.0,372.0 L80.8,295.4 L97.6,295.4 L114.4,295.4 L131.2,250.4 L148.0,250.4 L164.8,250.4 L181.6,250.4 L198.4,250.4 L215.2,250.4 L232.0,175.4 L248.8,175.4 L265.6,175.4 L282.4,175.4 L299.2,175.4 L316.0,175.4 L332.8,175.4 L349.6,175.4 L366.4,89.0 L383.2,89.0 L400.0,89.0 L416.8,89.0 L433.6,89.0 L450.4,89.0 L467.2,89.0 L484.0,89.0 L500.8,89.0 L517.6,89.0 L534.4,89.0 L551.2,89.0 L568.0,89.0 L584.8,89.0 L601.6,89.0 L618.4,89.0 L635.2,89.0 L652.0,89.0 L668.8,89.0 L685.6,89.0 L702.4,89.0 L719.2,89.0 L736.0,89.0" fill="none" stroke="#64748b" stroke-width="2"/>
-<path d="M64.0,372.0 L80.8,360.6 L97.6,293.6 L114.4,293.1 L131.2,269.8 L148.0,268.1 L164.8,268.1 L181.6,257.6 L198.4,257.6 L215.2,257.6 L232.0,257.6 L248.8,257.6 L265.6,238.5 L282.4,238.5 L299.2,164.4 L316.0,160.0 L332.8,160.0 L349.6,160.0 L366.4,160.0 L383.2,160.0 L400.0,160.0 L416.8,160.0 L433.6,160.0 L450.4,160.0 L467.2,160.0 L484.0,160.0 L500.8,160.0 L517.6,133.8 L534.4,84.7 L551.2,84.7 L568.0,84.7 L584.8,84.7 L601.6,84.7 L618.4,84.7 L635.2,84.7 L652.0,84.7 L668.8,84.7 L685.6,84.7 L702.4,84.7 L719.2,84.7 L736.0,84.7" fill="none" stroke="#2563eb" stroke-width="2.5"/>
+<line x1="64" y1="157.5" x2="736" y2="157.5" stroke="#cbd5e1" stroke-dasharray="4 3"/>
+<rect x="616.0" y="101.6" width="120" height="55.9" fill="#22c55e" opacity="0.14"/>
+<path d="M64.0,372.0 L80.8,315.1 L97.6,315.1 L114.4,315.1 L131.2,279.3 L148.0,279.3 L164.8,279.3 L181.6,279.3 L198.4,279.3 L215.2,279.3 L232.0,223.0 L248.8,223.0 L265.6,223.0 L282.4,223.0 L299.2,223.0 L316.0,223.0 L332.8,223.0 L349.6,223.0 L366.4,157.5 L383.2,157.5 L400.0,157.5 L416.8,157.5 L433.6,157.5 L450.4,157.5 L467.2,157.5 L484.0,157.5 L500.8,157.5 L517.6,157.5 L534.4,157.5 L551.2,157.5 L568.0,157.5 L584.8,157.5 L601.6,157.5 L618.4,157.5 L635.2,157.5 L652.0,157.5 L668.8,157.5 L685.6,157.5 L702.4,157.5 L719.2,157.5 L736.0,157.5" fill="none" stroke="#64748b" stroke-width="2"/>
+<path d="M64.0,372.0 L80.8,341.9 L97.6,291.1 L114.4,290.5 L131.2,273.0 L148.0,271.7 L164.8,271.7 L181.6,263.5 L198.4,263.5 L215.2,263.5 L232.0,260.6 L248.8,260.6 L265.6,246.1 L282.4,246.1 L299.2,189.8 L316.0,174.0 L332.8,174.0 L349.6,174.0 L366.4,174.0 L383.2,174.0 L400.0,174.0 L416.8,155.7 L433.6,155.7 L450.4,155.7 L467.2,155.7 L484.0,155.7 L500.8,155.7 L517.6,135.5 L534.4,98.2 L551.2,98.2 L568.0,98.2 L584.8,84.7 L601.6,84.7 L618.4,84.7 L635.2,84.7 L652.0,84.7 L668.8,84.7 L685.6,84.7 L702.4,84.7 L719.2,84.7 L736.0,84.7" fill="none" stroke="#2563eb" stroke-width="2.5"/>
 <circle cx="736.0" cy="84.7" r="3.5" fill="#2563eb"/>
-<circle cx="736.0" cy="89.0" r="3.5" fill="#64748b"/>
+<circle cx="736.0" cy="157.5" r="3.5" fill="#64748b"/>
 <rect x="64" y="56" width="12" height="3" fill="#64748b"/><text x="82" y="60" font-size="11" fill="#334155">Control — Smart Retries</text>
 <rect x="254" y="56" width="12" height="3" fill="#2563eb"/><text x="272" y="60" font-size="11" fill="#334155">Treatment — AX10M engine</text>
 <rect x="464" y="52" width="12" height="10" fill="#22c55e" opacity="0.2"/><text x="482" y="60" font-size="11" fill="#334155">holdout-verified lower bound</text>

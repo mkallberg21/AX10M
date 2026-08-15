@@ -338,12 +338,13 @@ pre.verify { background:#0b1220; color:#cbd5e1; padding:12px; border-radius:8px;
       <a class="activate" href="https://github.com/mkallberg21/AX10M/blob/main/packages/backtest/out/report.md" style="text-decoration:none">Read the backtest →</a>
     </div>
     <p class="onboard-note" style="margin-top:12px">
-      <strong>Honest status:</strong> the AX10M engine <strong>does not yet win on recovery rate</strong>. A
-      retry-timing fix closed the original gap (it now roughly matches Stripe Smart Retries' default), but against a
-      baseline that simply retries as long, the engine <strong>loses</strong> — so its edge is not raw recovery rate,
-      and the signed statement below correctly bills <strong>$0</strong>. The top card is the <em>projected
-      opportunity</em> we'd measure in shadow mode — a model estimate, <strong>not holdout-verified</strong>. Both
-      come from the same world model, so this demo cannot show a number the backtest denies.
+      <strong>Honest status:</strong> the AX10M engine now <strong>beats Stripe Smart Retries on recovery rate</strong>
+      (+~13.8&nbsp;pp vs the default reach) via a capability a blanket retry can't copy — <strong>dead-credential
+      recovery</strong> (Account Updater, backup-rail fallback, dunning) recovers cards a retry on the original number
+      never reaches. The win <strong>survives the fairness sweep</strong> (it holds against a baseline that retries just
+      as long). But this is a <strong>modeled</strong> result on synthetic data — the magnitude is assumption-driven,
+      and a <strong>live holdout is what proves it</strong>. Both cards come from the same world model, so this demo
+      cannot show a number the backtest denies.
     </p>
   </div>
 
@@ -354,10 +355,10 @@ pre.verify { background:#0b1220; color:#cbd5e1; padding:12px; border-radius:8px;
     </div>
     <div class="progress"><div class="fill" style="width:64%"></div></div>
     <div class="onboard-stats">
-      <div><span class="k">Projected monthly opportunity</span><span class="v accent">$2,104,195.36</span></div>
-      <div><span class="k">Would-be fee (12%)</span><span class="v">$252,503.44</span></div>
-      <div><span class="k">Conservative low end</span><span class="v">$1,262,517.21</span></div>
-      <div><span class="k">Your baseline recovery</span><span class="v">36.9%</span></div>
+      <div><span class="k">Projected monthly opportunity</span><span class="v accent">$2,116,320.87</span></div>
+      <div><span class="k">Would-be fee (12%)</span><span class="v">$253,958.50</span></div>
+      <div><span class="k">Conservative low end</span><span class="v">$1,269,792.52</span></div>
+      <div><span class="k">Your baseline recovery</span><span class="v">37.1%</span></div>
     </div>
     <p class="onboard-note">
       Projected from 82,578 observed baseline failures — a model estimate
@@ -369,36 +370,38 @@ pre.verify { background:#0b1220; color:#cbd5e1; padding:12px; border-radius:8px;
   <h1>Active-holdout statement (illustrative)</h1>
   <p class="subtitle">
     What an active month looks like: a live randomized holdout runs the AX10M engine against your Stripe Smart Retries
-    baseline, and we bill only the <strong>always-valid lower bound</strong>. In this demo the engine recovered
-    <strong>38.0%</strong> vs the baseline's <strong>37.8%</strong> — a
-    <strong>0.2%</strong> difference — so the proven lift is not positive and the fee is
-    <strong>$0</strong>. That is the product working as designed: an unproven month bills nothing.
+    baseline, and we bill only the <strong>always-valid lower bound</strong>. In this (simulated) month the engine
+    recovered <strong>49.7%</strong> vs the baseline's <strong>37.4%</strong> — a
+    <strong>12.3%</strong> difference, driven by dead-credential recovery — so the lower bound is positive
+    and it would bill <strong>$58,810.86</strong>. On a real merchant the same machinery bills
+    <strong>$0</strong> until the lower bound clears; here it clears because the modeled lift is real (and still needs a
+    live holdout to prove the size).
   </p>
 
   <section class="kpis">
     <div class="kpi">
       <div class="label">Proven incremental uplift (lower bound)</div>
-      <div class="value accent">$0.00</div>
-      <div class="hint">Point estimate -$177.43/period · we bill only the proven floor</div>
+      <div class="value accent">$490,090.50</div>
+      <div class="hint">Point estimate $623,187.80/period · we bill only the proven floor</div>
     </div>
     <div class="kpi">
       <div class="label">Fee (12% of proven increment)</div>
-      <div class="value">$0.00</div>
-      <div class="hint">Not billable — lift unproven</div>
+      <div class="value">$58,810.86</div>
+      <div class="hint">On truly-incremental dollars</div>
     </div>
     <div class="kpi">
       <div class="label">Statistical status</div>
-      <div class="value">Unproven<span style="color:var(--muted);font-size:18px"> · 95% CS</span></div>
-      <div class="hint">SRM χ²=1.8 ✓ balanced · CUPED −17.7% variance</div>
+      <div class="value">Proven<span style="color:var(--muted);font-size:18px"> · 95% CS</span></div>
+      <div class="hint">SRM χ²=1.8 ✓ balanced · CUPED −26.0% variance</div>
     </div>
   </section>
 
   <div class="method-strip">
-    <span><strong>-$0.00</strong>/invoice point estimate</span>
-    <span><strong>$1.75</strong> mSPRT half-width</span>
-    <span><strong>$0.00</strong>/invoice proven floor</span>
-    <span><strong>$0.48</strong> cluster-robust SE</span>
-    <span><strong>8,108</strong> effective N</span>
+    <span><strong>$8.37</strong>/invoice point estimate</span>
+    <span><strong>$1.79</strong> mSPRT half-width</span>
+    <span><strong>$6.58</strong>/invoice proven floor</span>
+    <span><strong>$0.49</strong> cluster-robust SE</span>
+    <span><strong>8,199</strong> effective N</span>
   </div>
 
   <div class="section-title">Cohort breakdown (by MRR tier · decline family · issuer region)</div>
@@ -412,231 +415,232 @@ pre.verify { background:#0b1220; color:#cbd5e1; padding:12px; border-radius:8px;
     <tbody>
       <tr>
         <td>small|soft|emea</td>
-        <td class="num">52.3%</td>
-        <td class="num">55.0%</td>
-        <td class="num">$2.53</td>
-        <td class="num">7,625</td>
+        <td class="num">52.0%</td>
+        <td class="num">55.4%</td>
+        <td class="num">$2.88</td>
+        <td class="num">7,617</td>
         <td class="num">10.2%</td>
         <td><span class="pill billable">In sample</span></td>
       </tr>
       <tr>
         <td>small|soft|na</td>
-        <td class="num">54.3%</td>
-        <td class="num">54.9%</td>
-        <td class="num">-$0.38</td>
-        <td class="num">16,882</td>
+        <td class="num">54.2%</td>
+        <td class="num">54.8%</td>
+        <td class="num">-$0.21</td>
+        <td class="num">16,877</td>
         <td class="num">22.7%</td>
         <td><span class="pill billable">In sample</span></td>
       </tr>
       <tr>
         <td>mid|gray|na</td>
-        <td class="num">28.6%</td>
-        <td class="num">19.5%</td>
-        <td class="num">-$11.94</td>
-        <td class="num">2,672</td>
+        <td class="num">29.4%</td>
+        <td class="num">44.5%</td>
+        <td class="num">$25.59</td>
+        <td class="num">2,663</td>
         <td class="num">3.6%</td>
         <td><span class="pill billable">In sample</span></td>
       </tr>
       <tr>
-        <td>small|gray|na</td>
-        <td class="num">22.1%</td>
-        <td class="num">20.7%</td>
-        <td class="num">-$0.76</td>
-        <td class="num">10,303</td>
-        <td class="num">13.8%</td>
+        <td>mid|soft|na</td>
+        <td class="num">50.0%</td>
+        <td class="num">53.9%</td>
+        <td class="num">$3.49</td>
+        <td class="num">4,354</td>
+        <td class="num">5.8%</td>
         <td><span class="pill billable">In sample</span></td>
       </tr>
       <tr>
         <td>small|soft|latam</td>
-        <td class="num">51.6%</td>
-        <td class="num">56.9%</td>
-        <td class="num">$2.89</td>
-        <td class="num">2,528</td>
+        <td class="num">51.3%</td>
+        <td class="num">57.0%</td>
+        <td class="num">$3.11</td>
+        <td class="num">2,530</td>
         <td class="num">3.4%</td>
         <td><span class="pill billable">In sample</span></td>
       </tr>
       <tr>
         <td>micro|gray|na</td>
-        <td class="num">16.8%</td>
-        <td class="num">20.6%</td>
-        <td class="num">$0.61</td>
-        <td class="num">1,066</td>
+        <td class="num">19.1%</td>
+        <td class="num">46.2%</td>
+        <td class="num">$3.99</td>
+        <td class="num">1,070</td>
         <td class="num">1.4%</td>
         <td><span class="pill billable">In sample</span></td>
       </tr>
       <tr>
-        <td>mid|soft|na</td>
-        <td class="num">51.5%</td>
-        <td class="num">54.3%</td>
-        <td class="num">$1.87</td>
-        <td class="num">4,350</td>
-        <td class="num">5.8%</td>
+        <td>small|gray|na</td>
+        <td class="num">20.0%</td>
+        <td class="num">43.6%</td>
+        <td class="num">$12.63</td>
+        <td class="num">10,348</td>
+        <td class="num">13.9%</td>
         <td><span class="pill billable">In sample</span></td>
       </tr>
       <tr>
         <td>small|gray|emea</td>
-        <td class="num">24.3%</td>
-        <td class="num">19.5%</td>
-        <td class="num">-$2.75</td>
-        <td class="num">4,631</td>
+        <td class="num">20.8%</td>
+        <td class="num">44.1%</td>
+        <td class="num">$11.44</td>
+        <td class="num">4,625</td>
         <td class="num">6.2%</td>
         <td><span class="pill billable">In sample</span></td>
       </tr>
       <tr>
         <td>pooled (sub-floor)</td>
-        <td class="num">17.0%</td>
-        <td class="num">18.5%</td>
-        <td class="num">-$0.91</td>
-        <td class="num">2,991</td>
+        <td class="num">19.0%</td>
+        <td class="num">44.2%</td>
+        <td class="num">$20.59</td>
+        <td class="num">3,011</td>
         <td class="num">4.0%</td>
         <td><span class="pill holdout">Pooled</span></td>
       </tr>
       <tr>
         <td>small|hard|na</td>
-        <td class="num">1.2%</td>
-        <td class="num">0.0%</td>
-        <td class="num">-$0.94</td>
-        <td class="num">2,797</td>
-        <td class="num">3.8%</td>
+        <td class="num">7.5%</td>
+        <td class="num">37.8%</td>
+        <td class="num">$15.87</td>
+        <td class="num">2,784</td>
+        <td class="num">3.7%</td>
         <td><span class="pill billable">In sample</span></td>
       </tr>
       <tr>
         <td>small|soft|apac</td>
-        <td class="num">51.4%</td>
+        <td class="num">51.3%</td>
         <td class="num">55.2%</td>
-        <td class="num">$2.12</td>
-        <td class="num">3,693</td>
-        <td class="num">5.0%</td>
+        <td class="num">$2.33</td>
+        <td class="num">3,670</td>
+        <td class="num">4.9%</td>
         <td><span class="pill billable">In sample</span></td>
       </tr>
       <tr>
         <td>small|gray|apac</td>
-        <td class="num">18.9%</td>
-        <td class="num">20.8%</td>
-        <td class="num">$0.93</td>
-        <td class="num">2,303</td>
+        <td class="num">15.9%</td>
+        <td class="num">43.4%</td>
+        <td class="num">$14.10</td>
+        <td class="num">2,293</td>
         <td class="num">3.1%</td>
         <td><span class="pill billable">In sample</span></td>
       </tr>
       <tr>
         <td>mid|soft|latam</td>
-        <td class="num">50.0%</td>
-        <td class="num">52.6%</td>
-        <td class="num">$0.15</td>
-        <td class="num">646</td>
+        <td class="num">48.5%</td>
+        <td class="num">53.7%</td>
+        <td class="num">$4.93</td>
+        <td class="num">642</td>
         <td class="num">0.9%</td>
         <td><span class="pill billable">In sample</span></td>
       </tr>
       <tr>
         <td>micro|soft|na</td>
-        <td class="num">52.0%</td>
-        <td class="num">54.7%</td>
-        <td class="num">$0.66</td>
-        <td class="num">1,750</td>
-        <td class="num">2.4%</td>
+        <td class="num">50.5%</td>
+        <td class="num">54.5%</td>
+        <td class="num">$0.84</td>
+        <td class="num">1,749</td>
+        <td class="num">2.3%</td>
         <td><span class="pill billable">In sample</span></td>
       </tr>
       <tr>
         <td>mid|hard|na</td>
-        <td class="num">1.1%</td>
-        <td class="num">0.0%</td>
-        <td class="num">$2.03</td>
-        <td class="num">743</td>
+        <td class="num">4.6%</td>
+        <td class="num">37.8%</td>
+        <td class="num">$59.95</td>
+        <td class="num">736</td>
         <td class="num">1.0%</td>
         <td><span class="pill billable">In sample</span></td>
       </tr>
       <tr>
         <td>micro|soft|emea</td>
-        <td class="num">51.1%</td>
-        <td class="num">57.2%</td>
-        <td class="num">$1.36</td>
-        <td class="num">797</td>
+        <td class="num">48.9%</td>
+        <td class="num">57.8%</td>
+        <td class="num">$1.66</td>
+        <td class="num">804</td>
         <td class="num">1.1%</td>
         <td><span class="pill billable">In sample</span></td>
       </tr>
       <tr>
         <td>small|gray|latam</td>
-        <td class="num">25.5%</td>
-        <td class="num">18.6%</td>
-        <td class="num">-$3.30</td>
-        <td class="num">1,501</td>
+        <td class="num">26.5%</td>
+        <td class="num">44.3%</td>
+        <td class="num">$9.43</td>
+        <td class="num">1,517</td>
         <td class="num">2.0%</td>
         <td><span class="pill billable">In sample</span></td>
       </tr>
       <tr>
         <td>small|hard|emea</td>
-        <td class="num">3.0%</td>
-        <td class="num">0.0%</td>
-        <td class="num">-$3.01</td>
-        <td class="num">1,266</td>
+        <td class="num">4.4%</td>
+        <td class="num">36.7%</td>
+        <td class="num">$15.35</td>
+        <td class="num">1,265</td>
         <td class="num">1.7%</td>
         <td><span class="pill billable">In sample</span></td>
       </tr>
       <tr>
         <td>mid|gray|apac</td>
-        <td class="num">24.6%</td>
-        <td class="num">19.1%</td>
-        <td class="num">-$7.65</td>
-        <td class="num">613</td>
+        <td class="num">29.4%</td>
+        <td class="num">42.1%</td>
+        <td class="num">$17.45</td>
+        <td class="num">598</td>
         <td class="num">0.8%</td>
         <td><span class="pill billable">In sample</span></td>
       </tr>
       <tr>
         <td>mid|soft|emea</td>
-        <td class="num">51.4%</td>
-        <td class="num">56.4%</td>
-        <td class="num">$6.48</td>
-        <td class="num">2,050</td>
+        <td class="num">51.3%</td>
+        <td class="num">56.1%</td>
+        <td class="num">$5.92</td>
+        <td class="num">2,052</td>
         <td class="num">2.8%</td>
         <td><span class="pill billable">In sample</span></td>
       </tr>
       <tr>
         <td>mid|gray|emea</td>
-        <td class="num">19.4%</td>
-        <td class="num">20.4%</td>
-        <td class="num">$1.99</td>
-        <td class="num">1,212</td>
+        <td class="num">17.7%</td>
+        <td class="num">45.2%</td>
+        <td class="num">$40.48</td>
+        <td class="num">1,203</td>
         <td class="num">1.6%</td>
         <td><span class="pill billable">In sample</span></td>
       </tr>
       <tr>
-        <td>mid|soft|apac</td>
-        <td class="num">42.1%</td>
-        <td class="num">55.5%</td>
-        <td class="num">$14.02</td>
-        <td class="num">973</td>
-        <td class="num">1.3%</td>
-        <td><span class="pill billable">In sample</span></td>
-      </tr>
-      <tr>
         <td>micro|gray|emea</td>
-        <td class="num">36.5%</td>
-        <td class="num">20.3%</td>
-        <td class="num">-$2.27</td>
-        <td class="num">487</td>
+        <td class="num">31.5%</td>
+        <td class="num">48.3%</td>
+        <td class="num">$2.81</td>
+        <td class="num">491</td>
         <td class="num">0.7%</td>
         <td><span class="pill billable">In sample</span></td>
       </tr>
       <tr>
         <td>small|hard|apac</td>
-        <td class="num">0.0%</td>
-        <td class="num">0.0%</td>
-        <td class="num">$0.19</td>
-        <td class="num">587</td>
+        <td class="num">8.1%</td>
+        <td class="num">38.0%</td>
+        <td class="num">$16.43</td>
+        <td class="num">597</td>
         <td class="num">0.8%</td>
+        <td><span class="pill billable">In sample</span></td>
+      </tr>
+      <tr>
+        <td>mid|soft|apac</td>
+        <td class="num">43.0%</td>
+        <td class="num">55.2%</td>
+        <td class="num">$12.68</td>
+        <td class="num">970</td>
+        <td class="num">1.3%</td>
         <td><span class="pill billable">In sample</span></td>
       </tr>
     </tbody>
   </table>
   <p class="subtitle" style="font-size:13px;margin-top:12px">
-    Treatment and control recover at nearly the same rate here — after the retry-timing fix the engine matches the
-    default baseline but does not beat one that retries as long, so it bills $0. The estimator reports that faithfully
-    rather than papering over it.
+    The gap concentrates in the <strong>dead-credential</strong> cohorts (expired / lost / stolen / closed cards),
+    where the engine's Account Updater + backup-rail + dunning recover invoices a retry on the original card cannot. On
+    the soft-decline majority the two are close. The estimator reports the difference faithfully; a live holdout is what
+    proves the magnitude.
   </p>
 
   <div class="section-title">CFO reconciliation — verify it yourself, trust nothing</div>
   <div class="method-strip">
-    <span>Signed statement <strong>d3f532ca07ced495…</strong></span>
+    <span>Signed statement <strong>37940864daa57711…</strong></span>
     <span>Signing key <strong>ax10m-demo-ed25519</strong></span>
     <span>Ledger <strong>verified ✓</strong></span>
     <span>Epoch salt <strong>disclosed</strong></span>
@@ -645,17 +649,17 @@ pre.verify { background:#0b1220; color:#cbd5e1; padding:12px; border-radius:8px;
     <div class="recon-card ok">
       <div class="label">Reconciles against processor payout</div>
       <div class="big">Ties out ✓</div>
-      <div class="hint">31,377 recovered txns · $2,169,112.90 = $2,169,112.90 settled</div>
+      <div class="hint">40,050 recovered txns · $2,774,814.46 = $2,774,814.46 settled</div>
     </div>
     <div class="recon-card">
       <div class="label">Recovered value (both arms)</div>
-      <div class="big">$2,169,112.90</div>
-      <div class="hint">Treatment $1,952,558.44 · control $216,554.46</div>
+      <div class="big">$2,774,814.46</div>
+      <div class="hint">Treatment $2,561,223.83 · control $213,590.63</div>
     </div>
     <div class="recon-card">
       <div class="label">Fee = 12% × proven increment</div>
-      <div class="big">$0.00</div>
-      <div class="hint">unproven → $0 · recomputable by hand</div>
+      <div class="big">$58,810.86</div>
+      <div class="hint">proven · recomputable by hand</div>
     </div>
   </div>
 
@@ -715,7 +719,7 @@ pre.verify { background:#0b1220; color:#cbd5e1; padding:12px; border-radius:8px;
   </div>
 
   <p class="ledger-note">
-    Synthetic demo data generated by the Phase-1 world model. Not a real merchant; not a performance claim. The retrained-model panel runs the REAL champion/challenger gate on a synthetic corpus — the gate is production code, the data is synthetic until a live ledger fills. · notarized against ledger head 8bf5a7da6f74ab96852208b9… · integrity
+    Synthetic demo data generated by the world model. Not a real merchant; the win is MODELED, not live-verified — a live holdout is what turns it into a real bill. The retrained-model panel runs the REAL champion/challenger gate on a synthetic corpus. · notarized against ledger head 8bf5a7da6f74ab96852208b9… · integrity
     verified ✓ · statement signed ax10m-demo-ed25519
   </p>
 </main>

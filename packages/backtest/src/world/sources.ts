@@ -158,3 +158,66 @@ export const REGION_MIX: ReadonlyArray<{ region: IssuerRegion; share: number }> 
  * why the estimator clusters on customer). ASSUMPTION (swept): mostly 1, some repeats.
  */
 export const INVOICES_PER_CUSTOMER_WEIGHTS = [0, 0.72, 0.2, 0.06, 0.02]; // index = count
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DEAD-CREDENTIAL recovery dynamics — the structural edge an overlay has over a
+// blanket retry. You cannot retry your way to a card number that changed; the
+// recoveries come from Account Updater, a backup rail, or a customer-driven update.
+// This is where "retry longer" (a window-length effect any baseline can copy) does
+// NOT help, so a real win here survives the fairness sweep.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * P(a dead card is REISSUED / updated within the window) by code. GROUNDED (ordering):
+ * expired cards are reissued as a matter of course; lost/stolen usually; closed accounts
+ * rarely (there's no card to reissue). ASSUMPTION (levels), swept.
+ */
+export const REISSUE_RATE: Readonly<Partial<Record<DeclineCode, number>>> = {
+  [DeclineCode.ExpiredCard]: 0.9,
+  [DeclineCode.LostCard]: 0.6,
+  [DeclineCode.StolenCard]: 0.55,
+  [DeclineCode.InvalidCard]: 0.4,
+  [DeclineCode.PickupCard]: 0.35,
+  [DeclineCode.CardNotSupported]: 0.25,
+  [DeclineCode.ClosedAccount]: 0.15, // closed → alt-rail / dunning are the real paths
+  [DeclineCode.RevocationOfAuthorization]: 0.2,
+};
+export const DEFAULT_REISSUE_RATE = 0.4;
+
+/**
+ * PASSIVE network-token / Account-Updater pass-through: fraction of REISSUED cards a
+ * PLAIN RETRY recovers with no explicit action — the BASELINE's only dead-card path (e.g.
+ * a processor's built-in token refresh). GROUNDED (direction): passive tokenization
+ * coverage is real but partial. ASSUMPTION (level), swept.
+ */
+export const PASSIVE_TOKEN_COVERAGE = 0.45;
+
+/**
+ * ACTIVE Account Updater across processors (the overlay's `card_refresh`): fraction of
+ * REISSUED cards it recovers — HIGHER than passive and a SUPERSET of it (actively querying
+ * VAU/ABU + network tokens on every processor beats any one processor's pass-through).
+ * The overlay's edge on reissued cards is (ACTIVE − PASSIVE). GROUNDED (direction),
+ * ASSUMPTION (level), swept.
+ */
+export const ACTIVE_AU_COVERAGE = 0.75;
+
+/**
+ * Prevalence of a usable stored BACKUP method (the overlay's `alternate_rail`) — recovers
+ * dead cards, closed accounts included, that NO retry on the original card can. GROUNDED
+ * (direction): a minority of subscribers have a second card/wallet on file. ASSUMPTION
+ * (level), swept.
+ */
+export const ALT_RAIL_PREVALENCE = 0.2;
+
+/**
+ * Fraction who act on a dunning card-update prompt (`dunning`). GROUNDED (direction):
+ * card-update email/SMS response is a modest single-digit-to-low-teens share. ASSUMPTION
+ * (level), deliberately conservative, swept.
+ */
+export const DUNNING_RESPONSE = 0.15;
+
+/** Onsets/residuals for the credential paths (days / per-action success). ASSUMPTION, swept. */
+export const ALT_RAIL_ONSET_DAY = 1; // a backup method is available immediately
+export const DUNNING_ONSET_DAY = 4; // the customer needs a few days to act
+export const RESIDUAL_SUCCESS_ALT_RAIL = 0.9; // charging a known-good backup rail is reliable
+export const RESIDUAL_SUCCESS_DUNNING = 0.8;

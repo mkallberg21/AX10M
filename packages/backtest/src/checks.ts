@@ -184,7 +184,7 @@ export function fineSensitivity(nCustomers: number, seed: number): FineSensitivi
 }
 
 export function sensitivitySweep(nCustomers: number, seed: number): SensitivityPoint[] {
-  const params: Array<keyof WorldParams> = ['recoverableScale', 'onsetScale', 'windowScale', 'residualScale', 'nsfShareScale'];
+  const params: Array<keyof WorldParams> = ['recoverableScale', 'onsetScale', 'windowScale', 'residualScale', 'nsfShareScale', 'credEdgeScale'];
   const factors = [0.7, 1.3];
   const points: SensitivityPoint[] = [];
   for (const param of params) {

@@ -16,8 +16,12 @@ keep the bill honest.
 > ### Honest status (read `docs/STRATEGY.md`)
 > The **product is the recovery engine** — the retry brain that must beat Stripe
 > Smart Retries. The measurement (holdout + mSPRT + signed ledger) is the **pricing
-> and trust mechanism**, not the product. The measurement is rigorous; the engine
-> (`@ax10m/recovery-engine`) is **not yet a winner**. The first backtest
+> and trust mechanism**, not the product. The measurement is rigorous. **Current status:
+> the engine now BEATS a faithful Smart Retries baseline on recovery rate (+~13.8 pp vs
+> the default reach) in the backtest — via a capability a blanket retry can't copy
+> (dead-credential recovery). The magnitude is assumption-driven and unproven on a live
+> merchant.** The honest journey to that result (it did NOT win at first) is below. The
+> first backtest
 > (`packages/backtest`, Phase 1 — engine vs a faithful Smart Retries baseline in a
 > synthetic, source-grounded world) found the engine **does not beat the baseline and
 > currently *underperforms* it on recovery rate by ~19 pp**, because its retry cadence
@@ -39,9 +43,24 @@ keep the bill honest.
 > a **maximally-persistent** baseline that retries to window-close, the engine **loses**
 > ($26.05 vs $32.59); brute persistence recovers so much more that its extra cost and fines
 > don't close the gap, and the engine only overtakes it once the do-not-retry fine reaches
-> an **implausible ~$20/violation**. So: a real edge over what merchants run today (cheaper,
-> equal-or-better), no edge over "just retry longer." AX10M's incremental *lift* is still
-> **not yet demonstrated** and the bill would be **$0** either way.
+> an **implausible ~$20/violation**. So at that stage: a real edge over what merchants run
+> today (cheaper, equal-or-better), no edge over "just retry longer."
+> **Update — dead-credential recovery (the breakthrough).** The engine gained the capability
+> a blanket retry structurally lacks: for expired / lost / stolen / closed cards it drives
+> **Account Updater (`card_refresh`), a backup-rail fallback (`alternate_rail`), and dunning**
+> — recovering cards a retry on the original number can never reach. The world model now
+> splits *passive* token pass-through (what the baseline gets) from *active* recovery (what
+> the overlay adds). Result: the engine **beats the default Smart Retries baseline by ~13.8 pp
+> on recovery rate** (50.2% vs 36.4%), and the win **survives the fairness sweep** — it narrows
+> to ~parity only against a *maximally-persistent* (day-35) baseline, because a longer retry
+> catches up on soft declines but **never** on the dead-card book. The gain concentrates in
+> the credential codes (expired +56 pp, lost/stolen/closed +30 pp). It now **also wins on net
+> value at every baseline reach** (recovers more at ~22% fewer attempts), and the sign is
+> stable under ±30% on the credential parameters. HONEST CAVEATS: synthetic world, same author
+> wrote the world dynamics and the engine capability, and the win's **magnitude** rests on the
+> passive-vs-active coverage gap (labeled, swept) — a **live holdout is what proves it**. The
+> billing statement now shows a positive lower bound (it would bill), but that is a *modeled*
+> number, not a live one.
 > See [`packages/backtest/out/report.md`](packages/backtest/out/report.md) (verdict +
 > assumptions) and [`docs/STRATEGY.md`](docs/STRATEGY.md).
 
