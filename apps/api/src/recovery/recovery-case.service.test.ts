@@ -14,10 +14,11 @@ import { TemplateDunningAgent, type DunningSender, type DunningMessage, type Dun
 
 /** Shape of the delivery record the service writes into the comms.sent ledger detail. */
 interface DeliveryDetail {
-  status: 'suppressed' | 'skipped' | 'dry_run' | 'sent' | 'failed';
+  status: 'suppressed' | 'skipped' | 'duplicate' | 'dry_run' | 'sent' | 'failed';
   channel: 'email' | 'sms';
   provider?: string;
   providerMessageId?: string;
+  attempts?: number;
   reason?: string;
 }
 import { RecoveryCaseService } from './recovery-case.service.js';
@@ -326,8 +327,15 @@ describe('credential recovery in the live charge path (card_refresh + alternate_
   async function runDunning(svc: RecoveryCaseService, cust: Customer | undefined): Promise<DeliveryDetail | undefined> {
     const adapter = new CredentialAdapter(null, []); // dead card, no fresh credential → dunning
     await svc.executeRecovery({ adapter, invoice, method, decline: expired, attemptNumber: 1, customer: cust, localHour: 14, shadow: false });
-    const comms = (await svc.ledgerEntries()).find((e) => e.type === 'comms.sent');
-    return (comms!.detail as { delivery?: DeliveryDetail }).delivery;
+    const comms = (await svc.ledgerEntries()).filter((e) => e.type === 'comms.sent');
+    return (comms[comms.length - 1]!.detail as { delivery?: DeliveryDetail }).delivery; // latest run
+  }
+
+  async function runDunningAttempt(svc: RecoveryCaseService, cust: Customer | undefined, attemptNumber: number): Promise<DeliveryDetail | undefined> {
+    const adapter = new CredentialAdapter(null, []);
+    await svc.executeRecovery({ adapter, invoice, method, decline: expired, attemptNumber, customer: cust, localHour: 14, shadow: false });
+    const comms = (await svc.ledgerEntries()).filter((e) => e.type === 'comms.sent');
+    return (comms[comms.length - 1]!.detail as { delivery?: DeliveryDetail }).delivery;
   }
 
   it('DRY-RUN by default: records dry_run and never calls the real provider when live is false', async () => {
@@ -343,12 +351,45 @@ describe('credential recovery in the live charge path (card_refresh + alternate_
   it('LIVE: routes to the provider and records the sent result', async () => {
     const svc = new RecoveryCaseService(new OnboardingService());
     svc.useDunningAgent(new TemplateDunningAgent(), dunningConfig);
-    const provider = new FakeSender({ status: 'sent', channel: 'email', provider: 'postmark', providerMessageId: 'pm-42' });
+    const provider = new FakeSender({ status: 'sent', channel: 'email', provider: 'postmark', providerMessageId: 'pm-42', attempts: 1 });
     svc.useDunningSender(provider, { live: true });
     const delivery = await runDunning(svc, customerWithEmail);
-    expect(delivery).toMatchObject({ status: 'sent', provider: 'postmark', providerMessageId: 'pm-42' });
+    expect(delivery).toMatchObject({ status: 'sent', provider: 'postmark', providerMessageId: 'pm-42', attempts: 1 });
     expect(provider.calls).toHaveLength(1);
     expect(provider.calls[0]!.recipient).toEqual({ channel: 'email', email: 'dana@example.test' });
+  });
+
+  it('IDEMPOTENT: a re-invoked delivery for the same attempt does not re-send', async () => {
+    const svc = new RecoveryCaseService(new OnboardingService());
+    svc.useDunningAgent(new TemplateDunningAgent(), dunningConfig);
+    const provider = new FakeSender({ status: 'sent', channel: 'email', provider: 'postmark', providerMessageId: 'pm-1' });
+    svc.useDunningSender(provider, { live: true });
+    const first = await runDunning(svc, customerWithEmail); // attemptNumber 1 → sends
+    const second = await runDunning(svc, customerWithEmail); // same attempt again → deduped
+    expect(first?.status).toBe('sent');
+    expect(second?.status).toBe('duplicate');
+    expect(provider.calls).toHaveLength(1); // sent exactly once
+  });
+
+  it('a FAILED send is NOT deduped — it stays re-sendable on the next invocation', async () => {
+    const svc = new RecoveryCaseService(new OnboardingService());
+    svc.useDunningAgent(new TemplateDunningAgent(), dunningConfig);
+    const provider = new FakeSender({ status: 'failed', channel: 'email', provider: 'postmark', error: 'boom', retriable: true });
+    svc.useDunningSender(provider, { live: true });
+    await runDunning(svc, customerWithEmail);
+    const second = await runDunning(svc, customerWithEmail);
+    expect(second?.status).toBe('failed'); // not 'duplicate' — a failure never claimed the key
+    expect(provider.calls).toHaveLength(2);
+  });
+
+  it('a DIFFERENT attempt is a distinct reminder — it sends again (not deduped)', async () => {
+    const svc = new RecoveryCaseService(new OnboardingService());
+    svc.useDunningAgent(new TemplateDunningAgent(), dunningConfig);
+    const provider = new FakeSender({ status: 'sent', channel: 'email', provider: 'postmark', providerMessageId: 'pm' });
+    svc.useDunningSender(provider, { live: true });
+    expect((await runDunningAttempt(svc, customerWithEmail, 1))?.status).toBe('sent');
+    expect((await runDunningAttempt(svc, customerWithEmail, 2))?.status).toBe('sent'); // new attempt → new key
+    expect(provider.calls).toHaveLength(2);
   });
 
   it('guardrail SUPPRESSES the send with no consent — provider never called', async () => {

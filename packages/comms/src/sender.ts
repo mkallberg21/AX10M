@@ -39,6 +39,13 @@ export interface SendResult {
   providerMessageId?: string;
   /** Failure reason, when status === 'failed'. */
   error?: string;
+  /**
+   * Whether a `failed` result is worth retrying. Transient (network/timeout/5xx/429) → true;
+   * permanent (bad payload / 4xx) → false. Read by RetryingDunningSender; absent when not failed.
+   */
+  retriable?: boolean;
+  /** How many send attempts were made (set by RetryingDunningSender; 1 for a single try). */
+  attempts?: number;
 }
 
 export interface DunningSender {
@@ -62,9 +69,24 @@ export function assertSendable(message: DunningMessage, recipient: DunningRecipi
   if (message.channel === 'sms' && !recipient.phone) throw new SendRefused('sms channel requires recipient.phone');
 }
 
-/** Turn any thrown error into a `failed` result so send() never rejects. */
+/**
+ * Turn any thrown error into a `failed` result so send() never rejects. A SendRefused (bad
+ * payload — PAN, wrong channel, missing address) is PERMANENT (not retriable); a thrown
+ * transport error (network / DNS / abort-timeout) is transient → retriable.
+ */
 function failed(channel: DunningChannel, provider: string, err: unknown): SendResult {
-  return { status: 'failed', channel, provider, error: err instanceof Error ? err.message : String(err) };
+  return {
+    status: 'failed',
+    channel,
+    provider,
+    error: err instanceof Error ? err.message : String(err),
+    retriable: !(err instanceof SendRefused),
+  };
+}
+
+/** An HTTP status is worth retrying when it's a server error or explicit rate-limit. */
+function httpRetriable(status: number): boolean {
+  return status >= 500 || status === 429;
 }
 
 // ── DryRun (default, safe) ────────────────────────────────────────────────────
@@ -134,7 +156,7 @@ export class PostmarkEmailSender implements DunningSender {
           signal: controller.signal,
         });
         const raw = await res.text();
-        if (!res.ok) return { status: 'failed', channel: 'email', provider: 'postmark', error: `HTTP ${res.status}: ${raw.slice(0, 200)}` };
+        if (!res.ok) return { status: 'failed', channel: 'email', provider: 'postmark', error: `HTTP ${res.status}: ${raw.slice(0, 200)}`, retriable: httpRetriable(res.status) };
         const id = parseJsonField(raw, 'MessageID');
         return { status: 'sent', channel: 'email', provider: 'postmark', providerMessageId: id };
       } finally {
@@ -180,7 +202,7 @@ export class TwilioSmsSender implements DunningSender {
           signal: controller.signal,
         });
         const raw = await res.text();
-        if (!res.ok) return { status: 'failed', channel: 'sms', provider: 'twilio', error: `HTTP ${res.status}: ${raw.slice(0, 200)}` };
+        if (!res.ok) return { status: 'failed', channel: 'sms', provider: 'twilio', error: `HTTP ${res.status}: ${raw.slice(0, 200)}`, retriable: httpRetriable(res.status) };
         const id = parseJsonField(raw, 'sid');
         return { status: 'sent', channel: 'sms', provider: 'twilio', providerMessageId: id };
       } finally {
@@ -201,6 +223,74 @@ export class CompositeDunningSender implements DunningSender {
     const target = message.channel === 'email' ? this.byChannel.email : this.byChannel.sms;
     if (!target) return { status: 'failed', channel: message.channel, provider: 'composite', error: `no sender configured for channel ${message.channel}` };
     return target.send(message, recipient);
+  }
+}
+
+// ── Retry (transport-level; transient failures only) ──────────────────────────
+
+export interface RetryOptions {
+  /** Total attempts including the first (default 3). */
+  maxAttempts?: number;
+  /** Backoff before the next try, given the 1-based number of the try that just failed. */
+  backoffMs?: (failedAttempt: number) => number;
+  /** Injectable delay (tests pass a no-op; default is a real setTimeout). */
+  sleep?: (ms: number) => Promise<void>;
+}
+
+const defaultSleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+const defaultBackoff = (failedAttempt: number): number => 200 * 2 ** (failedAttempt - 1); // 200, 400, 800…
+
+/**
+ * Wraps any sender and retries ONLY transient (`retriable`) failures with backoff, up to
+ * `maxAttempts`. A success/dry-run, or a PERMANENT failure (bad payload / 4xx), returns
+ * immediately. The result's `attempts` reflects how many tries were made.
+ *
+ * IDEMPOTENCY CAVEAT: neither Postmark nor Twilio exposes a reliable idempotency key, so a
+ * retry after a *transport* failure carries a small double-send window if the first request
+ * actually landed. The durable exactly-once guarantee across re-invocations is the caller's
+ * dedupe store (see SendDedupeStore); this decorator only smooths transient blips.
+ */
+export class RetryingDunningSender implements DunningSender {
+  constructor(
+    private readonly inner: DunningSender,
+    private readonly opts: RetryOptions = {},
+  ) {}
+  async send(message: DunningMessage, recipient: DunningRecipient): Promise<SendResult> {
+    const max = Math.max(1, this.opts.maxAttempts ?? 3);
+    const backoff = this.opts.backoffMs ?? defaultBackoff;
+    const sleep = this.opts.sleep ?? defaultSleep;
+    let last: SendResult = { status: 'failed', channel: message.channel, provider: 'retry', error: 'no attempt made' };
+    for (let attempt = 1; attempt <= max; attempt++) {
+      last = await this.inner.send(message, recipient);
+      if (last.status !== 'failed' || !last.retriable || attempt === max) {
+        return { ...last, attempts: attempt };
+      }
+      await sleep(backoff(attempt));
+    }
+    return { ...last, attempts: max };
+  }
+}
+
+// ── Idempotency (dedupe store; exactly-once across re-invocations) ─────────────
+
+/**
+ * Records which send keys have already gone out, so a re-invoked delivery (saga retry, webhook
+ * re-delivery) does not re-send. The caller derives a deterministic key from the case + attempt
+ * and records it only after a real send. In-memory by default; a persisted impl can back it for
+ * cross-process / restart-safe exactly-once (mirrors the credential-attempt store).
+ */
+export interface SendDedupeStore {
+  has(key: string): Promise<boolean>;
+  record(key: string): Promise<void>;
+}
+
+export class InMemorySendDedupeStore implements SendDedupeStore {
+  private readonly seen = new Set<string>();
+  async has(key: string): Promise<boolean> {
+    return this.seen.has(key);
+  }
+  async record(key: string): Promise<void> {
+    this.seen.add(key);
   }
 }
 

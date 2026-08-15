@@ -4,10 +4,14 @@ import {
   PostmarkEmailSender,
   TwilioSmsSender,
   CompositeDunningSender,
+  RetryingDunningSender,
+  InMemorySendDedupeStore,
   assertSendable,
   SendRefused,
   type DunningRecipient,
+  type DunningSender,
   type FetchLike,
+  type SendResult,
 } from './index.js';
 import type { DunningMessage } from './index.js';
 
@@ -105,5 +109,75 @@ describe('CompositeDunningSender', () => {
     const r = await composite.send(sms, smsTo);
     expect(r.status).toBe('failed');
     expect(r.error).toMatch(/no sender configured for channel sms/);
+  });
+});
+
+/** A scripted inner sender that returns queued results in order and counts calls. */
+class ScriptedSender implements DunningSender {
+  calls = 0;
+  constructor(private readonly script: SendResult[]) {}
+  async send(): Promise<SendResult> {
+    const r = this.script[Math.min(this.calls, this.script.length - 1)]!;
+    this.calls++;
+    return r;
+  }
+}
+
+describe('RetryingDunningSender', () => {
+  const fail = (retriable: boolean): SendResult => ({ status: 'failed', channel: 'email', provider: 'postmark', error: 'x', retriable });
+  const ok: SendResult = { status: 'sent', channel: 'email', provider: 'postmark', providerMessageId: 'm1' };
+  const noSleep = async (): Promise<void> => {};
+
+  it('retries a transient failure then succeeds, reporting the attempt count', async () => {
+    const inner = new ScriptedSender([fail(true), ok]);
+    const slept: number[] = [];
+    const sender = new RetryingDunningSender(inner, { maxAttempts: 3, sleep: async (ms) => { slept.push(ms); } });
+    const r = await sender.send(email, emailTo);
+    expect(r).toMatchObject({ status: 'sent', providerMessageId: 'm1', attempts: 2 });
+    expect(inner.calls).toBe(2);
+    expect(slept).toHaveLength(1); // slept once, between the two tries
+  });
+
+  it('does NOT retry a permanent (non-retriable) failure', async () => {
+    const inner = new ScriptedSender([fail(false), ok]);
+    const r = await new RetryingDunningSender(inner, { sleep: noSleep }).send(email, emailTo);
+    expect(r.status).toBe('failed');
+    expect(r.attempts).toBe(1);
+    expect(inner.calls).toBe(1);
+  });
+
+  it('gives up after maxAttempts of transient failure', async () => {
+    const inner = new ScriptedSender([fail(true)]);
+    const r = await new RetryingDunningSender(inner, { maxAttempts: 3, sleep: noSleep }).send(email, emailTo);
+    expect(r.status).toBe('failed');
+    expect(r.attempts).toBe(3);
+    expect(inner.calls).toBe(3);
+  });
+});
+
+describe('failure classification', () => {
+  it('marks 5xx/429 retriable and 4xx permanent', async () => {
+    const p500 = new PostmarkEmailSender({ serverToken: 't', fromEmail: 'x@y.z', fetch: fakeFetch({ ok: false, status: 500, body: 'err' }) });
+    const p422 = new PostmarkEmailSender({ serverToken: 't', fromEmail: 'x@y.z', fetch: fakeFetch({ ok: false, status: 422, body: 'bad' }) });
+    const p429 = new PostmarkEmailSender({ serverToken: 't', fromEmail: 'x@y.z', fetch: fakeFetch({ ok: false, status: 429, body: 'slow' }) });
+    expect((await p500.send(email, emailTo)).retriable).toBe(true);
+    expect((await p422.send(email, emailTo)).retriable).toBe(false);
+    expect((await p429.send(email, emailTo)).retriable).toBe(true);
+  });
+  it('marks a SendRefused (bad payload) permanent, a transport throw retriable', async () => {
+    const refused = await new DryRunDunningSender().send(email, { channel: 'email' }); // missing address → SendRefused
+    expect(refused.retriable).toBe(false);
+    const thrown = new PostmarkEmailSender({ serverToken: 't', fromEmail: 'x@y.z', fetch: async () => { throw new Error('ECONNRESET'); } });
+    expect((await thrown.send(email, emailTo)).retriable).toBe(true);
+  });
+});
+
+describe('InMemorySendDedupeStore', () => {
+  it('records and recognizes a key', async () => {
+    const store = new InMemorySendDedupeStore();
+    expect(await store.has('k1')).toBe(false);
+    await store.record('k1');
+    expect(await store.has('k1')).toBe(true);
+    expect(await store.has('k2')).toBe(false);
   });
 });

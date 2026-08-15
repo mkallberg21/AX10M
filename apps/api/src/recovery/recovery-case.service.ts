@@ -31,12 +31,14 @@ import type { RecoveryWorkflowInput } from '@ax10m/scheduler/temporal';
 import {
   TemplateDunningAgent,
   DryRunDunningSender,
+  InMemorySendDedupeStore,
   type DunningAgent,
   type DunningChannel,
   type DunningMessage,
   type DunningSender,
   type DunningRecipient,
   type SendResult,
+  type SendDedupeStore,
 } from '@ax10m/comms';
 import { OnboardingService } from '../onboarding/onboarding.service.js';
 import { NoopRecoveryDispatcher, type RecoveryDispatcher } from './recovery-dispatcher.js';
@@ -190,7 +192,8 @@ export class RecoveryCaseService {
   /**
    * Wire a send transport for dunning messages. Safe by default: with `live: false` every send
    * is a dry-run (nothing leaves the system). Requires a wired dunning config (composer) to have
-   * anything to send. Unset → messages are recorded but not sent.
+   * anything to send. Unset → messages are recorded but not sent. Wrap the transport in a
+   * RetryingDunningSender (in the builder) to smooth transient provider blips.
    */
   useDunningSender(sender: DunningSender, opts: { live: boolean }): void {
     this.dunningSender = sender;
@@ -198,14 +201,31 @@ export class RecoveryCaseService {
     this.logger.log(`Dunning send transport wired (liveComms=${opts.live}).`);
   }
 
+  // Exactly-once for sends: a re-invoked delivery (saga retry / webhook re-delivery) must not
+  // re-send the SAME reminder. Keyed by (merchant, invoice, attempt, channel); recorded only
+  // after a real send. In-memory default; useSendDedupeStore() swaps in a persisted store so
+  // the guarantee survives restarts and is shared across API + worker.
+  private sendDedupe: SendDedupeStore = new InMemorySendDedupeStore();
+
+  /** Point send-idempotency at a shared, persisted dedupe store (call before ingest). */
+  useSendDedupeStore(store: SendDedupeStore): void {
+    this.sendDedupe = store;
+  }
+
+  private sendKey(invoice: Invoice, attemptNumber: number, channel: DunningChannel): string {
+    return `${invoice.merchantId}:${invoice.id}:${attemptNumber}:${channel}`;
+  }
+
   /**
    * Deliver a composed dunning message, gated by the guardrail's comms check. Returns the
    * delivery outcome (or null if no sender is wired). Never throws — a delivery problem must
-   * not break a recovery. In shadow / non-live mode the send is a dry-run.
+   * not break a recovery. Exactly-once: a duplicate send for the same (invoice, attempt,
+   * channel) is short-circuited. In shadow / non-live mode the send is a dry-run.
    */
   private async deliverDunning(p: {
     message: DunningMessage;
     invoice: Invoice;
+    attemptNumber: number;
     declineCode: DeclineCode;
     customer?: Customer;
     localHour?: number;
@@ -231,10 +251,15 @@ export class RecoveryCaseService {
     if ((channel === 'email' && !recipient.email) || (channel === 'sms' && !recipient.phone)) {
       return { status: 'skipped', channel, reason: 'no recipient address for channel' };
     }
+    // Idempotency: this reminder already went out (a prior invocation recorded it) → do not re-send.
+    const key = this.sendKey(p.invoice, p.attemptNumber, channel);
+    if (await this.sendDedupe.has(key)) return { status: 'duplicate', channel, reason: 'already sent for this attempt' };
     // Safe-by-default: a real send only when live comms is explicitly enabled; else dry-run.
     const sender = this.liveComms ? this.dunningSender : new DryRunDunningSender();
     const result: SendResult = await sender.send(p.message, recipient);
-    return { status: result.status, channel, provider: result.provider, providerMessageId: result.providerMessageId, reason: result.error };
+    // Record for exactly-once ONLY on a real send (dry-run/failed stay re-sendable next tick).
+    if (result.status === 'sent') await this.sendDedupe.record(key);
+    return { status: result.status, channel, provider: result.provider, providerMessageId: result.providerMessageId, attempts: result.attempts, reason: result.error };
   }
 
   /**
@@ -602,7 +627,7 @@ export class RecoveryCaseService {
       // unless live comms is explicitly enabled). Absent a sender, the message is recorded but
       // not sent (unchanged behavior).
       const delivery = message
-        ? await this.deliverDunning({ message, invoice, declineCode: features.declineCode, customer: params.customer, localHour: params.localHour })
+        ? await this.deliverDunning({ message, invoice, attemptNumber, declineCode: features.declineCode, customer: params.customer, localHour: params.localHour })
         : null;
       await this.ledger.append({
         merchantId: invoice.merchantId,
@@ -811,11 +836,16 @@ export interface DunningCommsConfig {
 
 /** What actually happened to a composed dunning message, recorded in the comms.sent ledger detail. */
 interface DunningDeliveryRecord {
-  /** suppressed = guardrail blocked; skipped = no address; dry_run/sent/failed = sender outcome. */
-  status: 'suppressed' | 'skipped' | 'dry_run' | 'sent' | 'failed';
+  /**
+   * suppressed = guardrail blocked; skipped = no address; duplicate = already sent for this
+   * attempt (idempotency); dry_run/sent/failed = sender outcome.
+   */
+  status: 'suppressed' | 'skipped' | 'duplicate' | 'dry_run' | 'sent' | 'failed';
   channel: DunningChannel;
   provider?: string;
   providerMessageId?: string;
+  /** Number of send tries made (from the retrying transport). */
+  attempts?: number;
   reason?: string;
 }
 

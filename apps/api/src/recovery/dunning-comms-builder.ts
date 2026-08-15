@@ -20,6 +20,7 @@ import {
   PostmarkEmailSender,
   TwilioSmsSender,
   CompositeDunningSender,
+  RetryingDunningSender,
   type DunningAgent,
   type DunningChannel,
   type DunningSender,
@@ -76,7 +77,10 @@ export function buildDunningSender(env: NodeJS.ProcessEnv = process.env): { send
   }
   if (!email && !sms) return { sender: undefined, live };
   logger.log(`Dunning send transport configured (email=${!!email}, sms=${!!sms}, live=${live}${live ? '' : ' → dry-run only'}).`);
-  return { sender: new CompositeDunningSender({ email, sms }), live };
+  // Wrap in the retrying transport so transient provider blips (5xx/429/network) retry with
+  // backoff; permanent failures (bad payload / 4xx) do not. Exactly-once across re-invocations
+  // is the service's dedupe store, not this layer.
+  return { sender: new RetryingDunningSender(new CompositeDunningSender({ email, sms })), live };
 }
 
 /** Convenience: the agent + optional config + optional send transport, as consumed by the service. */
