@@ -40,6 +40,7 @@ import {
   type PaymentMethod,
   type Subscription,
 } from '@ax10m/canonical';
+import { customerFromInvoice } from '../../customer.js';
 import type {
   CapabilityMatrix,
   ChargeResult,
@@ -179,7 +180,7 @@ export class WorldpayAdapter implements ProcessorAdapter {
         const invoice = this.mapInvoice(details, occurredAt, /*failed*/ true);
         const attempt = this.mapAttempt(details, invoice.id, /*failed*/ true, occurredAt);
         const decline = this.mapDecline(details, invoice.id, attempt.id, occurredAt);
-        return [{ ...base, type: 'invoice.failed', payload: { invoice, attempt, decline } }];
+        return [{ ...base, type: 'invoice.failed', payload: { invoice, attempt, decline, customer: customerFromInvoice(invoice) } }];
       }
       case 'payment.settled':
       case 'payment.authorized': {

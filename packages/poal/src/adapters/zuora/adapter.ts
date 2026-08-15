@@ -39,6 +39,7 @@ import {
   type PaymentMethod,
   type Subscription,
 } from '@ax10m/canonical';
+import { customerFromInvoice } from '../../customer.js';
 import type {
   CapabilityMatrix,
   ChargeResult,
@@ -186,7 +187,7 @@ export class ZuoraAdapter implements ProcessorAdapter {
         attemptedAt: occurredAt,
       });
       const decline = this.buildDecline(callout, invoice.id, attempt.id, occurredAt);
-      return [envelope('invoice.failed', { invoice, attempt, decline })];
+      return [envelope('invoice.failed', { invoice, attempt, decline, customer: customerFromInvoice(invoice) })];
     }
     // Payment processed → invoice.paid.
     if (type.includes('paymentprocessed') || type.includes('payment_processed') || type === 'paymentsuccess') {

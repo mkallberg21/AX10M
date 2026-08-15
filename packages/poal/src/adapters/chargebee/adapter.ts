@@ -30,6 +30,7 @@ import {
   type PaymentMethod,
   type Subscription,
 } from '@ax10m/canonical';
+import { customerFromInvoice } from '../../customer.js';
 import type {
   CapabilityMatrix,
   ChargeResult,
@@ -152,7 +153,7 @@ export class ChargebeeAdapter implements ProcessorAdapter {
         const invoice = this.mapInvoice(content.invoice, occurredAt, /*failed*/ true);
         const attempt = content.transaction ? this.mapAttempt(content.transaction, invoice.id) : undefined;
         const decline = content.transaction ? this.mapDecline(content.transaction, invoice.id, attempt?.id ?? '') : undefined;
-        return [envelope('invoice.failed', { invoice, attempt, decline })];
+        return [envelope('invoice.failed', { invoice, attempt, decline, customer: customerFromInvoice(invoice) })];
       }
       case 'payment_succeeded': {
         if (!content.invoice) return [];

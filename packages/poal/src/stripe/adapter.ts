@@ -39,6 +39,7 @@ import type {
   ProcessorAdapter,
   RawWebhook,
 } from '../adapter.js';
+import { customerFromInvoice } from '../customer.js';
 import { StripeClient, StripeError, type FetchLike } from './client.js';
 import { mapStripeDeclineCode } from './decline-map.js';
 import { verifyStripeSignature } from './signature.js';
@@ -144,7 +145,7 @@ export class StripeAdapter implements ProcessorAdapter {
         const invoice = this.mapInvoice(inv, occurredAt, true);
         const attempt = this.buildAttempt({ invoiceId: invoice.id, paymentMethodId: '', idempotencyKey: '', amount: invoice.amount, status: 'failed', declineCode: undefined, attemptedAt: occurredAt });
         const decline = this.buildDecline(undefined, invoice.id, attempt.id, occurredAt);
-        return [envelope('invoice.failed', { invoice, attempt, decline })];
+        return [envelope('invoice.failed', { invoice, attempt, decline, customer: customerFromInvoice(invoice) })];
       }
       case 'invoice.payment_succeeded':
       case 'invoice.paid': {
@@ -158,7 +159,7 @@ export class StripeAdapter implements ProcessorAdapter {
         const rawCode = ch.decline_code ?? ch.failure_code ?? ch.outcome?.reason;
         const attempt = this.buildAttempt({ invoiceId: invoice.id, paymentMethodId: '', idempotencyKey: '', amount: invoice.amount, status: 'failed', declineCode: mapStripeDeclineCode(rawCode), txnId: ch.id, attemptedAt: occurredAt });
         const decline = this.buildDecline(rawCode, invoice.id, attempt.id, occurredAt);
-        return [envelope('invoice.failed', { invoice, attempt, decline })];
+        return [envelope('invoice.failed', { invoice, attempt, decline, customer: customerFromInvoice(invoice) })];
       }
       case 'charge.succeeded': {
         const ch = obj as unknown as StripeCharge;

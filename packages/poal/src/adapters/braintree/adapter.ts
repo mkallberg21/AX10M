@@ -36,6 +36,7 @@ import {
   type PaymentMethod,
   type Subscription,
 } from '@ax10m/canonical';
+import { customerFromInvoice } from '../../customer.js';
 import type {
   CapabilityMatrix,
   ChargeResult,
@@ -169,7 +170,7 @@ export class BraintreeAdapter implements ProcessorAdapter {
       };
       if (failed) {
         const decline = this.buildDecline(txn, invoice.id, attempt.id, occurredAt);
-        return [{ ...base, type: 'invoice.failed', payload: { invoice, attempt, decline } }];
+        return [{ ...base, type: 'invoice.failed', payload: { invoice, attempt, decline, customer: customerFromInvoice(invoice) } }];
       }
       return [{ ...base, type: 'invoice.paid', payload: { invoice, attempt } }];
     }

@@ -40,6 +40,7 @@ import {
   type PaymentMethod,
   type Subscription,
 } from '@ax10m/canonical';
+import { customerFromInvoice } from '../../customer.js';
 import type {
   CapabilityMatrix,
   ChargeResult,
@@ -204,7 +205,7 @@ export class ShopifyAdapter implements ProcessorAdapter {
           attemptedAt: occurredAt,
         });
         const decline = this.buildDecline(payload, invoice.id, attempt.id, occurredAt);
-        return [{ ...base, type: 'invoice.failed', payload: { invoice, attempt, decline } }];
+        return [{ ...base, type: 'invoice.failed', payload: { invoice, attempt, decline, customer: customerFromInvoice(invoice) } }];
       }
       case 'subscription_billing_attempts/success':
       case 'orders/paid': {

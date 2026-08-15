@@ -37,6 +37,7 @@ import {
   type PaymentMethod,
   type Subscription,
 } from '@ax10m/canonical';
+import { customerFromInvoice } from '../../customer.js';
 import type {
   CapabilityMatrix,
   ChargeResult,
@@ -189,7 +190,7 @@ export class WooCommerceAdapter implements ProcessorAdapter {
             attemptedAt: occurredAt,
           });
           const decline = this.buildDecline(rawReason, invoice.id, attempt.id, occurredAt, eventId);
-          return [{ ...base, type: 'invoice.failed', payload: { invoice, attempt, decline } }];
+          return [{ ...base, type: 'invoice.failed', payload: { invoice, attempt, decline, customer: customerFromInvoice(invoice) } }];
         }
         if (order.status === 'completed' || order.status === 'processing') {
           const invoice = this.mapOrder(order, occurredAt, false);

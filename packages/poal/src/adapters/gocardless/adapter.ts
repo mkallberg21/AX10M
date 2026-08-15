@@ -34,6 +34,7 @@ import {
   type PaymentMethod,
   type Subscription,
 } from '@ax10m/canonical';
+import { customerFromInvoice } from '../../customer.js';
 import type {
   CapabilityMatrix,
   ChargeResult,
@@ -198,7 +199,7 @@ export class GoCardlessAdapter implements ProcessorAdapter {
       return {
         ...base,
         type: 'invoice.failed',
-        payload: { invoice, attempt, decline, willAutoRetry },
+        payload: { invoice, attempt, decline, willAutoRetry, customer: customerFromInvoice(invoice) },
       };
     }
     return { ...base, type: 'invoice.paid', payload: { invoice, attempt } };

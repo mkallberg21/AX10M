@@ -58,12 +58,16 @@ describe('ingestWebhook', () => {
     const body = JSON.stringify({ id: 'evt_1', type: 'invoice.payment_failed', created: T, data: { object: { id: 'in_1', customer: 'cus_1', subscription: 'sub_1', amount_due: 14900, currency: 'usd', status: 'open', created: 1_699_999_000 } } });
     const events = await adapter.ingestWebhook({ body, headers: signed(body) });
     expect(events).toHaveLength(1);
-    const p = events[0]!.payload as { invoice: Invoice };
+    const p = events[0]!.payload as { invoice: Invoice; customer?: { id: string; processorRef: string } };
     expect(events[0]!.type).toBe('invoice.failed');
     expect(p.invoice.processorRef).toBe('in_1');
     expect(p.invoice.amount).toEqual({ amount: 14900, currency: 'USD' });
     expect(p.invoice.customerId).toBe('ax10m_cus_cus_1'); // real customer → customer-level holdout
     expect(p.invoice.subscriptionId).toBe('ax10m_sub_sub_1');
+    // The customer rides along for alternate-rail backup-method recovery; its processorRef
+    // is the RAW Stripe customer id (prefix stripped) that listPaymentMethods queries by.
+    expect(p.customer?.id).toBe('ax10m_cus_cus_1');
+    expect(p.customer?.processorRef).toBe('cus_1');
   });
 
   it('rejects a webhook with a bad signature', async () => {

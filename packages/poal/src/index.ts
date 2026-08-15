@@ -6,6 +6,7 @@
  * Stripe adapter (first processor). See ARCHITECTURE.md §4.1 & §8.
  */
 export * from './adapter.js';
+export * from './customer.js';
 export * from './idempotency.js';
 export * from './adapters/index.js';
 export * from './factory.js';

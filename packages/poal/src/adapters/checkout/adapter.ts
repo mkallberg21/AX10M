@@ -39,6 +39,7 @@ import {
   type PaymentMethod,
   type Subscription,
 } from '@ax10m/canonical';
+import { customerFromInvoice } from '../../customer.js';
 import type {
   CapabilityMatrix,
   ChargeResult,
@@ -174,7 +175,7 @@ export class CheckoutAdapter implements ProcessorAdapter {
         const invoice = this.mapInvoice(data, occurredAt, /*failed*/ true);
         const attempt = this.mapAttempt(data, invoice.id, /*failed*/ true, occurredAt);
         const decline = this.mapDecline(data, invoice.id, attempt.id, occurredAt);
-        return [{ ...base, type: 'invoice.failed', payload: { invoice, attempt, decline } }];
+        return [{ ...base, type: 'invoice.failed', payload: { invoice, attempt, decline, customer: customerFromInvoice(invoice) } }];
       }
       case 'payment_captured':
       case 'payment_approved': {

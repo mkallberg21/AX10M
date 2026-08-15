@@ -43,6 +43,7 @@ import {
   type PaymentMethod,
   type Subscription,
 } from '@ax10m/canonical';
+import { customerFromInvoice } from '../../customer.js';
 import type {
   CapabilityMatrix,
   ChargeResult,
@@ -284,7 +285,7 @@ export class RecurlyAdapter implements ProcessorAdapter {
           attemptedAt: occurredAt,
         });
         const decline = this.buildDecline(note, invoice.id, attempt.id, occurredAt);
-        return [envelope('invoice.failed', { invoice, attempt, decline })];
+        return [envelope('invoice.failed', { invoice, attempt, decline, customer: customerFromInvoice(invoice) })];
       }
       case 'successful_payment_notification':
       case 'paid_charge': {

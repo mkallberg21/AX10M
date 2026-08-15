@@ -39,6 +39,7 @@ import {
   type PaymentMethod,
   type Subscription,
 } from '@ax10m/canonical';
+import { customerFromInvoice } from '../../customer.js';
 import type {
   CapabilityMatrix,
   ChargeResult,
@@ -194,7 +195,7 @@ export class PayPalAdapter implements ProcessorAdapter {
         const invoice = this.mapResourceInvoice(resource, occurredAt, /*failed*/ true);
         const attempt = this.mapResourceAttempt(resource, invoice.id, true);
         const decline = this.mapResourceDecline(resource, invoice.id, attempt.id, occurredAt);
-        return [envelope('invoice.failed', { invoice, attempt, decline })];
+        return [envelope('invoice.failed', { invoice, attempt, decline, customer: customerFromInvoice(invoice) })];
       }
       case 'PAYMENT.CAPTURE.COMPLETED':
       case 'PAYMENT.SALE.COMPLETED': {
