@@ -9,7 +9,8 @@
     "lint": "next lint",
     "clean": "rimraf .next",
     "typecheck": "tsc --noEmit",
-    "gen-demo": "node scripts/gen-demo.mjs"
+    "gen-demo": "node scripts/gen-demo.mjs",
+    "gen-artifact": "node scripts/gen-artifact.mjs"
   },
   "dependencies": {
     "@ax10m/attribution": "workspace:*",

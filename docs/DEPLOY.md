@@ -36,17 +36,37 @@ baseline).
 corepack pnpm --filter @ax10m/dashboard dev    # http://localhost:3000
 ```
 
-## Deploy to Vercel
+## Deploy to Vercel (one-click)
 
-The dashboard is a standard Next.js 14 app.
+A root [`vercel.json`](../vercel.json) pins the monorepo build, so deploying is just:
 
-- **Root directory:** `apps/dashboard`
-- **Install command:** `corepack pnpm install` (run from the repo root; it's a pnpm workspace)
-- **Build command:** `corepack pnpm --filter @ax10m/dashboard... build`
-- **Output:** `.next` (Vercel auto-detects Next.js)
+1. Import `github.com/mkallberg21/AX10M` into Vercel (**leave the Root Directory at the
+   repo root** — `vercel.json` handles the workspace build).
+2. Deploy. No environment variables are needed for the demo.
 
-No environment variables are needed for the demo. Once deployed, update the pitch page's
-"See the live demo" link if your dashboard lives on a different origin than the pitch.
+`vercel.json` sets:
+
+| Setting | Value |
+|---|---|
+| `framework` | `nextjs` |
+| `installCommand` | `corepack pnpm install --frozen-lockfile` |
+| `buildCommand` | `corepack pnpm --filter @ax10m/dashboard... build` |
+| `outputDirectory` | `apps/dashboard/.next` |
+
+Or, from the CLI on a machine that's logged in to Vercel: `vercel --prod` from the repo
+root. (Deploying requires your own Vercel auth — it can't be done for you.) Once deployed,
+update the pitch page's "See the live demo" link if the dashboard lives on a different
+origin than the pitch.
+
+## Live snapshot (no build) & the hosted preview
+
+- A **self-contained static snapshot** is committed at `apps/dashboard/public/demo.html`
+  (inline CSS, no JS, no build step) — servable at `/demo.html` on any static host, or
+  openable straight from disk. Regenerate it from the same `demo-data.json` the live page
+  uses with `corepack pnpm --filter @ax10m/dashboard gen-artifact`.
+- A hosted, shareable **preview of the demo** is published as a claude.ai Artifact:
+  <https://claude.ai/code/artifact/28ea9336-4855-410f-a85d-2d1ffaa1d878> (default-private;
+  share it from the page's share menu). Re-run `gen-artifact` and republish to refresh it.
 
 ## Deploy the pitch page to GitHub Pages (alternative)
 

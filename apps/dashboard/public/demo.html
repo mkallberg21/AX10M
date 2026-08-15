@@ -1,0 +1,723 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>AX10M Recovery Demo</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+:root {
+  --bg: #0b0e14;
+  --panel: #141922;
+  --panel-2: #1b212d;
+  --border: #263041;
+  --text: #e6edf3;
+  --muted: #8b98a9;
+  --accent: #4ade80;
+  --accent-dim: #22c55e;
+  --warn: #fbbf24;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+a {
+  color: var(--accent);
+}
+
+.container {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 40px 24px 80px;
+}
+
+.badge {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: rgba(74, 222, 128, 0.1);
+  border: 1px solid rgba(74, 222, 128, 0.3);
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+
+h1 {
+  font-size: 28px;
+  margin: 16px 0 4px;
+}
+
+.subtitle {
+  color: var(--muted);
+  margin: 0 0 32px;
+  max-width: 60ch;
+}
+
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.kpi {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.kpi .label {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.kpi .value {
+  font-size: 30px;
+  font-weight: 700;
+}
+
+.kpi .value.accent {
+  color: var(--accent);
+}
+
+.kpi .hint {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 6px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  font-size: 14px;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+th {
+  background: var(--panel-2);
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+td.num,
+th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+tr:last-child td {
+  border-bottom: none;
+}
+
+.pill {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.pill.billable {
+  color: var(--accent);
+  background: rgba(74, 222, 128, 0.12);
+}
+
+.pill.holdout {
+  color: var(--warn);
+  background: rgba(251, 191, 36, 0.12);
+}
+
+.method-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 24px;
+  padding: 14px 18px;
+  margin-bottom: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.method-strip strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.onboard {
+  background: linear-gradient(180deg, rgba(74, 222, 128, 0.06), transparent), var(--panel);
+  border: 1px solid rgba(74, 222, 128, 0.28);
+  border-radius: 16px;
+  padding: 20px 22px;
+  margin-bottom: 28px;
+}
+
+.onboard-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.activate {
+  font: inherit;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--bg);
+  background: var(--accent);
+  border: none;
+  border-radius: 10px;
+  padding: 9px 16px;
+  cursor: pointer;
+}
+
+.activate:hover {
+  background: var(--accent-dim);
+}
+
+.activate:disabled {
+  background: var(--panel-2);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  cursor: not-allowed;
+}
+
+.progress {
+  height: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+  margin: 16px 0;
+}
+
+.progress .fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+.onboard-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 720px) {
+  .onboard-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.onboard-stats > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.onboard-stats .k {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.onboard-stats .v {
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.onboard-stats .v.accent {
+  color: var(--accent);
+}
+
+.onboard-note {
+  font-size: 12.5px;
+  color: var(--muted);
+  margin: 14px 0 0;
+  max-width: 78ch;
+  line-height: 1.5;
+}
+
+.recon-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-top: 12px;
+}
+
+@media (max-width: 760px) {
+  .recon-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.recon-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px;
+}
+
+.recon-card.ok {
+  border-color: rgba(74, 222, 128, 0.4);
+}
+
+.recon-card .label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.recon-card .big {
+  font-size: 22px;
+  font-weight: 700;
+  margin-top: 6px;
+}
+
+.recon-card.ok .big {
+  color: var(--accent);
+}
+
+.recon-card .hint {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.section-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 40px 0 12px;
+}
+
+.ledger-note {
+  margin-top: 16px;
+  font-size: 12px;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  word-break: break-all;
+}
+
+.artifact-links { margin: 8px 0 12px 18px; line-height: 1.9; }
+pre.verify { background:#0b1220; color:#cbd5e1; padding:12px; border-radius:8px; overflow-x:auto; font-size:12px; }
+</style>
+</head>
+<body>
+<main class="container">
+  <div class="onboard" style="border-color:#f59e0b">
+    <div class="onboard-top">
+      <span class="badge" style="background:#7c2d12">Demo · synthetic data · reproduces the Phase-1 backtest</span>
+      <a class="activate" href="https://github.com/mkallberg21/AX10M/blob/main/packages/backtest/out/report.md" style="text-decoration:none">Read the backtest →</a>
+    </div>
+    <p class="onboard-note" style="margin-top:12px">
+      <strong>Honest status:</strong> the AX10M engine <strong>does not yet win on recovery rate</strong>. A
+      retry-timing fix closed the original gap (it now roughly matches Stripe Smart Retries' default), but against a
+      baseline that simply retries as long, the engine <strong>loses</strong> — so its edge is not raw recovery rate,
+      and the signed statement below correctly bills <strong>$0</strong>. The top card is the <em>projected
+      opportunity</em> we'd measure in shadow mode — a model estimate, <strong>not holdout-verified</strong>. Both
+      come from the same world model, so this demo cannot show a number the backtest denies.
+    </p>
+  </div>
+
+  <div class="onboard">
+    <div class="onboard-top">
+      <span class="badge">Shadow mode · day 9 of 14 · measuring your true baseline</span>
+      <button class="activate" disabled>Activate at day 14</button>
+    </div>
+    <div class="progress"><div class="fill" style="width:64%"></div></div>
+    <div class="onboard-stats">
+      <div><span class="k">Projected monthly opportunity</span><span class="v accent">$2,104,195.36</span></div>
+      <div><span class="k">Would-be fee (12%)</span><span class="v">$252,503.44</span></div>
+      <div><span class="k">Conservative low end</span><span class="v">$1,262,517.21</span></div>
+      <div><span class="k">Your baseline recovery</span><span class="v">36.9%</span></div>
+    </div>
+    <p class="onboard-note">
+      Projected from 82,578 observed baseline failures — a model estimate
+      of the recoverable <strong>opportunity</strong>, <strong>not yet holdout-verified</strong> and not a claim that
+      our engine captures it. The live holdout is what turns this into a billable number.
+    </p>
+  </div>
+
+  <h1>Active-holdout statement (illustrative)</h1>
+  <p class="subtitle">
+    What an active month looks like: a live randomized holdout runs the AX10M engine against your Stripe Smart Retries
+    baseline, and we bill only the <strong>always-valid lower bound</strong>. In this demo the engine recovered
+    <strong>38.0%</strong> vs the baseline's <strong>37.8%</strong> — a
+    <strong>0.2%</strong> difference — so the proven lift is not positive and the fee is
+    <strong>$0</strong>. That is the product working as designed: an unproven month bills nothing.
+  </p>
+
+  <section class="kpis">
+    <div class="kpi">
+      <div class="label">Proven incremental uplift (lower bound)</div>
+      <div class="value accent">$0.00</div>
+      <div class="hint">Point estimate -$177.43/period · we bill only the proven floor</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Fee (12% of proven increment)</div>
+      <div class="value">$0.00</div>
+      <div class="hint">Not billable — lift unproven</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Statistical status</div>
+      <div class="value">Unproven<span style="color:var(--muted);font-size:18px"> · 95% CS</span></div>
+      <div class="hint">SRM χ²=1.8 ✓ balanced · CUPED −17.7% variance</div>
+    </div>
+  </section>
+
+  <div class="method-strip">
+    <span><strong>-$0.00</strong>/invoice point estimate</span>
+    <span><strong>$1.75</strong> mSPRT half-width</span>
+    <span><strong>$0.00</strong>/invoice proven floor</span>
+    <span><strong>$0.48</strong> cluster-robust SE</span>
+    <span><strong>8,108</strong> effective N</span>
+  </div>
+
+  <div class="section-title">Cohort breakdown (by MRR tier · decline family · issuer region)</div>
+  <table>
+    <thead>
+      <tr>
+        <th>Cohort</th><th class="num">Control recovery</th><th class="num">Treatment recovery</th>
+        <th class="num">Point uplift $/inv</th><th class="num">Treated invoices</th><th class="num">Weight</th><th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>small|soft|emea</td>
+        <td class="num">52.3%</td>
+        <td class="num">55.0%</td>
+        <td class="num">$2.53</td>
+        <td class="num">7,625</td>
+        <td class="num">10.2%</td>
+        <td><span class="pill billable">In sample</span></td>
+      </tr>
+      <tr>
+        <td>small|soft|na</td>
+        <td class="num">54.3%</td>
+        <td class="num">54.9%</td>
+        <td class="num">-$0.38</td>
+        <td class="num">16,882</td>
+        <td class="num">22.7%</td>
+        <td><span class="pill billable">In sample</span></td>
+      </tr>
+      <tr>
+        <td>mid|gray|na</td>
+        <td class="num">28.6%</td>
+        <td class="num">19.5%</td>
+        <td class="num">-$11.94</td>
+        <td class="num">2,672</td>
+        <td class="num">3.6%</td>
+        <td><span class="pill billable">In sample</span></td>
+      </tr>
+      <tr>
+        <td>small|gray|na</td>
+        <td class="num">22.1%</td>
+        <td class="num">20.7%</td>
+        <td class="num">-$0.76</td>
+        <td class="num">10,303</td>
+        <td class="num">13.8%</td>
+        <td><span class="pill billable">In sample</span></td>
+      </tr>
+      <tr>
+        <td>small|soft|latam</td>
+        <td class="num">51.6%</td>
+        <td class="num">56.9%</td>
+        <td class="num">$2.89</td>
+        <td class="num">2,528</td>
+        <td class="num">3.4%</td>
+        <td><span class="pill billable">In sample</span></td>
+      </tr>
+      <tr>
+        <td>micro|gray|na</td>
+        <td class="num">16.8%</td>
+        <td class="num">20.6%</td>
+        <td class="num">$0.61</td>
+        <td class="num">1,066</td>
+        <td class="num">1.4%</td>
+        <td><span class="pill billable">In sample</span></td>
+      </tr>
+      <tr>
+        <td>mid|soft|na</td>
+        <td class="num">51.5%</td>
+        <td class="num">54.3%</td>
+        <td class="num">$1.87</td>
+        <td class="num">4,350</td>
+        <td class="num">5.8%</td>
+        <td><span class="pill billable">In sample</span></td>
+      </tr>
+      <tr>
+        <td>small|gray|emea</td>
+        <td class="num">24.3%</td>
+        <td class="num">19.5%</td>
+        <td class="num">-$2.75</td>
+        <td class="num">4,631</td>
+        <td class="num">6.2%</td>
+        <td><span class="pill billable">In sample</span></td>
+      </tr>
+      <tr>
+        <td>pooled (sub-floor)</td>
+        <td class="num">17.0%</td>
+        <td class="num">18.5%</td>
+        <td class="num">-$0.91</td>
+        <td class="num">2,991</td>
+        <td class="num">4.0%</td>
+        <td><span class="pill holdout">Pooled</span></td>
+      </tr>
+      <tr>
+        <td>small|hard|na</td>
+        <td class="num">1.2%</td>
+        <td class="num">0.0%</td>
+        <td class="num">-$0.94</td>
+        <td class="num">2,797</td>
+        <td class="num">3.8%</td>
+        <td><span class="pill billable">In sample</span></td>
+      </tr>
+      <tr>
+        <td>small|soft|apac</td>
+        <td class="num">51.4%</td>
+        <td class="num">55.2%</td>
+        <td class="num">$2.12</td>
+        <td class="num">3,693</td>
+        <td class="num">5.0%</td>
+        <td><span class="pill billable">In sample</span></td>
+      </tr>
+      <tr>
+        <td>small|gray|apac</td>
+        <td class="num">18.9%</td>
+        <td class="num">20.8%</td>
+        <td class="num">$0.93</td>
+        <td class="num">2,303</td>
+        <td class="num">3.1%</td>
+        <td><span class="pill billable">In sample</span></td>
+      </tr>
+      <tr>
+        <td>mid|soft|latam</td>
+        <td class="num">50.0%</td>
+        <td class="num">52.6%</td>
+        <td class="num">$0.15</td>
+        <td class="num">646</td>
+        <td class="num">0.9%</td>
+        <td><span class="pill billable">In sample</span></td>
+      </tr>
+      <tr>
+        <td>micro|soft|na</td>
+        <td class="num">52.0%</td>
+        <td class="num">54.7%</td>
+        <td class="num">$0.66</td>
+        <td class="num">1,750</td>
+        <td class="num">2.4%</td>
+        <td><span class="pill billable">In sample</span></td>
+      </tr>
+      <tr>
+        <td>mid|hard|na</td>
+        <td class="num">1.1%</td>
+        <td class="num">0.0%</td>
+        <td class="num">$2.03</td>
+        <td class="num">743</td>
+        <td class="num">1.0%</td>
+        <td><span class="pill billable">In sample</span></td>
+      </tr>
+      <tr>
+        <td>micro|soft|emea</td>
+        <td class="num">51.1%</td>
+        <td class="num">57.2%</td>
+        <td class="num">$1.36</td>
+        <td class="num">797</td>
+        <td class="num">1.1%</td>
+        <td><span class="pill billable">In sample</span></td>
+      </tr>
+      <tr>
+        <td>small|gray|latam</td>
+        <td class="num">25.5%</td>
+        <td class="num">18.6%</td>
+        <td class="num">-$3.30</td>
+        <td class="num">1,501</td>
+        <td class="num">2.0%</td>
+        <td><span class="pill billable">In sample</span></td>
+      </tr>
+      <tr>
+        <td>small|hard|emea</td>
+        <td class="num">3.0%</td>
+        <td class="num">0.0%</td>
+        <td class="num">-$3.01</td>
+        <td class="num">1,266</td>
+        <td class="num">1.7%</td>
+        <td><span class="pill billable">In sample</span></td>
+      </tr>
+      <tr>
+        <td>mid|gray|apac</td>
+        <td class="num">24.6%</td>
+        <td class="num">19.1%</td>
+        <td class="num">-$7.65</td>
+        <td class="num">613</td>
+        <td class="num">0.8%</td>
+        <td><span class="pill billable">In sample</span></td>
+      </tr>
+      <tr>
+        <td>mid|soft|emea</td>
+        <td class="num">51.4%</td>
+        <td class="num">56.4%</td>
+        <td class="num">$6.48</td>
+        <td class="num">2,050</td>
+        <td class="num">2.8%</td>
+        <td><span class="pill billable">In sample</span></td>
+      </tr>
+      <tr>
+        <td>mid|gray|emea</td>
+        <td class="num">19.4%</td>
+        <td class="num">20.4%</td>
+        <td class="num">$1.99</td>
+        <td class="num">1,212</td>
+        <td class="num">1.6%</td>
+        <td><span class="pill billable">In sample</span></td>
+      </tr>
+      <tr>
+        <td>mid|soft|apac</td>
+        <td class="num">42.1%</td>
+        <td class="num">55.5%</td>
+        <td class="num">$14.02</td>
+        <td class="num">973</td>
+        <td class="num">1.3%</td>
+        <td><span class="pill billable">In sample</span></td>
+      </tr>
+      <tr>
+        <td>micro|gray|emea</td>
+        <td class="num">36.5%</td>
+        <td class="num">20.3%</td>
+        <td class="num">-$2.27</td>
+        <td class="num">487</td>
+        <td class="num">0.7%</td>
+        <td><span class="pill billable">In sample</span></td>
+      </tr>
+      <tr>
+        <td>small|hard|apac</td>
+        <td class="num">0.0%</td>
+        <td class="num">0.0%</td>
+        <td class="num">$0.19</td>
+        <td class="num">587</td>
+        <td class="num">0.8%</td>
+        <td><span class="pill billable">In sample</span></td>
+      </tr>
+    </tbody>
+  </table>
+  <p class="subtitle" style="font-size:13px;margin-top:12px">
+    Treatment and control recover at nearly the same rate here — after the retry-timing fix the engine matches the
+    default baseline but does not beat one that retries as long, so it bills $0. The estimator reports that faithfully
+    rather than papering over it.
+  </p>
+
+  <div class="section-title">CFO reconciliation — verify it yourself, trust nothing</div>
+  <div class="method-strip">
+    <span>Signed statement <strong>d3f532ca07ced495…</strong></span>
+    <span>Signing key <strong>ax10m-demo-ed25519</strong></span>
+    <span>Ledger <strong>verified ✓</strong></span>
+    <span>Epoch salt <strong>disclosed</strong></span>
+  </div>
+  <div class="recon-grid">
+    <div class="recon-card ok">
+      <div class="label">Reconciles against processor payout</div>
+      <div class="big">Ties out ✓</div>
+      <div class="hint">31,377 recovered txns · $2,169,112.90 = $2,169,112.90 settled</div>
+    </div>
+    <div class="recon-card">
+      <div class="label">Recovered value (both arms)</div>
+      <div class="big">$2,169,112.90</div>
+      <div class="hint">Treatment $1,952,558.44 · control $216,554.46</div>
+    </div>
+    <div class="recon-card">
+      <div class="label">Fee = 12% × proven increment</div>
+      <div class="big">$0.00</div>
+      <div class="hint">unproven → $0 · recomputable by hand</div>
+    </div>
+  </div>
+
+  <div class="section-title">Recovery model — retrained off the ledger (the flywheel)</div>
+  <p class="subtitle" style="margin-top:0">
+    Every recovery decision and its realized outcome are logged to the shared, hash-chained ledger. The retrain job
+    reads that ledger, fits a challenger, and a <strong>champion/challenger gate</strong> promotes it only if it beats
+    the current model by a margin — so retraining can <strong>never ship a regression</strong>. The gate below is
+    production code; the corpus here is synthetic until a live ledger fills.
+  </p>
+  <section class="kpis">
+    <div class="kpi">
+      <div class="label">Trained champion (held-out AUC)</div>
+      <div class="value accent">0.875</div>
+      <div class="hint">vs an untrained cold-start model at 0.500</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Retrained challenger</div>
+      <div class="value">0.870<span style="color:var(--muted);font-size:18px"> AUC</span></div>
+      <div class="hint">Promotes vs cold-start ✓ · held vs champion (no gain ≥ margin)</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Gate decision this cycle</div>
+      <div class="value">Hold</div>
+      <div class="hint">needs +0.005 AUC to promote · never ships a regression</div>
+    </div>
+  </section>
+  <div class="method-strip">
+    <span><strong>6,000</strong> labeled ledger samples</span>
+    <span><strong>1,757</strong> recovered (+)</span>
+    <span><strong>4,243</strong> failed (−)</span>
+    <span>promotes a real gain → <strong>model.promoted</strong> in the ledger</span>
+    <span>API + worker load the active champion at startup</span>
+  </div>
+  <p class="subtitle" style="font-size:13px;margin-top:12px">
+    Here the fresh challenger (0.870) does <strong>not</strong> beat the already-strong shipped
+    champion (0.875) by the margin, so the gate correctly <strong>holds</strong> — it would promote
+    against a weaker model (as shown vs cold-start), but it refuses to ship a non-improvement. That safety property is
+    the point: the flywheel only ever moves the model forward.
+  </p>
+
+  <div class="onboard" style="margin-top:20px">
+    <div class="onboard-top"><span class="badge">Download &amp; verify the signed statement</span></div>
+    <p class="onboard-note" style="margin-top:12px">
+      The Ed25519-signed statement, the reconciliation CSV, the hash-chained ledger, and the public key are published
+      so a skeptical CFO can recompute and verify everything without trusting this page:
+    </p>
+    <ul class="artifact-links">
+      <li><a href="https://raw.githubusercontent.com/mkallberg21/AX10M/main/apps/dashboard/public/uplift-statement.json">uplift-statement.json</a> — the signed statement</li>
+      <li><a href="https://raw.githubusercontent.com/mkallberg21/AX10M/main/apps/dashboard/public/uplift-statement.csv">uplift-statement.csv</a> — recovered transactions (tie to your Stripe payout)</li>
+      <li><a href="https://raw.githubusercontent.com/mkallberg21/AX10M/main/apps/dashboard/public/uplift-ledger.json">uplift-ledger.json</a> — the hash-chained ledger</li>
+      <li><a href="https://raw.githubusercontent.com/mkallberg21/AX10M/main/apps/dashboard/public/ax10m-demo-pubkey.pem">ax10m-demo-pubkey.pem</a> — the public key</li>
+    </ul>
+    <pre class="verify">node scripts/verify-statement.mjs \
+  uplift-statement.json ax10m-demo-pubkey.pem uplift-ledger.json
+# → PASS statement hash · PASS Ed25519 signature · PASS ledger chain</pre>
+  </div>
+
+  <p class="ledger-note">
+    Synthetic demo data generated by the Phase-1 world model. Not a real merchant; not a performance claim. The retrained-model panel runs the REAL champion/challenger gate on a synthetic corpus — the gate is production code, the data is synthetic until a live ledger fills. · notarized against ledger head 8bf5a7da6f74ab96852208b9… · integrity
+    verified ✓ · statement signed ax10m-demo-ed25519
+  </p>
+</main>
+</body>
+</html>
