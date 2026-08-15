@@ -1,0 +1,14 @@
+[
+  {
+    "merchantId": "mrc_demo",
+    "type": "uplift.statement",
+    "occurredAt": "2026-09-01T00:00:00.000Z",
+    "detail": {
+      "period": "2026-08",
+      "invoices": 82578
+    },
+    "seq": 0,
+    "prevHash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "hash": "8bf5a7da6f74ab96852208b974437d5f6f65178db46b1391d314a63abc6cffcd"
+  }
+]

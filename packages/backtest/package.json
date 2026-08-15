@@ -15,6 +15,7 @@
   "dependencies": {
     "@ax10m/attribution": "workspace:*",
     "@ax10m/canonical": "workspace:*",
+    "@ax10m/onboarding": "workspace:*",
     "@ax10m/recovery-engine": "workspace:*"
   },
   "devDependencies": {

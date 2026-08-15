@@ -8,7 +8,8 @@
     "start": "next start -p 3000",
     "lint": "next lint",
     "clean": "rimraf .next",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "gen-demo": "node scripts/gen-demo.mjs"
   },
   "dependencies": {
     "@ax10m/attribution": "workspace:*",
@@ -19,6 +20,7 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@ax10m/backtest": "workspace:*",
     "@types/node": "^20.14.0",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",

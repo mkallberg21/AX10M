@@ -292,18 +292,21 @@
 <section class="hero">
   <div class="wrap hero-grid">
     <div>
-      <span class="eyebrow">Failed-payment recovery, proven</span>
+      <span class="eyebrow">Failed-payment recovery, honestly measured</span>
       <h1>You only pay for the lift <span class="u">you can prove.</span></h1>
-      <p class="lede">AX10M is the AI recovery engine that overlays Stripe Smart Retries, runs a live randomized holdout to measure the recovery you'd never have gotten on your own, and bills 12% of that verified number — backed by a signed ledger your CFO can reconcile.</p>
+      <p class="lede"><strong>Lead with the receipt:</strong> a signed, hash-chained Uplift Statement your CFO can reconcile penny-for-penny against Stripe&apos;s own payout — and verify the signature themselves, trusting nothing. AX10M overlays Stripe Smart Retries, runs a live randomized holdout, and bills 12% <em>only</em> of the always-valid lower bound. If the lift isn&apos;t proven, the bill is <strong>$0</strong>.</p>
       <div class="cta-row">
-        <a class="btn btn-primary" href="#how">See how it works <span class="arw">→</span></a>
-        <a class="btn btn-ghost" href="#pricing">The 12% model</a>
+        <a class="btn btn-primary" href="/">See the live demo <span class="arw">→</span></a>
+        <a class="btn btn-ghost" href="https://github.com/mkallberg21/AX10M/blob/main/packages/backtest/out/report.md">Read the backtest</a>
       </div>
+      <p style="margin-top:14px; font-size:13px; color:var(--faint); max-width:52ch">
+        <strong>Honest status:</strong> in our first backtest the engine does <strong>not</strong> yet beat Smart Retries (~-19&nbsp;pp; front-loaded retry timing). The measurement machinery below is real and rigorous; the incremental lift is not yet proven. We publish that, and the billing structurally charges $0 until a live holdout says otherwise.
+      </p>
     </div>
 
     <div class="chart-card" aria-label="Cumulative recovery: AX10M treatment vs baseline control">
       <div class="chart-head">
-        <span class="t">Cumulative recovery · 30 days</span>
+        <span class="t">How the measurement works — illustrative</span>
         <span class="r">held-out A/B</span>
       </div>
       <svg id="hchart" viewBox="0 0 460 260" width="100%" role="img" aria-label="Two recovery curves; the shaded gap between them is verified uplift">
@@ -341,7 +344,7 @@
       <div class="legend">
         <span><i class="swatch trt"></i> AX10M (treatment)</span>
         <span><i class="swatch ctrl"></i> Your baseline (control)</span>
-        <span><i class="swatch gap"></i> Verified uplift · billable</span>
+        <span><i class="swatch gap"></i> The gap a holdout measures — billed only when proven</span>
       </div>
     </div>
   </div>

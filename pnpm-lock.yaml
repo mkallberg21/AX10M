@@ -103,6 +103,9 @@ importers:
         specifier: ^18.3.1
         version: 18.3.1(react@18.3.1)
     devDependencies:
+      '@ax10m/backtest':
+        specifier: workspace:*
+        version: link:../../packages/backtest
       '@types/node':
         specifier: ^20.14.0
         version: 20.19.43
@@ -143,6 +146,9 @@ importers:
       '@ax10m/canonical':
         specifier: workspace:*
         version: link:../canonical
+      '@ax10m/onboarding':
+        specifier: workspace:*
+        version: link:../onboarding
       '@ax10m/recovery-engine':
         specifier: workspace:*
         version: link:../recovery-engine

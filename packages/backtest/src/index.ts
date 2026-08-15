@@ -15,4 +15,5 @@ export * from './sim/simulate.js';
 export * from './estimate.js';
 export * from './checks.js';
 export * from './report.js';
+export * from './demo.js';
 export { runBacktest } from './cli.js';
