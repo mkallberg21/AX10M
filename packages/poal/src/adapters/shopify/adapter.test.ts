@@ -81,6 +81,36 @@ describe('ingestWebhook', () => {
     expect(p.decline?.family).toBe(DeclineFamily.Soft);
   });
 
+  it('enriches contact from the subscription contract customer (email + E.164 phone)', async () => {
+    const { fetch, calls } = makeFetch((url, init) => {
+      const body = init.body ?? '';
+      if (body.includes('subscriptionContractCustomer')) {
+        return res(200, { data: { subscriptionContract: { customer: { email: 'dana@example.test', phone: '+15555550123' } } } });
+      }
+      return res(200, {});
+    });
+    const adapter = new ShopifyAdapter({ ...baseCfg, fetch });
+    const events = await adapter.ingestWebhook({ body: failureBody, headers: headers('subscription_billing_attempts/failure', failureBody) });
+    const p = events[0]!.payload as { customer?: { email?: string; phone?: string } };
+    expect(p.customer?.email).toBe('dana@example.test');
+    expect(p.customer?.phone).toBe('+15555550123');
+    // The enrichment query was keyed off the contract gid.
+    expect(calls.some((c) => (c.init.body ?? '').includes('gid://shopify/SubscriptionContract/1'))).toBe(true);
+  });
+
+  it('still emits invoice.failed when the contact-enrichment query fails (best-effort)', async () => {
+    const { fetch } = makeFetch((url, init) => {
+      const body = init.body ?? '';
+      if (body.includes('subscriptionContractCustomer')) return res(500, { errors: [{ message: 'boom' }] });
+      return res(200, {});
+    });
+    const adapter = new ShopifyAdapter({ ...baseCfg, fetch });
+    const events = await adapter.ingestWebhook({ body: failureBody, headers: headers('subscription_billing_attempts/failure', failureBody) });
+    expect(events).toHaveLength(1); // enrichment failure did NOT drop the event
+    const p = events[0]!.payload as { customer?: { email?: string } };
+    expect(p.customer?.email).toBeUndefined();
+  });
+
   it('rejects a webhook whose HMAC does not match (fail closed on bad signature)', async () => {
     const { fetch } = makeFetch(() => res(200, {}));
     const adapter = new ShopifyAdapter({ ...baseCfg, fetch });

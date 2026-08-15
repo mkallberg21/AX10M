@@ -34,7 +34,7 @@ import {
   type PaymentMethod,
   type Subscription,
 } from '@ax10m/canonical';
-import { customerFromInvoice } from '../../customer.js';
+import { customerFromInvoice, contactOverrides } from '../../customer.js';
 import type {
   CapabilityMatrix,
   ChargeResult,
@@ -74,6 +74,11 @@ interface GcEvent {
   action?: string;
   links?: { payment?: string; mandate?: string };
   details?: { cause?: string; description?: string; scheme?: string; reason_code?: string };
+}
+/** GoCardless Customer resource — carries email; the standard resource has NO phone field. */
+interface GcCustomer {
+  id?: string;
+  email?: string; // modeled on GoCardless Customer — CONFIRM
 }
 
 const CENTS = (n: number | undefined): number => (typeof n === 'number' ? n : 0);
@@ -153,7 +158,7 @@ export class GoCardlessAdapter implements ProcessorAdapter {
       // re-delivers, so a skipped event is retried; aborting the batch loses all.
       try {
         const payment = await this.getPayment(paymentId);
-        if (payment) out.push(this.mapPaymentEvent(event, payment));
+        if (payment) out.push(await this.mapPaymentEvent(event, payment));
       } catch {
         // swallow; the event will be re-delivered and reprocessed
       }
@@ -166,7 +171,23 @@ export class GoCardlessAdapter implements ProcessorAdapter {
     return (res.payments as GcPayment | undefined) ?? null;
   }
 
-  private mapPaymentEvent(event: GcEvent, payment: GcPayment): CanonicalEvent {
+  /**
+   * Best-effort contact enrichment: GoCardless webhook events carry only resource ids, so the
+   * customer's email lives behind a separate GET /customers/:id. Fetched ONLY for failed
+   * payments (the dunning path). A fetch failure returns null — enrichment must never drop the
+   * recovery event. (The GoCardless Customer resource has no phone field, so email only.)
+   */
+  private async getCustomer(id: string | undefined): Promise<GcCustomer | null> {
+    if (!id) return null;
+    try {
+      const res = await this.client.get(`/customers/${encodeURIComponent(id)}`);
+      return (res.customers as GcCustomer | undefined) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async mapPaymentEvent(event: GcEvent, payment: GcPayment): Promise<CanonicalEvent> {
     const failed = event.action === 'failed';
     const occurredAt = event.created_at ?? payment.created_at ?? new Date(0).toISOString();
     const invoice = this.mapInvoice(payment, occurredAt, failed);
@@ -196,10 +217,14 @@ export class GoCardlessAdapter implements ProcessorAdapter {
       const willAutoRetry =
         payment.retry_if_possible === true &&
         (event.details?.cause ?? '').trim().toLowerCase() === 'insufficient_funds';
+      // Enrich contact for the dunning channels — GoCardless events carry no contact, so fetch
+      // the customer's email by id (best-effort; a fetch failure yields no contact, not a drop).
+      const gcCustomer = await this.getCustomer(payment.links?.customer);
+      const customer = customerFromInvoice(invoice, contactOverrides(gcCustomer?.email, undefined));
       return {
         ...base,
         type: 'invoice.failed',
-        payload: { invoice, attempt, decline, willAutoRetry, customer: customerFromInvoice(invoice) },
+        payload: { invoice, attempt, decline, willAutoRetry, customer },
       };
     }
     return { ...base, type: 'invoice.paid', payload: { invoice, attempt } };

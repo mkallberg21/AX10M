@@ -40,7 +40,7 @@ import {
   type PaymentMethod,
   type Subscription,
 } from '@ax10m/canonical';
-import { customerFromInvoice } from '../../customer.js';
+import { customerFromInvoice, contactOverrides } from '../../customer.js';
 import type {
   CapabilityMatrix,
   ChargeResult,
@@ -81,6 +81,16 @@ const BILLING_ATTEMPT_CREATE = /* GraphQL */ `
         transactions(first: 1) { edges { node { id status } } }
       }
       userErrors { field message }
+    }
+  }
+`;
+
+/** Contact lookup: the billing-attempt webhook carries the contract id but no contact, so we
+ *  read the contract's customer email/phone. Field names per Admin API 2024-07 — confirm on pin. */
+const SUBSCRIPTION_CONTRACT_CUSTOMER = /* GraphQL */ `
+  query subscriptionContractCustomer($id: ID!) {
+    subscriptionContract(id: $id) {
+      customer { email phone }
     }
   }
 `;
@@ -205,7 +215,12 @@ export class ShopifyAdapter implements ProcessorAdapter {
           attemptedAt: occurredAt,
         });
         const decline = this.buildDecline(payload, invoice.id, attempt.id, occurredAt);
-        return [{ ...base, type: 'invoice.failed', payload: { invoice, attempt, decline, customer: customerFromInvoice(invoice) } }];
+        // Enrich contact for the dunning channels — the billing-attempt webhook carries no
+        // email/phone, so read them from the subscription contract's customer (best-effort;
+        // an enrichment failure yields no contact, never a dropped event).
+        const contact = await this.fetchContractContact(invoice.processorRef);
+        const customer = customerFromInvoice(invoice, contactOverrides(contact?.email, contact?.phone));
+        return [{ ...base, type: 'invoice.failed', payload: { invoice, attempt, decline, customer } }];
       }
       case 'subscription_billing_attempts/success':
       case 'orders/paid': {
@@ -223,6 +238,23 @@ export class ShopifyAdapter implements ProcessorAdapter {
       }
       default:
         return []; // topic we don't act on
+    }
+  }
+
+  /**
+   * Best-effort contact enrichment: fetch the subscription contract's customer email/phone
+   * (the billing-attempt webhook carries neither). A missing/failed lookup returns null so the
+   * recovery event still emits — enrichment must never break ingestion. Shopify stores the phone
+   * in E.164, which flows through contactOverrides/toE164 unchanged.
+   */
+  private async fetchContractContact(contractGid: string): Promise<{ email?: string; phone?: string } | null> {
+    if (!contractGid.startsWith('gid://')) return null; // no contract gid → nothing to look up
+    try {
+      const data = await this.client.graphql(SUBSCRIPTION_CONTRACT_CUSTOMER, { id: contractGid });
+      const customer = (data.subscriptionContract as { customer?: { email?: string; phone?: string } } | undefined)?.customer;
+      return customer ? { email: customer.email ?? undefined, phone: customer.phone ?? undefined } : null;
+    } catch {
+      return null;
     }
   }
 

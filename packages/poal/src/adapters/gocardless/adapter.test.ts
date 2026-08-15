@@ -58,6 +58,9 @@ describe('ingestWebhook', () => {
       if (init.method === 'GET' && url.includes('/payments/PM1')) {
         return res(200, { payments: { id: 'PM1', amount: 14900, currency: 'USD', status: 'failed', retry_if_possible: true, links: { mandate: 'MD1', subscription: 'SUB1', customer: 'CU1' }, created_at: '2026-08-14T10:00:00.000Z' } });
       }
+      if (init.method === 'GET' && url.includes('/customers/CU1')) {
+        return res(200, { customers: { id: 'CU1', email: 'dana@example.test' } });
+      }
       return res(404, { error: { message: 'not found' } });
     });
     const adapter = new GoCardlessAdapter({ ...baseCfg, fetch });
@@ -67,12 +70,30 @@ describe('ingestWebhook', () => {
     expect(events).toHaveLength(1);
     const ev = events[0]!;
     expect(ev.type).toBe('invoice.failed');
-    const p = ev.payload as { invoice: Invoice; decline?: { code: DeclineCode; family: DeclineFamily }; willAutoRetry?: boolean };
+    const p = ev.payload as { invoice: Invoice; customer?: { email?: string; phone?: string }; decline?: { code: DeclineCode; family: DeclineFamily }; willAutoRetry?: boolean };
     expect(p.invoice.processorRef).toBe('PM1');
     expect(p.invoice.amount).toEqual({ amount: 14900, currency: 'USD' });
     expect(p.decline?.code).toBe(DeclineCode.InsufficientFunds);
     expect(p.decline?.family).toBe(DeclineFamily.Soft);
     expect(p.willAutoRetry).toBe(true); // deconflict with Success+
+    // Contact enrichment: email fetched from GET /customers/:id (GoCardless has no phone field).
+    expect(p.customer?.email).toBe('dana@example.test');
+    expect(p.customer?.phone).toBeUndefined();
+  });
+
+  it('still emits invoice.failed when the customer-enrichment fetch fails (best-effort)', async () => {
+    const { fetch } = makeFetch((url, init) => {
+      if (init.method === 'GET' && url.includes('/payments/PM1')) {
+        return res(200, { payments: { id: 'PM1', amount: 14900, currency: 'USD', status: 'failed', links: { mandate: 'MD1', customer: 'CU1' }, created_at: '2026-08-14T10:00:00.000Z' } });
+      }
+      return res(500, { error: { message: 'customer fetch boom' } }); // /customers/CU1 fails
+    });
+    const adapter = new GoCardlessAdapter({ ...baseCfg, fetch });
+    const body = webhookBody('failed');
+    const events = await adapter.ingestWebhook({ body, headers: { 'webhook-signature': computeGoCardlessSignature(body, SECRET) } });
+    expect(events).toHaveLength(1); // enrichment failure did NOT drop the event
+    const p = events[0]!.payload as { customer?: { email?: string } };
+    expect(p.customer?.email).toBeUndefined(); // no contact, but the recovery event survives
   });
 
   it('rejects a webhook with a bad signature', async () => {
