@@ -140,7 +140,7 @@ export class RecoveryCaseService {
 
   private async handleEvent(event: CanonicalEvent): Promise<void> {
     if (event.type === 'invoice.failed') {
-      const payload = event.payload as { invoice?: Invoice; decline?: DeclineEvent; method?: PaymentMethod };
+      const payload = event.payload as { invoice?: Invoice; decline?: DeclineEvent; method?: PaymentMethod; customer?: Customer };
       if (payload.invoice) {
         const stratum = deriveStratum(payload.invoice, payload.decline);
         const { bucket } = await this.openCase({ invoice: payload.invoice, stratum, occurredAt: event.occurredAt });
@@ -164,7 +164,7 @@ export class RecoveryCaseService {
         if (bucket === 'treatment') {
           await this.planRecovery(payload.invoice, payload.decline);
           if (this.durableRecovery && payload.method) {
-            await this.dispatchDurableRecovery(payload.invoice, payload.method, payload.decline);
+            await this.dispatchDurableRecovery(payload.invoice, payload.method, payload.decline, payload.customer);
           } else if (this.durableRecovery && !payload.method) {
             this.logger.debug(`Durable dispatch skipped for ${payload.invoice.id}: no payment method on the normalized event.`);
           }
@@ -341,9 +341,11 @@ export class RecoveryCaseService {
    * so a redelivered webhook can't start a duplicate saga. `shadow` follows the
    * deployment's liveCharging flag — false keeps the durable run measurement-only.
    */
-  private async dispatchDurableRecovery(invoice: Invoice, method: PaymentMethod, decline?: DeclineEvent): Promise<void> {
+  private async dispatchDurableRecovery(invoice: Invoice, method: PaymentMethod, decline?: DeclineEvent, customer?: Customer): Promise<void> {
     const input: RecoveryWorkflowInput = {
-      saga: { attempt: { invoice, method, decline }, shadow: !this.liveCharging },
+      // `customer` (when the event carries it) lets the durable saga run alternate-rail
+      // backup-method recovery on dead credentials, not just card_refresh.
+      saga: { attempt: { invoice, method, decline, customer }, shadow: !this.liveCharging },
     };
     await this.dispatcher.dispatch({ workflowId: invoice.id, input });
     this.logger.debug(`Dispatched durable recovery for ${invoice.id} (shadow=${!this.liveCharging}).`);

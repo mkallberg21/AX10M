@@ -35,9 +35,12 @@ drives sequencing.
   `alternate_rail` (via `adapter.listPaymentMethods` → charge a backup method), each
   guardrailed as a `fresh_credential_charge` (a new guardrail kind that skips the dead-card
   hard-decline / non-retriable blocks but keeps caps + opt-out), with distinct idempotency
-  keys per method. *Remaining: thread the `Customer` through the durable saga so `alternate_rail`
-  fires in the Temporal path too (today the saga passes no customer → card_refresh only there;
-  direct callers pass it); per-credential (not per-case) network-cap accounting is a refinement.*
+  keys per method. The `Customer` now threads through the durable Temporal saga too
+  (`AttemptInput.customer` → port → `executeRecovery`; the webhook path forwards
+  `payload.customer`), so `alternate_rail` fires in the durable path as well. *Remaining:
+  adapters must populate `payload.customer` on the normalized `invoice.failed` event (like
+  `payload.method`) for alt-rail to fire from webhooks; per-credential (not per-case)
+  network-cap accounting is a refinement.*
 
 ## Hygiene / correctness
 - **`@ax10m/canonical` has no tests**, which breaks `pnpm -r test`. Add a trivial test

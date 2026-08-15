@@ -9,7 +9,7 @@
  * saga unit-testable against a fake port with zero real time or network.
  */
 
-import type { DeclineEvent, Invoice, PaymentMethod } from '@ax10m/canonical';
+import type { Customer, DeclineEvent, Invoice, PaymentMethod } from '@ax10m/canonical';
 import type { RecoveryDecision, RetryStep } from '@ax10m/recovery-engine';
 
 export type { RetryStep };
@@ -26,6 +26,8 @@ export interface AttemptInput {
   localHour?: number;
   /** Minutes since the previous attempt (guardrail min-interval). */
   minutesSinceLastAttempt?: number;
+  /** The customer, for alternate-rail backup-method discovery on dead credentials. */
+  customer?: Customer;
 }
 
 /** What the engine/guardrail did on an execute() call. */

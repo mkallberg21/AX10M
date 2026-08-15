@@ -291,7 +291,17 @@ describe('durable recovery dispatch (webhook → Temporal workflow)', () => {
     merchantId: inv.merchantId,
     occurredAt: '2026-08-14T00:00:00.000Z',
     processorEventId: `evt_${inv.id}`,
-    payload: { invoice: inv, decline: softDecline, ...(withMethod ? { method: { ...method, customerId: inv.customerId } } : {}) },
+    payload: {
+      invoice: inv,
+      decline: softDecline,
+      ...(withMethod
+        ? {
+            method: { ...method, customerId: inv.customerId },
+            // Carry the customer so the durable saga can run alternate-rail recovery.
+            customer: { id: inv.customerId, merchantId: inv.merchantId, processorRef: inv.customerId, issuerRegion: 'na', createdAt: '2026-01-01T00:00:00.000Z', consent: { email: true, sms: false, whatsapp: false, push: false, globallyOptedOut: false } },
+          }
+        : {}),
+    },
   });
 
   const feed = async (svc: RecoveryCaseService, inv: Invoice, withMethod: boolean): Promise<void> => {
@@ -321,6 +331,8 @@ describe('durable recovery dispatch (webhook → Temporal workflow)', () => {
     for (const d of dispatcher.dispatched) {
       expect(d.input.saga.attempt.invoice.id).toBe(d.workflowId);
       expect(d.input.saga.attempt.method).toBeDefined();
+      // The customer threads through so the saga can run alternate-rail recovery.
+      expect(d.input.saga.attempt.customer?.id).toBe(d.input.saga.attempt.invoice.customerId);
       expect(d.input.saga.shadow).toBe(true);
     }
   });

@@ -60,6 +60,7 @@ export class ServiceRecoveryCasePort implements RecoveryCasePort {
       attemptNumber: input.attemptNumber,
       localHour: input.localHour,
       minutesSinceLastAttempt: input.minutesSinceLastAttempt,
+      customer: input.customer,
       shadow: this.shadow,
     });
     return { action: mapAction(res.action), outcome: res.outcome, decision: res.decision };
