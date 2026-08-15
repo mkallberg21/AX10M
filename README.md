@@ -16,11 +16,19 @@ keep the bill honest.
 > ### Honest status (read `docs/STRATEGY.md`)
 > The **product is the recovery engine** — the retry brain that must beat Stripe
 > Smart Retries. The measurement (holdout + mSPRT + signed ledger) is the **pricing
-> and trust mechanism**, not the product. Today the measurement is rigorous and the
-> engine (`@ax10m/recovery-engine`) is a **grounded cold-start baseline, not yet a
-> proven winner** — the charge path and a learned policy are the top priorities.
-> AX10M's value is *measured incremental lift over the baseline*, and that must be
-> proven with a live design partner. See [`docs/STRATEGY.md`](docs/STRATEGY.md).
+> and trust mechanism**, not the product. The measurement is rigorous; the engine
+> (`@ax10m/recovery-engine`) is **not yet a winner**. The first backtest
+> (`packages/backtest`, Phase 1 — engine vs a faithful Smart Retries baseline in a
+> synthetic, source-grounded world) found the engine **does not beat the baseline and
+> currently *underperforms* it on recovery rate by ~19 pp**, because its retry cadence
+> is front-loaded (last attempt ~day 11) while real recovery onsets — paydays, card
+> reissues — run 2–4 weeks, so the baseline's later attempts recover more. The A/A test
+> passed, so the estimator is sound; the sign is stable across a ±30% sensitivity sweep.
+> This is a useful early negative: the engine's timing needs rework, or the value case
+> rests on cost/compliance and the cross-merchant issuer flywheel rather than raw
+> recovery rate. AX10M's incremental lift over the baseline is **not yet demonstrated**.
+> See [`packages/backtest/out/report.md`](packages/backtest/out/report.md) (verdict +
+> assumptions) and [`docs/STRATEGY.md`](docs/STRATEGY.md).
 
 **Design & specs:** [`docs/STRATEGY.md`](docs/STRATEGY.md) (honest positioning &
 roadmap) · [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) ·

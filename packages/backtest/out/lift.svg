@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 420" font-family="ui-sans-serif,system-ui,sans-serif">
+<rect width="760" height="420" fill="#ffffff"/>
+<text x="64" y="24" font-size="15" font-weight="700" fill="#0f172a">Cumulative recovered $ per invoice, by arm</text>
+<text x="64" y="42" font-size="11" fill="#475569">VERDICT: the AX10M engine does NOT beat the Stripe Smart Retries baseline in this simulated world (Δrecovery = -19.16 pp; the baseline is at least as good).</text>
+<line x1="64" y1="372.0" x2="736" y2="372.0" stroke="#e2e8f0"/><text x="56" y="375.0" font-size="10" fill="#94a3b8" text-anchor="end">$0.00</text>
+<line x1="64" y1="293.0" x2="736" y2="293.0" stroke="#e2e8f0"/><text x="56" y="296.0" font-size="10" fill="#94a3b8" text-anchor="end">$7.12</text>
+<line x1="64" y1="214.0" x2="736" y2="214.0" stroke="#e2e8f0"/><text x="56" y="217.0" font-size="10" fill="#94a3b8" text-anchor="end">$14.23</text>
+<line x1="64" y1="135.0" x2="736" y2="135.0" stroke="#e2e8f0"/><text x="56" y="138.0" font-size="10" fill="#94a3b8" text-anchor="end">$21.35</text>
+<line x1="64" y1="56.0" x2="736" y2="56.0" stroke="#e2e8f0"/><text x="56" y="59.0" font-size="10" fill="#94a3b8" text-anchor="end">$28.47</text>
+<text x="380" y="408" font-size="11" fill="#64748b" text-anchor="middle">days since decline</text>
+<line x1="64" y1="84.7" x2="736" y2="84.7" stroke="#cbd5e1" stroke-dasharray="4 3"/>
+<rect x="616.0" y="84.7" width="120" height="0.0" fill="#22c55e" opacity="0.14"/>
+<path d="M64.0,372.0 L80.8,294.3 L97.6,294.3 L114.4,294.3 L131.2,248.5 L148.0,248.5 L164.8,248.5 L181.6,248.5 L198.4,248.5 L215.2,248.5 L232.0,172.4 L248.8,172.4 L265.6,172.4 L282.4,172.4 L299.2,172.4 L316.0,172.4 L332.8,172.4 L349.6,172.4 L366.4,84.7 L383.2,84.7 L400.0,84.7 L416.8,84.7 L433.6,84.7 L450.4,84.7 L467.2,84.7 L484.0,84.7 L500.8,84.7 L517.6,84.7 L534.4,84.7 L551.2,84.7 L568.0,84.7 L584.8,84.7 L601.6,84.7 L618.4,84.7 L635.2,84.7 L652.0,84.7 L668.8,84.7 L685.6,84.7 L702.4,84.7 L719.2,84.7 L736.0,84.7" fill="none" stroke="#64748b" stroke-width="2"/>
+<path d="M64.0,372.0 L80.8,326.9 L97.6,326.9 L114.4,322.9 L131.2,304.8 L148.0,304.8 L164.8,304.8 L181.6,304.8 L198.4,293.2 L215.2,293.2 L232.0,293.2 L248.8,236.0 L265.6,236.0 L282.4,236.0 L299.2,236.0 L316.0,236.0 L332.8,236.0 L349.6,236.0 L366.4,236.0 L383.2,236.0 L400.0,236.0 L416.8,236.0 L433.6,236.0 L450.4,236.0 L467.2,236.0 L484.0,236.0 L500.8,236.0 L517.6,236.0 L534.4,236.0 L551.2,236.0 L568.0,236.0 L584.8,236.0 L601.6,236.0 L618.4,236.0 L635.2,236.0 L652.0,236.0 L668.8,236.0 L685.6,236.0 L702.4,236.0 L719.2,236.0 L736.0,236.0" fill="none" stroke="#2563eb" stroke-width="2.5"/>
+<circle cx="736.0" cy="236.0" r="3.5" fill="#2563eb"/>
+<circle cx="736.0" cy="84.7" r="3.5" fill="#64748b"/>
+<rect x="64" y="56" width="12" height="3" fill="#64748b"/><text x="82" y="60" font-size="11" fill="#334155">Control — Smart Retries</text>
+<rect x="254" y="56" width="12" height="3" fill="#2563eb"/><text x="272" y="60" font-size="11" fill="#334155">Treatment — AX10M engine</text>
+<rect x="464" y="52" width="12" height="10" fill="#22c55e" opacity="0.2"/><text x="482" y="60" font-size="11" fill="#334155">holdout-verified lower bound</text>
+</svg>

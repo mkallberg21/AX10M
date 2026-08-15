@@ -1,0 +1,487 @@
+{
+  "inputs": {
+    "nCustomers": 40000,
+    "streamSeed": 20260814,
+    "controlSeed": 350905539,
+    "treatmentSeed": 3853017110,
+    "controlPolicy": "stripe-smart-retries",
+    "treatmentPolicy": "ax10m-engine"
+  },
+  "controlSummary": {
+    "n": 5364,
+    "rate": 0.3691275167785235,
+    "recoveredMinor": 13882835
+  },
+  "treatmentSummary": {
+    "n": 49691,
+    "rate": 0.17753717977098468,
+    "recoveredMinor": 60877684
+  },
+  "estimate": {
+    "controlRate": 0.3691275167785235,
+    "treatmentRate": 0.17753717977098468,
+    "rateDiff": -0.19159033700753883,
+    "cupedTheta": 0.18907185392597609,
+    "cupedVarianceReduction": 0.08184859036453145,
+    "deltaPer": -1339.7794311166244,
+    "se": 58.17392896614851,
+    "effectiveN": 3625.619280085416,
+    "halfWidth": 210.37977172952858,
+    "lowerPer": 0,
+    "treatedInvoices": 49691,
+    "controlClusters": 3895,
+    "lowerDollarsCum": {
+      "amount": 0,
+      "currency": "USD"
+    },
+    "priorBilledDollars": {
+      "amount": 0,
+      "currency": "USD"
+    },
+    "billableIncrement": {
+      "amount": 0,
+      "currency": "USD"
+    },
+    "fee": {
+      "amount": 0,
+      "currency": "USD"
+    },
+    "srm": {
+      "chiSquare": 3.0625,
+      "breached": false
+    },
+    "billable": false,
+    "gateReasons": [
+      "lower bound not yet positive (lift unproven)"
+    ],
+    "perStratum": [
+      {
+        "stratumKey": "small|soft|emea",
+        "controlInvoices": 545,
+        "treatmentInvoices": 5031,
+        "controlRate": 0.5155963302752293,
+        "treatmentRate": 0.27111906181673623,
+        "deltaPerStratum": -1142.015275844399,
+        "weight": 0.10124569841621218,
+        "metFloor": true,
+        "pooled": false
+      },
+      {
+        "stratumKey": "small|soft|na",
+        "controlInvoices": 1210,
+        "treatmentInvoices": 11304,
+        "controlRate": 0.5297520661157025,
+        "treatmentRate": 0.2773354564755839,
+        "deltaPerStratum": -1359.4234397879382,
+        "weight": 0.22748586263105994,
+        "metFloor": true,
+        "pooled": false
+      },
+      {
+        "stratumKey": "mid|gray|na",
+        "controlInvoices": 181,
+        "treatmentInvoices": 1749,
+        "controlRate": 0.287292817679558,
+        "treatmentRate": 0.05660377358490566,
+        "deltaPerStratum": -3353.9275715204203,
+        "weight": 0.03519752067778874,
+        "metFloor": true,
+        "pooled": false
+      },
+      {
+        "stratumKey": "small|gray|na",
+        "controlInvoices": 736,
+        "treatmentInvoices": 6894,
+        "controlRate": 0.22826086956521738,
+        "treatmentRate": 0.06193791702930084,
+        "deltaPerStratum": -857.2502400798544,
+        "weight": 0.13873739711416555,
+        "metFloor": true,
+        "pooled": false
+      },
+      {
+        "stratumKey": "small|soft|latam",
+        "controlInvoices": 167,
+        "treatmentInvoices": 1675,
+        "controlRate": 0.5149700598802395,
+        "treatmentRate": 0.2746268656716418,
+        "deltaPerStratum": -1280.5120811707177,
+        "weight": 0.033708317401541524,
+        "metFloor": true,
+        "pooled": false
+      },
+      {
+        "stratumKey": "micro|gray|na",
+        "controlInvoices": 75,
+        "treatmentInvoices": 709,
+        "controlRate": 0.10666666666666667,
+        "treatmentRate": 0.06770098730606489,
+        "deltaPerStratum": -81.2045582580788,
+        "weight": 0.014268177335936084,
+        "metFloor": true,
+        "pooled": false
+      },
+      {
+        "stratumKey": "mid|soft|na",
+        "controlInvoices": 337,
+        "treatmentInvoices": 2942,
+        "controlRate": 0.49258160237388726,
+        "treatmentRate": 0.2848402447314752,
+        "deltaPerStratum": -3457.1738867186145,
+        "weight": 0.05920589241512548,
+        "metFloor": true,
+        "pooled": false
+      },
+      {
+        "stratumKey": "small|gray|emea",
+        "controlInvoices": 306,
+        "treatmentInvoices": 3062,
+        "controlRate": 0.26143790849673204,
+        "treatmentRate": 0.06303069888961463,
+        "deltaPerStratum": -1034.6812931830477,
+        "weight": 0.061620816646877706,
+        "metFloor": true,
+        "pooled": false
+      },
+      {
+        "stratumKey": "__pooled__",
+        "controlInvoices": 395,
+        "treatmentInvoices": 3553,
+        "controlRate": 0.2,
+        "treatmentRate": 0.08443568815085843,
+        "deltaPerStratum": -1272.2592393300677,
+        "weight": 0.07150188162846391,
+        "metFloor": false,
+        "pooled": true
+      },
+      {
+        "stratumKey": "small|hard|na",
+        "controlInvoices": 221,
+        "treatmentInvoices": 1827,
+        "controlRate": 0.004524886877828055,
+        "treatmentRate": 0,
+        "deltaPerStratum": -62.20859789428539,
+        "weight": 0.036767221428427685,
+        "metFloor": true,
+        "pooled": false
+      },
+      {
+        "stratumKey": "small|soft|apac",
+        "controlInvoices": 285,
+        "treatmentInvoices": 2513,
+        "controlRate": 0.4982456140350877,
+        "treatmentRate": 0.27138877835256664,
+        "deltaPerStratum": -1163.83743803843,
+        "weight": 0.050572538286611256,
+        "metFloor": true,
+        "pooled": false
+      },
+      {
+        "stratumKey": "small|gray|apac",
+        "controlInvoices": 146,
+        "treatmentInvoices": 1531,
+        "controlRate": 0.1643835616438356,
+        "treatmentRate": 0.06401045068582625,
+        "deltaPerStratum": -607.0161509082823,
+        "weight": 0.030810408323438853,
+        "metFloor": true,
+        "pooled": false
+      },
+      {
+        "stratumKey": "micro|soft|na",
+        "controlInvoices": 132,
+        "treatmentInvoices": 1187,
+        "controlRate": 0.5075757575757576,
+        "treatmentRate": 0.2839090143218197,
+        "deltaPerStratum": -318.3639470716305,
+        "weight": 0.02388762552574913,
+        "metFloor": true,
+        "pooled": false
+      },
+      {
+        "stratumKey": "mid|hard|na",
+        "controlInvoices": 60,
+        "treatmentInvoices": 493,
+        "controlRate": 0.016666666666666666,
+        "treatmentRate": 0,
+        "deltaPerStratum": -145.9239021044409,
+        "weight": 0.009921313718782073,
+        "metFloor": true,
+        "pooled": false
+      },
+      {
+        "stratumKey": "micro|soft|emea",
+        "controlInvoices": 61,
+        "treatmentInvoices": 521,
+        "controlRate": 0.5081967213114754,
+        "treatmentRate": 0.30710172744721687,
+        "deltaPerStratum": -240.5198610444295,
+        "weight": 0.01048479603952426,
+        "metFloor": true,
+        "pooled": false
+      },
+      {
+        "stratumKey": "small|gray|latam",
+        "controlInvoices": 107,
+        "treatmentInvoices": 1026,
+        "controlRate": 0.2523364485981308,
+        "treatmentRate": 0.050682261208576995,
+        "deltaPerStratum": -1083.8507783491816,
+        "weight": 0.020647602181481556,
+        "metFloor": true,
+        "pooled": false
+      },
+      {
+        "stratumKey": "small|hard|emea",
+        "controlInvoices": 91,
+        "treatmentInvoices": 859,
+        "controlRate": 0.01098901098901099,
+        "treatmentRate": 0,
+        "deltaPerStratum": -86.0654966056274,
+        "weight": 0.017286832625626372,
+        "metFloor": true,
+        "pooled": false
+      },
+      {
+        "stratumKey": "mid|soft|emea",
+        "controlInvoices": 160,
+        "treatmentInvoices": 1395,
+        "controlRate": 0.50625,
+        "treatmentRate": 0.2917562724014337,
+        "deltaPerStratum": -3245.501504775316,
+        "weight": 0.02807349419411966,
+        "metFloor": true,
+        "pooled": false
+      },
+      {
+        "stratumKey": "mid|gray|emea",
+        "controlInvoices": 78,
+        "treatmentInvoices": 786,
+        "controlRate": 0.19230769230769232,
+        "treatmentRate": 0.05089058524173028,
+        "deltaPerStratum": -2246.9852400262635,
+        "weight": 0.0158177537179771,
+        "metFloor": true,
+        "pooled": false
+      },
+      {
+        "stratumKey": "mid|soft|apac",
+        "controlInvoices": 71,
+        "treatmentInvoices": 634,
+        "controlRate": 0.4084507042253521,
+        "treatmentRate": 0.2870662460567823,
+        "deltaPerStratum": -2527.2420607724534,
+        "weight": 0.012758849691090942,
+        "metFloor": true,
+        "pooled": false
+      }
+    ]
+  },
+  "aa": {
+    "rateDiff": 0.010864224126014843,
+    "lowerPer": 0,
+    "billable": false,
+    "passed": true
+  },
+  "power": [
+    {
+      "liftPp": 1,
+      "minInvoices": null,
+      "controlClustersAtDetect": null
+    },
+    {
+      "liftPp": 3,
+      "minInvoices": 88133,
+      "controlClustersAtDetect": 6311
+    },
+    {
+      "liftPp": 5,
+      "minInvoices": 44228,
+      "controlClustersAtDetect": 3123
+    },
+    {
+      "liftPp": 10,
+      "minInvoices": 11013,
+      "controlClustersAtDetect": 732
+    }
+  ],
+  "sensitivity": [
+    {
+      "param": "recoverableScale",
+      "factor": 0.7,
+      "rateDiff": -0.12720772987920748,
+      "lowerPer": 0,
+      "billable": false
+    },
+    {
+      "param": "recoverableScale",
+      "factor": 1.3,
+      "rateDiff": -0.23456492925343622,
+      "lowerPer": 0,
+      "billable": false
+    },
+    {
+      "param": "onsetScale",
+      "factor": 0.7,
+      "rateDiff": -0.18938938252801574,
+      "lowerPer": 0,
+      "billable": false
+    },
+    {
+      "param": "onsetScale",
+      "factor": 1.3,
+      "rateDiff": -0.17937522948335943,
+      "lowerPer": 0,
+      "billable": false
+    },
+    {
+      "param": "windowScale",
+      "factor": 0.7,
+      "rateDiff": -0.18311844818106757,
+      "lowerPer": 0,
+      "billable": false
+    },
+    {
+      "param": "windowScale",
+      "factor": 1.3,
+      "rateDiff": -0.18311844818106757,
+      "lowerPer": 0,
+      "billable": false
+    },
+    {
+      "param": "residualScale",
+      "factor": 0.7,
+      "rateDiff": -0.1790341794162499,
+      "lowerPer": 0,
+      "billable": false
+    },
+    {
+      "param": "residualScale",
+      "factor": 1.3,
+      "rateDiff": -0.18013044441535084,
+      "lowerPer": 0,
+      "billable": false
+    },
+    {
+      "param": "nsfShareScale",
+      "factor": 0.7,
+      "rateDiff": -0.18981069131793,
+      "lowerPer": 0,
+      "billable": false
+    },
+    {
+      "param": "nsfShareScale",
+      "factor": 1.3,
+      "rateDiff": -0.18216649351407005,
+      "lowerPer": 0,
+      "billable": false
+    }
+  ],
+  "byCode": [
+    {
+      "code": "insufficient_funds",
+      "share": 0.34503678140041777,
+      "controlRate": 0.463336875664187,
+      "treatmentRate": 0.30536402944957347,
+      "controlN": 1882,
+      "treatmentN": 17114
+    },
+    {
+      "code": "do_not_honor",
+      "share": 0.21943511034420124,
+      "controlRate": 0.27475468331846564,
+      "treatmentRate": 0.09333941605839416,
+      "controlN": 1121,
+      "treatmentN": 10960
+    },
+    {
+      "code": "expired_card",
+      "share": 0.1212423939696667,
+      "controlRate": 0.1484375,
+      "treatmentRate": 0,
+      "controlN": 640,
+      "treatmentN": 6035
+    },
+    {
+      "code": "issuer_unavailable",
+      "share": 0.05954045954045954,
+      "controlRate": 0.778125,
+      "treatmentRate": 0.3573360378634212,
+      "controlN": 320,
+      "treatmentN": 2958
+    },
+    {
+      "code": "processing_error",
+      "share": 0.04973208609572246,
+      "controlRate": 0.7142857142857143,
+      "treatmentRate": 0.32645631067961167,
+      "controlN": 266,
+      "treatmentN": 2472
+    },
+    {
+      "code": "try_again_later",
+      "share": 0.04090454999545909,
+      "controlRate": 0.7027027027027027,
+      "treatmentRate": 0.31970443349753697,
+      "controlN": 222,
+      "treatmentN": 2030
+    },
+    {
+      "code": "authentication_required",
+      "share": 0.04041413132322223,
+      "controlRate": 0.2511415525114155,
+      "treatmentRate": 0,
+      "controlN": 219,
+      "treatmentN": 2006
+    },
+    {
+      "code": "lost_card",
+      "share": 0.03213150485877759,
+      "controlRate": 0.005917159763313609,
+      "treatmentRate": 0,
+      "controlN": 169,
+      "treatmentN": 1600
+    },
+    {
+      "code": "velocity_limit_exceeded",
+      "share": 0.030079011897193714,
+      "controlRate": 0.3270440251572327,
+      "treatmentRate": 0.04008016032064128,
+      "controlN": 159,
+      "treatmentN": 1497
+    },
+    {
+      "code": "stolen_card",
+      "share": 0.020924530015439105,
+      "controlRate": 0,
+      "treatmentRate": 0,
+      "controlN": 126,
+      "treatmentN": 1026
+    },
+    {
+      "code": "closed_account",
+      "share": 0.02017982017982018,
+      "controlRate": 0,
+      "treatmentRate": 0,
+      "controlN": 103,
+      "treatmentN": 1008
+    },
+    {
+      "code": "invalid_card",
+      "share": 0.015511760966306421,
+      "controlRate": 0.018691588785046728,
+      "treatmentRate": 0,
+      "controlN": 107,
+      "treatmentN": 747
+    },
+    {
+      "code": "pickup_card",
+      "share": 0.004867859413313959,
+      "controlRate": 0,
+      "treatmentRate": 0,
+      "controlN": 30,
+      "treatmentN": 238
+    }
+  ],
+  "verdict": "VERDICT: the AX10M engine does NOT beat the Stripe Smart Retries baseline in this simulated world (Δrecovery = -19.16 pp; the baseline is at least as good)."
+}

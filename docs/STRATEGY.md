@@ -26,6 +26,23 @@ is **measured incremental lift over the baseline**. Everything is reordered arou
 building and proving that lift. The measurement's job is to keep us honest about
 whether we've succeeded — including telling us, early and cheaply, if we haven't.
 
+> **Update — Phase 1 backtest (negative result, and that's the point).** The first
+> honest test of the thesis — `packages/backtest`, engine vs a faithful Stripe Smart
+> Retries baseline in a synthetic, source-grounded world, scored through the real
+> `@ax10m/attribution` estimator — found the engine **does not beat the baseline; it
+> underperforms it by ~19 pp on recovery rate**, and the sign is stable across a ±30%
+> sensitivity sweep. The A/A test passed (the estimator does not manufacture lift). The
+> cause is concrete and fixable: the engine's ARSE retry cadence is **front-loaded**
+> (last attempt ~day 11) while real recovery onsets — paydays, ~3-week card reissues,
+> diffuse do-not-honor — run 2–4 weeks, so the baseline's later attempts recover more.
+> This cost ~a day and saved months: it says (a) the retry-timing policy needs to reach
+> later before any live pilot, and (b) in a recovery-rate-only frame with no attempt
+> cost, "reach later" beats "act early and suppress" — so the engine's suppression /
+> compliance edge only pays off once attempt cost and network-cap risk are priced, or
+> once the cross-merchant issuer flywheel is exercised (neither is in this backtest).
+> The measurement did its job: it told us early that the engine is not yet a winner.
+> See `packages/backtest/out/report.md`.
+
 ## 1. Lead with the ledger, not "we prove lift"
 
 "We prove incremental lift" is no longer an unoccupied position — Slicker (and
