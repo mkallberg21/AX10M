@@ -1,10 +1,12 @@
 import {
+  formatAuc,
   formatMoney,
   formatPct,
   getMeta,
   getOnboarding,
   getProjectedStatement,
   getReconciliation,
+  getRetrain,
 } from './demo-data.js';
 
 /**
@@ -20,6 +22,7 @@ export default function Page() {
   const currency = statement.currency;
   const { export: recon, recon: tie } = getReconciliation();
   const onb = getOnboarding();
+  const rt = getRetrain();
   const meta = getMeta();
   const day = Math.floor(onb.progress.elapsedDays);
 
@@ -177,6 +180,52 @@ export default function Page() {
           <div className="hint">{recon.fee.billable ? 'proven' : 'unproven → $0'} · recomputable by hand</div>
         </div>
       </div>
+
+      <div className="section-title">Recovery model — retrained off the ledger (the flywheel)</div>
+      <p className="subtitle" style={{ marginTop: 0 }}>
+        Every recovery decision and its realized outcome are logged to the shared, hash-chained ledger. The retrain
+        job reads that ledger, fits a challenger, and a <strong>champion/challenger gate</strong> promotes it only if
+        it beats the current model by a margin — so retraining can <strong>never ship a regression</strong>. The gate
+        below is production code; the corpus here is synthetic until a live ledger fills.
+      </p>
+      <section className="kpis">
+        <div className="kpi">
+          <div className="label">Trained champion (held-out AUC)</div>
+          <div className="value accent">{formatAuc(rt.championAuc)}</div>
+          <div className="hint">vs an untrained cold-start model at {formatAuc(rt.coldStartAuc)}</div>
+        </div>
+        <div className="kpi">
+          <div className="label">Retrained challenger</div>
+          <div className="value">
+            {formatAuc(rt.challengerAuc)}
+            <span style={{ color: 'var(--muted)', fontSize: 18 }}> AUC</span>
+          </div>
+          <div className="hint">
+            {rt.promotedVsColdStart ? 'Promotes vs cold-start ✓' : 'Held vs cold-start'} ·{' '}
+            {rt.promotedVsChampion ? 'promotes vs champion ✓' : 'held vs champion (no gain ≥ margin)'}
+          </div>
+        </div>
+        <div className="kpi">
+          <div className="label">Gate decision this cycle</div>
+          <div className="value">{rt.promotedVsChampion ? 'Promote' : 'Hold'}</div>
+          <div className="hint">
+            needs +{rt.marginAuc.toFixed(3)} AUC to promote · never ships a regression
+          </div>
+        </div>
+      </section>
+      <div className="method-strip">
+        <span><strong>{rt.corpusSamples.toLocaleString()}</strong> labeled ledger samples</span>
+        <span><strong>{rt.positives.toLocaleString()}</strong> recovered (+)</span>
+        <span><strong>{rt.negatives.toLocaleString()}</strong> failed (−)</span>
+        <span>promotes a real gain → <strong>model.promoted</strong> in the ledger</span>
+        <span>API + worker load the active champion at startup</span>
+      </div>
+      <p className="subtitle" style={{ fontSize: 13, marginTop: 12 }}>
+        Here the fresh challenger ({formatAuc(rt.challengerAuc)}) does <strong>not</strong> beat the already-strong
+        shipped champion ({formatAuc(rt.championAuc)}) by the margin, so the gate correctly <strong>holds</strong> —
+        it would promote against a weaker model (as shown vs cold-start), but it refuses to ship a non-improvement.
+        That safety property is the point: the flywheel only ever moves the model forward.
+      </p>
 
       <div className="onboard" style={{ marginTop: 20 }}>
         <div className="onboard-top"><span className="badge">Download &amp; verify the signed statement</span></div>

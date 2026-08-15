@@ -31,6 +31,7 @@ const pageData = {
   statement: data.statement,
   reconSummary: data.reconSummary,
   reconResult: data.reconResult,
+  retrain: data.retrain,
   meta: data.meta,
 };
 

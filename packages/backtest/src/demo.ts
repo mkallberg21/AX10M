@@ -46,6 +46,13 @@ import {
   type ShadowProgress,
   type ShadowProjection,
 } from '@ax10m/onboarding';
+import {
+  BOOTSTRAP_RECOVERABILITY_WEIGHTS,
+  DEFAULT_RETRAIN_CONFIG,
+  FEATURE_DIM,
+  retrainFromLedger,
+  simulateSamples,
+} from '@ax10m/recovery-engine';
 import { generateStream, type SimInvoice } from './world/world.js';
 import { deriveStratum, splitArms } from './estimate.js';
 import { runPolicy, type InvoiceOutcome } from './sim/simulate.js';
@@ -91,6 +98,63 @@ function shadowObservations(baselineAll: readonly InvoiceOutcome[]): ShadowObser
   return baselineAll.map((o) => ({ declineCode: o.invoice.declineCode, amount: o.invoice.amountMinor, baselineRecovered: o.recovered }));
 }
 
+/** The flywheel panel: the real retrain gate's decision, run on a synthetic corpus. */
+export interface RetrainDemo {
+  corpusSamples: number;
+  positives: number;
+  negatives: number;
+  /** Held-out AUC of the shipped (current) champion. */
+  championAuc: number;
+  /** Held-out AUC of the freshly-retrained challenger. */
+  challengerAuc: number;
+  /** Gate decision vs the current champion — HOLDS here (the challenger isn't better). */
+  promotedVsChampion: boolean;
+  /** Held-out AUC of an untrained cold-start model (~0.5), for contrast. */
+  coldStartAuc: number;
+  /** Gate decision vs a cold-start champion — PROMOTES (a genuine, better-than-random gain). */
+  promotedVsColdStart: boolean;
+  /** The AUC margin the gate requires to promote (never ships a regression). */
+  marginAuc: number;
+}
+
+/**
+ * Run the REAL champion/challenger retrain gate for the demo. We synthesize the exact
+ * ledger corpus the production retrain job reads (a `recovery.planned` feature snapshot +
+ * a terminal outcome per invoice) from the bootstrap DGP, then call the real
+ * `retrainFromLedger` twice: against the shipped champion (the gate HOLDS — the challenger
+ * isn't a genuine improvement) and against a cold-start model (the gate PROMOTES). Both
+ * decisions are production code; only the DATA is synthetic (until a live ledger fills).
+ * Deterministic given the seed.
+ */
+function buildRetrainDemo(seed: number): RetrainDemo {
+  const { samples } = simulateSamples(6000, deriveSeed(seed, 'retrain-corpus'));
+  const entries: LedgerEntry[] = [];
+  let seq = 0;
+  samples.forEach((s, i) => {
+    const invoiceId = `demo_${i}`;
+    entries.push({ seq: seq++, merchantId: MERCHANT, type: 'recovery.planned', occurredAt: GENERATED_AT, detail: { invoiceId, features: s.features }, prevHash: '', hash: '' });
+    entries.push(
+      s.recovered
+        ? { seq: seq++, merchantId: MERCHANT, type: 'case.recovered', occurredAt: GENERATED_AT, detail: { invoiceId, amount: s.features.amountMinor }, prevHash: '', hash: '' }
+        : { seq: seq++, merchantId: MERCHANT, type: 'charge.failed', occurredAt: GENERATED_AT, detail: { invoiceId }, prevHash: '', hash: '' },
+    );
+  });
+  const vsChampion = retrainFromLedger(entries, BOOTSTRAP_RECOVERABILITY_WEIGHTS);
+  const coldStart = { w: new Array<number>(FEATURE_DIM).fill(0), b: 0 };
+  const vsColdStart = retrainFromLedger(entries, coldStart);
+  return {
+    corpusSamples: vsChampion.nSamples,
+    positives: vsChampion.nPositives,
+    negatives: vsChampion.nNegatives,
+    championAuc: vsChampion.champion?.auc ?? 0,
+    challengerAuc: vsChampion.challenger?.auc ?? 0,
+    promotedVsChampion: vsChampion.promoted,
+    coldStartAuc: vsColdStart.champion?.auc ?? 0,
+    promotedVsColdStart: vsColdStart.promoted,
+    marginAuc: DEFAULT_RETRAIN_CONFIG.promoteMarginAuc,
+  };
+}
+
 export interface DemoOnboarding {
   state: OnboardingState;
   progress: ShadowProgress;
@@ -108,6 +172,8 @@ export interface DemoData {
   reconResult: ReconResult;
   /** Full signed export incl. every recovered row — for download only. */
   fullExport: ReconciliationExport;
+  /** The real champion/challenger retrain gate, run on a synthetic corpus (the flywheel). */
+  retrain: RetrainDemo;
   ledger: LedgerEntry[];
   publicKeyPem: string;
   csv: string;
@@ -176,12 +242,15 @@ export function buildDemoData(opts: { seed?: number; nCustomers?: number } = {})
   const { recoveredTransactions, ...rest } = fullExport;
   const reconSummary: ReconSummary = { ...rest, recoveredCount: recoveredTransactions.length };
 
+  const retrain = buildRetrainDemo(seed);
+
   return {
     onboarding: { state, progress, projection, readiness: ready },
     statement,
     reconSummary,
     reconResult,
     fullExport,
+    retrain,
     ledger: [...ledger.all()],
     publicKeyPem,
     csv: reconciliationCsv(fullExport),
@@ -192,7 +261,7 @@ export function buildDemoData(opts: { seed?: number; nCustomers?: number } = {})
       backtestVerdict:
         'The AX10M engine does NOT beat Stripe Smart Retries in the Phase-1 backtest (~-19 pp recovery rate). ' +
         'This demo shows PROJECTED opportunity (not verified) and an honest signed statement that bills $0 until lift is proven.',
-      note: 'Synthetic demo data generated by the Phase-1 world model. Not a real merchant; not a performance claim.',
+      note: 'Synthetic demo data generated by the Phase-1 world model. Not a real merchant; not a performance claim. The retrained-model panel runs the REAL champion/challenger gate on a synthetic corpus — the gate is production code, the data is synthetic until a live ledger fills.',
     },
   };
 }
