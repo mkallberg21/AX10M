@@ -36,12 +36,15 @@ lift/
 ├─ packages/
 │  ├─ canonical/                  # canonical entities + decline taxonomy (isRetriable)
 │  ├─ poal/                       # Payment Orchestration Abstraction Layer + adapters
-│  │  ├─ stripe/                  # Stripe adapter (reference skeleton)
-│  │  └─ adapters/                # adyen · braintree · chargebee · gocardless · paddle · registry
-│  ├─ recovery-engine/           # ★ the recovery brain: recoverability · retry-timing · method selection · bandit-ready
+│  │  ├─ stripe/                  # Stripe adapter (implemented: /pay charge, signed webhooks, reconciler)
+│  │  ├─ adapters/                # ~17 webhook-capable adapters + 13 enterprise skeletons + registry
+│  │  └─ factory.ts               # buildAdapter(processor, merchantId, config) for per-merchant routing
+│  ├─ recovery-engine/           # ★ the recovery brain: recoverability (trained) · retry-timing · decline-intel · ARSE sequencer · feature store (flywheel) · retrain job · bandit
 │  ├─ attribution/               # holdout · mSPRT+CUPED uplift · hash-chained ledger · statement · CFO reconciliation
 │  ├─ guardrail/                  # compliance hard-constraints (card-network retry caps, quiet hours, consent, fraud)
-│  └─ onboarding/                 # shadow-first lifecycle + projection ("see the money before you pay")
+│  ├─ onboarding/                 # shadow-first lifecycle + projection ("see the money before you pay")
+│  ├─ scheduler/                  # durable charge scheduler: adaptive + ARSE-sequenced sagas + Temporal binding
+│  └─ protocol/                   # the AX10M Protocol (AXP-01..06) typed message spec
 └─ apps/
    ├─ api/                        # NestJS: webhook ingress (5 processors) · reconciler · recovery · onboarding
    └─ dashboard/                  # Next.js: shadow banner + projected uplift + cohort table + CFO reconciliation panel
@@ -76,6 +79,13 @@ lift/
   and the projection engine that estimates uplift from baseline-only observation
   (conservative per-decline-code priors, only over invoices the baseline missed,
   clearly labeled `holdoutVerified: false`).
+- **`@ax10m/scheduler`** — the durable charge scheduler. A runtime-agnostic recovery
+  saga (plan → sleep-until-`retryAt` → execute → loop) plus an ARSE **sequenced** saga
+  that executes a full up-front schedule, hosted by Temporal (durable, replay-safe
+  sleeps). Exactly-once via a saga-owned `attemptNumber` → deterministic idempotency key.
+- **`@ax10m/protocol`** — the **AX10M Protocol (AXP)**: typed, versioned messages
+  (AXP-01 decline normalization … AXP-06 merchant onboarding) so processors, MoRs, and
+  merchants speak "payment uplift" the same way. Draft v0.1 (`docs/AXP.md`).
 
 ## Processor coverage
 
@@ -90,9 +100,13 @@ capability matrix.
 | **Adyen** | card gateway | drive | ✅ implemented (Checkout /payments, HMAC webhooks, stored methods) |
 | **Braintree** | card gateway | drive | ✅ implemented (classic-gateway sale, HMAC-SHA1 webhooks, vault) |
 | **GoCardless** | bank debit | co-drive | ✅ implemented (retry action + Success+ deconfliction, signed webhooks, poll) |
-| **Stripe** | card gateway | drive | reference skeleton (capability matrix real; API TODO) |
+| **Stripe** | card gateway | drive | ✅ implemented (`/invoices/{id}/pay`, Stripe-Signature webhooks, reconciler) |
+| **PayPal · Checkout.com · Worldpay · TSYS · Elavon** | card gateway | drive | ✅ implemented (token charge, signed webhooks) |
+| **Recurly · Zuora · Maxio** | billing platform | co-drive/drive | ✅ implemented |
+| **Shopify · WooCommerce** | e-commerce | co-drive | ✅ implemented (billing-attempt trigger, HMAC webhooks) |
+| **BigCommerce · Kajabi · ThriveCart · SamCart** | e-commerce/creator | advisory | ✅ implemented (measure + prompt) |
 | **Paddle** | merchant of record | advisory | skeleton (measure + prompt; MoR owns the token) |
-| _+ 18 more_ | — | — | mapped in the registry (`docs/PROCESSORS.md`) |
+| _+ 13 enterprise billing platforms_ | — | co-drive | skeleton (capability matrix real; API TODO) |
 
 Every implemented adapter follows the same template: an **injectable `fetch`
 transport** (so it's unit-tested against a fake), canonical decline mapping,
@@ -124,24 +138,29 @@ corepack pnpm -r run typecheck                # type-check everything
 corepack pnpm --filter @ax10m/api run build    # NestJS build
 corepack pnpm --filter @ax10m/dashboard run build   # Next.js build (statically prerenders)
 
-# Tests (build @ax10m/canonical once first so the bare @ax10m/canonical import resolves):
-corepack pnpm --filter @ax10m/canonical run build
-corepack pnpm --filter @ax10m/attribution --filter @ax10m/poal --filter @ax10m/guardrail --filter @ax10m/onboarding test
+# Tests — run the explicit filter list (NOT `pnpm -r test`: @ax10m/canonical has no
+# test files, so vitest exits 1 and halts the recursive run). See CONTRIBUTING.md.
+corepack pnpm --filter @ax10m/attribution --filter @ax10m/guardrail \
+  --filter @ax10m/onboarding --filter @ax10m/poal --filter @ax10m/recovery-engine \
+  --filter @ax10m/scheduler --filter @ax10m/protocol --filter @ax10m/api test
 
 # Dev servers:
 corepack pnpm --filter @ax10m/api dev          # NestJS on :4000
 corepack pnpm --filter @ax10m/dashboard dev    # Next.js on :3000
 ```
 
-Roughly **113 unit tests** across the packages (attribution 41 · poal 46 ·
-onboarding 18 · guardrail 8), all green; the whole workspace typechecks and both
-apps build.
+**380 unit tests** across the packages (poal 220 · recovery-engine 40 · attribution 41 ·
+scheduler 23 · api 21 · onboarding 18 · guardrail 13 · protocol 4), all green; the whole
+workspace typechecks and both apps build. See [`docs/BASELINE.md`](docs/BASELINE.md) for
+the authoritative verification snapshot.
 
 ### Webhook endpoints (apps/api)
 
-`POST /webhooks/{stripe,chargebee,adyen,braintree,gocardless}` — each verifies the
-processor's signature/auth in its adapter, normalizes to canonical events, and feeds
-holdout assignment + shadow measurement. Onboarding: `POST /onboarding/connect`,
+`POST /webhooks/:processor/:connectionId` (per-merchant) and `POST /webhooks/:processor`
+(single-tenant default) — the router resolves the merchant + credentials from the
+connection, builds that merchant's adapter (`buildAdapter`), which verifies the
+signature/auth, normalizes to canonical events, and feeds holdout assignment + shadow
+measurement. Onboarding: `POST /onboarding/connect`,
 `GET /onboarding/:merchantId/status`, `POST /onboarding/:merchantId/activate`.
 
 ## Environment
@@ -160,17 +179,29 @@ must be **restricted, least-privilege** keys (ARCHITECTURE.md §7).
 - Append-only hash-chained ledger + `verifyChain`; monthly Uplift Statement.
 - **CFO reconciliation**: `reconcileAgainstPayout` tie-out + Ed25519-signed export.
 - Compliance guardrail `evaluate` (caps, hard-decline, quiet hours, consent).
-- **Four processor adapters end-to-end** (Chargebee, Adyen, Braintree, GoCardless):
-  signed-webhook ingestion, token/mandate charges, reconciliation, decline mapping.
+- **~17 processor adapters end-to-end** incl. **Stripe**, Adyen, Braintree, PayPal,
+  Checkout, Worldpay, TSYS, Elavon, Chargebee, Recurly, Zuora, Maxio, GoCardless,
+  Shopify, WooCommerce (+ advisory BigCommerce/Kajabi/ThriveCart/SamCart): signed-webhook
+  ingestion, token/mandate charges, reconciliation, decline mapping.
+- **Per-merchant webhook routing**: `buildAdapter` factory + connection store + router.
+- **Recovery engine**: trained (on a *synthetic* corpus) logistic recoverability model +
+  online bandit + decline-code intelligence + network-aware **ARSE retry sequencer** +
+  customer/issuer feature store (the flywheel) + ledger→corpus **retrain job** (champion/
+  challenger gate).
+- **Durable scheduler** (`@ax10m/scheduler`): adaptive + ARSE-sequenced sagas with a
+  Temporal binding; exactly-once. *(Code exists; not deployed against a live cluster.)*
 - **Shadow-first onboarding**: lifecycle + projection, wired to the webhook stream.
 - Dashboard renders the real attribution + onboarding + reconciliation engines.
 
-**Stubbed with `TODO(ax10m)` markers:**
-- Stripe adapter API calls / normalization (the other adapters are real).
-- Per-merchant adapter resolution + persistence (in-memory today → Postgres).
-- Reconciler scheduling; Temporal saga for durable, exactly-once **active charging**
-  (Phase 0 runs **shadow mode** — measures, never moves money).
-- ML models / bandits; live retention-value billing mode.
+**Stubbed / not yet real (`TODO(ax10m)` markers):**
+- **Live active charging.** The charge path + durable scheduler exist in code, but nothing
+  runs them against a real processor — no live Temporal worker, no credentials. **Phase 0
+  runs shadow mode — measures, never moves money.**
+- **The engine is trained on synthetic data, not proven vs the incumbent** — see the
+  honest-status block above; the backtest is what will test it.
+- Persistence: in-memory stores today → Postgres. Reconciler scheduling.
+- 13 enterprise billing-platform adapters are capability-accurate skeletons.
+- Holdout-loss credit / certification-taper billing; live retention-value billing mode.
 
 ## Design invariants (do not break)
 
