@@ -66,6 +66,10 @@ interface StripeInvoice {
   currency?: string;
   status?: string;
   created?: number;
+  // Contact fields Stripe stamps on the invoice at finalization — the dunning channels'
+  // destinations. Display/contact only; never a PAN.
+  customer_email?: string;
+  customer_phone?: string;
 }
 interface StripeCharge {
   id: string;
@@ -77,6 +81,9 @@ interface StripeCharge {
   decline_code?: string;
   failure_code?: string;
   outcome?: { reason?: string };
+  // Per-charge contact info (charges carry billing_details, not customer_* fields).
+  billing_details?: { email?: string; phone?: string };
+  receipt_email?: string;
 }
 interface StripeEvent {
   id?: string;
@@ -88,6 +95,17 @@ interface StripeEvent {
 const CENTS = (n: number | undefined): number => (typeof n === 'number' ? n : 0);
 const isoFromEpoch = (sec: number | undefined): string =>
   typeof sec === 'number' ? new Date(sec * 1000).toISOString() : new Date(0).toISOString();
+
+/**
+ * Build customer overrides from webhook contact fields, dropping empties so a blank string
+ * never shadows an absent value. Feeds the dunning channels (email / SMS destinations).
+ */
+function contactOverrides(email: string | undefined, phone: string | undefined): { email?: string; phone?: string } {
+  const o: { email?: string; phone?: string } = {};
+  if (email) o.email = email;
+  if (phone) o.phone = phone;
+  return o;
+}
 
 export class StripeAdapter implements ProcessorAdapter {
   readonly id = 'stripe';
@@ -145,7 +163,8 @@ export class StripeAdapter implements ProcessorAdapter {
         const invoice = this.mapInvoice(inv, occurredAt, true);
         const attempt = this.buildAttempt({ invoiceId: invoice.id, paymentMethodId: '', idempotencyKey: '', amount: invoice.amount, status: 'failed', declineCode: undefined, attemptedAt: occurredAt });
         const decline = this.buildDecline(undefined, invoice.id, attempt.id, occurredAt);
-        return [envelope('invoice.failed', { invoice, attempt, decline, customer: customerFromInvoice(invoice) })];
+        const customer = customerFromInvoice(invoice, contactOverrides(inv.customer_email, inv.customer_phone));
+        return [envelope('invoice.failed', { invoice, attempt, decline, customer })];
       }
       case 'invoice.payment_succeeded':
       case 'invoice.paid': {
@@ -159,7 +178,8 @@ export class StripeAdapter implements ProcessorAdapter {
         const rawCode = ch.decline_code ?? ch.failure_code ?? ch.outcome?.reason;
         const attempt = this.buildAttempt({ invoiceId: invoice.id, paymentMethodId: '', idempotencyKey: '', amount: invoice.amount, status: 'failed', declineCode: mapStripeDeclineCode(rawCode), txnId: ch.id, attemptedAt: occurredAt });
         const decline = this.buildDecline(rawCode, invoice.id, attempt.id, occurredAt);
-        return [envelope('invoice.failed', { invoice, attempt, decline, customer: customerFromInvoice(invoice) })];
+        const customer = customerFromInvoice(invoice, contactOverrides(ch.billing_details?.email ?? ch.receipt_email, ch.billing_details?.phone));
+        return [envelope('invoice.failed', { invoice, attempt, decline, customer })];
       }
       case 'charge.succeeded': {
         const ch = obj as unknown as StripeCharge;

@@ -55,10 +55,10 @@ describe('ingestWebhook', () => {
   it('verifies the signature and normalizes invoice.payment_failed (with customer for clustering)', async () => {
     const { fetch } = makeFetch(() => res(200, {}));
     const adapter = new StripeAdapter({ ...baseCfg, fetch });
-    const body = JSON.stringify({ id: 'evt_1', type: 'invoice.payment_failed', created: T, data: { object: { id: 'in_1', customer: 'cus_1', subscription: 'sub_1', amount_due: 14900, currency: 'usd', status: 'open', created: 1_699_999_000 } } });
+    const body = JSON.stringify({ id: 'evt_1', type: 'invoice.payment_failed', created: T, data: { object: { id: 'in_1', customer: 'cus_1', subscription: 'sub_1', amount_due: 14900, currency: 'usd', status: 'open', created: 1_699_999_000, customer_email: 'dana@example.test', customer_phone: '+15555550123' } } });
     const events = await adapter.ingestWebhook({ body, headers: signed(body) });
     expect(events).toHaveLength(1);
-    const p = events[0]!.payload as { invoice: Invoice; customer?: { id: string; processorRef: string } };
+    const p = events[0]!.payload as { invoice: Invoice; customer?: { id: string; processorRef: string; email?: string; phone?: string } };
     expect(events[0]!.type).toBe('invoice.failed');
     expect(p.invoice.processorRef).toBe('in_1');
     expect(p.invoice.amount).toEqual({ amount: 14900, currency: 'USD' });
@@ -68,6 +68,19 @@ describe('ingestWebhook', () => {
     // is the RAW Stripe customer id (prefix stripped) that listPaymentMethods queries by.
     expect(p.customer?.id).toBe('ax10m_cus_cus_1');
     expect(p.customer?.processorRef).toBe('cus_1');
+    // Contact info from the invoice feeds the dunning channels (email + SMS destinations).
+    expect(p.customer?.email).toBe('dana@example.test');
+    expect(p.customer?.phone).toBe('+15555550123');
+  });
+
+  it('populates customer phone/email from charge.failed billing_details', async () => {
+    const { fetch } = makeFetch(() => res(200, {}));
+    const adapter = new StripeAdapter({ ...baseCfg, fetch });
+    const body = JSON.stringify({ id: 'evt_c', type: 'charge.failed', created: T, data: { object: { id: 'ch_9', invoice: 'in_9', customer: 'cus_9', amount: 5000, currency: 'usd', decline_code: 'insufficient_funds', billing_details: { email: 'sam@example.test', phone: '+15555550199' } } } });
+    const events = await adapter.ingestWebhook({ body, headers: signed(body) });
+    const p = events[0]!.payload as { customer?: { phone?: string; email?: string } };
+    expect(p.customer?.phone).toBe('+15555550199');
+    expect(p.customer?.email).toBe('sam@example.test');
   });
 
   it('rejects a webhook with a bad signature', async () => {
