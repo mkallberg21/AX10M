@@ -80,8 +80,18 @@ export function trueRecoverProb(f: RecoveryFeatures): number {
   z += Math.min(f.customerTenureDays / 365, 3) * 0.12;
   z -= Math.min(f.amountMinor / 100 / 1000, 3) * 0.2;
 
+  // Card product type: prepaid recovers worst (no overdraft / reload), debit a bit worse
+  // than credit (no credit-line buffer for a well-timed NSF retry). GROUNDED direction.
+  if (f.cardType === 'prepaid') z -= 0.7;
+  else if (f.cardType === 'debit') z -= 0.25;
+
   return sigmoid(z);
 }
+
+/** Card-type mix for the DGP: mostly credit, some debit, a few prepaid. */
+const CARD_TYPE_MIX: readonly ('credit' | 'debit' | 'prepaid')[] = [
+  'credit', 'credit', 'credit', 'credit', 'credit', 'debit', 'debit', 'debit', 'prepaid',
+];
 
 const SOFT_ISH: readonly DeclineCode[] = [
   DeclineCode.InsufficientFunds,
@@ -123,6 +133,7 @@ export function simulateSamples(n: number, seed: number): { samples: SimSample[]
       amountMinor,
       currency: 'USD',
       issuerRegion,
+      cardType: pick(CARD_TYPE_MIX, rng),
       customerTenureDays: Math.round(rng() * 1200),
       priorRecoveryRate: rng(),
       attemptNumber: 1 + Math.floor(rng() * 5),

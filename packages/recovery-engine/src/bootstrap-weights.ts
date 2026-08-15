@@ -3,7 +3,8 @@
  *
  * Fitted by `trainBootstrap()` (train-cli.ts) on the grounded synthetic corpus — a
  * deterministic run (corpus seed 42, split seed 7, train seed 11). Held-out metrics:
- * trained AUC 0.8814 vs heuristic AUC 0.8694, log-loss 0.3853. This is a BOOTSTRAP
+ * trained AUC 0.8757 vs heuristic AUC 0.8563, log-loss 0.3881.
+ * Includes the card-product-type features (credit/debit/prepaid). This is a BOOTSTRAP
  * prior, not a claim of real-world lift; retrain on the live ledger via
  * `samplesFromLedger` once outcomes exist. Regenerate — do not hand-edit — per the
  * train-cli.ts header.
@@ -12,21 +13,7 @@
 import type { RecoverabilityWeights } from './logistic.js';
 
 export const BOOTSTRAP_RECOVERABILITY_WEIGHTS: RecoverabilityWeights = {
-  w: [
-    0.8674529407108857, 1.929618446457936, 2.0768376875465875, 1.02780918935547, 0.9735159575505323,
-    1.9162436788636872, -2.356503799447911, -2.2522725813000264, -2.337045936229741, -2.547774772156207,
-    -0.00017700698810964633, 0.003046747732454811, -0.0007097497166225015, 0.38392796964212844,
-    0.001610010273581861, -1.524404969713298, -0.002851313107505174, -1.0760729545416154, -0.40614927832681585,
-    -0.46874256420180416, -0.3143667972835115, -0.32678869532336596, -0.33141156191903254, 0.1686384764592868,
-    1.8104867813843362, -2.9135357617094355, -1.2252760426310667, 3.41097215762851,
-  ],
-  b: -2.033594753612319,
-  meta: {
-    corpus: 'synthetic-bootstrap',
-    corpusN: 8000,
-    trainedAuc: 0.8814,
-    heuristicAuc: 0.8694,
-    logLoss: 0.3853,
-    note: 'Bootstrap prior fit on a grounded synthetic DGP — retrain on the live ledger via samplesFromLedger.',
-  },
+  w: [0.9305014804868945, 1.9746666561161454, 1.9164252735024638, 0.8663526599247791, 1.2656132541898835, 2.0405854288670904, -2.506720049759609, -2.405746503887675, -2.4772048843416994, -2.3422345571403986, -0.00017700698810964633, 0.003046747732454811, -0.0007097497166225015, 0.6184682749990336, 0.001610010273581861, -1.5754191948935745, -0.002851313107505174, -1.021110329400589, -0.23616554903572978, -0.34011036038706693, -0.2856634634198469, -0.5153539104132234, -0.32228158701539295, 0.12670698793673216, 1.9368589805806615, -2.9208896145645595, -1.1618400364599357, 3.4434339907128333, -0.21375729585341594, -0.5062990331075305, -0.9785212529750347],
+  b: -1.8722610394423298,
+  meta: {"corpus":"synthetic-bootstrap","corpusN":8000,"trainedAuc":0.8757,"heuristicAuc":0.8563,"logLoss":0.3881,"note":"Bootstrap prior fit on a grounded synthetic DGP — retrain on the live ledger via samplesFromLedger."},
 };

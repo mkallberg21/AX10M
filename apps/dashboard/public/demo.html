@@ -373,7 +373,7 @@ pre.verify { background:#0b1220; color:#cbd5e1; padding:12px; border-radius:8px;
     baseline, and we bill only the <strong>always-valid lower bound</strong>. In this (simulated) month the engine
     recovered <strong>49.7%</strong> vs the baseline's <strong>37.4%</strong> — a
     <strong>12.3%</strong> difference, driven by dead-credential recovery — so the lower bound is positive
-    and it would bill <strong>$58,810.86</strong>. On a real merchant the same machinery bills
+    and it would bill <strong>$58,967.35</strong>. On a real merchant the same machinery bills
     <strong>$0</strong> until the lower bound clears; here it clears because the modeled lift is real (and still needs a
     live holdout to prove the size).
   </p>
@@ -381,27 +381,27 @@ pre.verify { background:#0b1220; color:#cbd5e1; padding:12px; border-radius:8px;
   <section class="kpis">
     <div class="kpi">
       <div class="label">Proven incremental uplift (lower bound)</div>
-      <div class="value accent">$490,090.50</div>
-      <div class="hint">Point estimate $623,187.80/period · we bill only the proven floor</div>
+      <div class="value accent">$491,394.57</div>
+      <div class="hint">Point estimate $624,511.10/period · we bill only the proven floor</div>
     </div>
     <div class="kpi">
       <div class="label">Fee (12% of proven increment)</div>
-      <div class="value">$58,810.86</div>
+      <div class="value">$58,967.35</div>
       <div class="hint">On truly-incremental dollars</div>
     </div>
     <div class="kpi">
       <div class="label">Statistical status</div>
       <div class="value">Proven<span style="color:var(--muted);font-size:18px"> · 95% CS</span></div>
-      <div class="hint">SRM χ²=1.8 ✓ balanced · CUPED −26.0% variance</div>
+      <div class="hint">SRM χ²=1.8 ✓ balanced · CUPED −26.2% variance</div>
     </div>
   </section>
 
   <div class="method-strip">
-    <span><strong>$8.37</strong>/invoice point estimate</span>
+    <span><strong>$8.39</strong>/invoice point estimate</span>
     <span><strong>$1.79</strong> mSPRT half-width</span>
-    <span><strong>$6.58</strong>/invoice proven floor</span>
+    <span><strong>$6.60</strong>/invoice proven floor</span>
     <span><strong>$0.49</strong> cluster-robust SE</span>
-    <span><strong>8,199</strong> effective N</span>
+    <span><strong>8,198</strong> effective N</span>
   </div>
 
   <div class="section-title">Cohort breakdown (by MRR tier · decline family · issuer region)</div>
@@ -435,7 +435,7 @@ pre.verify { background:#0b1220; color:#cbd5e1; padding:12px; border-radius:8px;
         <td>mid|gray|na</td>
         <td class="num">29.4%</td>
         <td class="num">44.5%</td>
-        <td class="num">$25.59</td>
+        <td class="num">$25.60</td>
         <td class="num">2,663</td>
         <td class="num">3.6%</td>
         <td><span class="pill billable">In sample</span></td>
@@ -444,7 +444,7 @@ pre.verify { background:#0b1220; color:#cbd5e1; padding:12px; border-radius:8px;
         <td>mid|soft|na</td>
         <td class="num">50.0%</td>
         <td class="num">53.9%</td>
-        <td class="num">$3.49</td>
+        <td class="num">$3.50</td>
         <td class="num">4,354</td>
         <td class="num">5.8%</td>
         <td><span class="pill billable">In sample</span></td>
@@ -480,7 +480,7 @@ pre.verify { background:#0b1220; color:#cbd5e1; padding:12px; border-radius:8px;
         <td>small|gray|emea</td>
         <td class="num">20.8%</td>
         <td class="num">44.1%</td>
-        <td class="num">$11.44</td>
+        <td class="num">$11.43</td>
         <td class="num">4,625</td>
         <td class="num">6.2%</td>
         <td><span class="pill billable">In sample</span></td>
@@ -543,7 +543,7 @@ pre.verify { background:#0b1220; color:#cbd5e1; padding:12px; border-radius:8px;
         <td>mid|hard|na</td>
         <td class="num">4.6%</td>
         <td class="num">37.8%</td>
-        <td class="num">$59.95</td>
+        <td class="num">$59.97</td>
         <td class="num">736</td>
         <td class="num">1.0%</td>
         <td><span class="pill billable">In sample</span></td>
@@ -570,7 +570,7 @@ pre.verify { background:#0b1220; color:#cbd5e1; padding:12px; border-radius:8px;
         <td>small|hard|emea</td>
         <td class="num">4.4%</td>
         <td class="num">36.7%</td>
-        <td class="num">$15.35</td>
+        <td class="num">$15.34</td>
         <td class="num">1,265</td>
         <td class="num">1.7%</td>
         <td><span class="pill billable">In sample</span></td>
@@ -579,7 +579,7 @@ pre.verify { background:#0b1220; color:#cbd5e1; padding:12px; border-radius:8px;
         <td>mid|gray|apac</td>
         <td class="num">29.4%</td>
         <td class="num">42.1%</td>
-        <td class="num">$17.45</td>
+        <td class="num">$17.46</td>
         <td class="num">598</td>
         <td class="num">0.8%</td>
         <td><span class="pill billable">In sample</span></td>
@@ -596,8 +596,8 @@ pre.verify { background:#0b1220; color:#cbd5e1; padding:12px; border-radius:8px;
       <tr>
         <td>mid|gray|emea</td>
         <td class="num">17.7%</td>
-        <td class="num">45.2%</td>
-        <td class="num">$40.48</td>
+        <td class="num">45.5%</td>
+        <td class="num">$41.54</td>
         <td class="num">1,203</td>
         <td class="num">1.6%</td>
         <td><span class="pill billable">In sample</span></td>
@@ -640,7 +640,7 @@ pre.verify { background:#0b1220; color:#cbd5e1; padding:12px; border-radius:8px;
 
   <div class="section-title">CFO reconciliation — verify it yourself, trust nothing</div>
   <div class="method-strip">
-    <span>Signed statement <strong>37940864daa57711…</strong></span>
+    <span>Signed statement <strong>2c15de54b4ead09e…</strong></span>
     <span>Signing key <strong>ax10m-demo-ed25519</strong></span>
     <span>Ledger <strong>verified ✓</strong></span>
     <span>Epoch salt <strong>disclosed</strong></span>
@@ -649,16 +649,16 @@ pre.verify { background:#0b1220; color:#cbd5e1; padding:12px; border-radius:8px;
     <div class="recon-card ok">
       <div class="label">Reconciles against processor payout</div>
       <div class="big">Ties out ✓</div>
-      <div class="hint">40,050 recovered txns · $2,774,814.46 = $2,774,814.46 settled</div>
+      <div class="hint">40,053 recovered txns · $2,776,102.23 = $2,776,102.23 settled</div>
     </div>
     <div class="recon-card">
       <div class="label">Recovered value (both arms)</div>
-      <div class="big">$2,774,814.46</div>
-      <div class="hint">Treatment $2,561,223.83 · control $213,590.63</div>
+      <div class="big">$2,776,102.23</div>
+      <div class="hint">Treatment $2,562,511.60 · control $213,590.63</div>
     </div>
     <div class="recon-card">
       <div class="label">Fee = 12% × proven increment</div>
-      <div class="big">$58,810.86</div>
+      <div class="big">$58,967.35</div>
       <div class="hint">proven · recomputable by hand</div>
     </div>
   </div>
@@ -673,12 +673,12 @@ pre.verify { background:#0b1220; color:#cbd5e1; padding:12px; border-radius:8px;
   <section class="kpis">
     <div class="kpi">
       <div class="label">Trained champion (held-out AUC)</div>
-      <div class="value accent">0.875</div>
+      <div class="value accent">0.885</div>
       <div class="hint">vs an untrained cold-start model at 0.500</div>
     </div>
     <div class="kpi">
       <div class="label">Retrained challenger</div>
-      <div class="value">0.870<span style="color:var(--muted);font-size:18px"> AUC</span></div>
+      <div class="value">0.885<span style="color:var(--muted);font-size:18px"> AUC</span></div>
       <div class="hint">Promotes vs cold-start ✓ · held vs champion (no gain ≥ margin)</div>
     </div>
     <div class="kpi">
@@ -689,14 +689,14 @@ pre.verify { background:#0b1220; color:#cbd5e1; padding:12px; border-radius:8px;
   </section>
   <div class="method-strip">
     <span><strong>6,000</strong> labeled ledger samples</span>
-    <span><strong>1,757</strong> recovered (+)</span>
-    <span><strong>4,243</strong> failed (−)</span>
+    <span><strong>1,705</strong> recovered (+)</span>
+    <span><strong>4,295</strong> failed (−)</span>
     <span>promotes a real gain → <strong>model.promoted</strong> in the ledger</span>
     <span>API + worker load the active champion at startup</span>
   </div>
   <p class="subtitle" style="font-size:13px;margin-top:12px">
-    Here the fresh challenger (0.870) does <strong>not</strong> beat the already-strong shipped
-    champion (0.875) by the margin, so the gate correctly <strong>holds</strong> — it would promote
+    Here the fresh challenger (0.885) does <strong>not</strong> beat the already-strong shipped
+    champion (0.885) by the margin, so the gate correctly <strong>holds</strong> — it would promote
     against a weaker model (as shown vs cold-start), but it refuses to ship a non-improvement. That safety property is
     the point: the flywheel only ever moves the model forward.
   </p>

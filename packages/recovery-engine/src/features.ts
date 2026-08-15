@@ -34,6 +34,9 @@ export const DECLINE_ORDER: readonly DeclineCode[] = [
 /** Stable issuer-region order for one-hot encoding. Append-only. */
 export const REGION_ORDER: readonly IssuerRegion[] = ['na', 'emea', 'latam', 'apac', 'unknown'];
 
+/** Stable card-product-type order for one-hot encoding ('unknown' = the zero vector). Append-only. */
+export const CARD_TYPE_ORDER: readonly ('credit' | 'debit' | 'prepaid')[] = ['credit', 'debit', 'prepaid'];
+
 /** Human-readable name of each encoded dimension (same order as `encodeFeatures`). */
 export const FEATURE_NAMES: readonly string[] = [
   ...DECLINE_ORDER.map((c) => `decline=${c}`),
@@ -44,6 +47,7 @@ export const FEATURE_NAMES: readonly string[] = [
   'attempt_penalty',
   'days_since_fail',
   'issuer_approval_prior',
+  ...CARD_TYPE_ORDER.map((t) => `card=${t}`),
 ];
 
 /** Dimensionality of the encoded feature vector. */
@@ -78,6 +82,9 @@ export function encodeFeatures(f: RecoveryFeatures): number[] {
 
   // Cross-merchant issuer/BIN approval prior (neutral 0.5 if unknown).
   x.push(clamp01(f.issuerApprovalPrior ?? 0.5));
+
+  // One-hot card product type ('unknown'/absent → all zeros, the baseline).
+  for (const t of CARD_TYPE_ORDER) x.push(f.cardType === t ? 1 : 0);
 
   return x;
 }

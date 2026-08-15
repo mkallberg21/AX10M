@@ -17,12 +17,17 @@
 
 import { DeclineCode, DeclineFamily, familyOf, type IssuerRegion } from '@ax10m/canonical';
 
+/** Card product type — a BIN-derived signal (debit/prepaid recover differently than credit). */
+export type CardProductType = 'credit' | 'debit' | 'prepaid' | 'unknown';
+
 /** Everything the model sees. All pre-decision / observed-at-failure — no leakage. */
 export interface RecoveryFeatures {
   declineCode: DeclineCode;
   amountMinor: number;
   currency: string;
   issuerRegion: IssuerRegion;
+  /** BIN-derived card product type (credit/debit/prepaid); 'unknown' when the BIN is unmapped. */
+  cardType?: CardProductType;
   /** Customer age at failure, days. */
   customerTenureDays: number;
   /** Customer's historical share of failed invoices eventually recovered, 0..1. */

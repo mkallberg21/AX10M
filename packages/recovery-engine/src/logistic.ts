@@ -38,7 +38,9 @@ export class LogisticRecoverability implements RecoverabilityModel {
   score(f: RecoveryFeatures): number {
     const x = encodeFeatures(f);
     let z = this.weights.b;
-    for (let i = 0; i < x.length; i++) z += this.weights.w[i]! * x[i]!;
+    // Tolerate a shorter weight vector (a model fit before a feature was appended): the
+    // missing weights are treated as 0, so appending a feature never NaNs an old model.
+    for (let i = 0; i < x.length; i++) z += (this.weights.w[i] ?? 0) * x[i]!;
     return clamp01(sigmoid(z));
   }
 

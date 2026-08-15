@@ -1,4 +1,4 @@
-VERDICT: under these assumptions the AX10M engine beats the baseline by 13.29 pp (recovery-rate), with a positive holdout-verified lower bound — it would bill $40,039. — CAVEAT: this 13.81 pp win is over the DEFAULT-reach baseline (what merchants run); against a maximally-persistent baseline it is ~parity on recovery rate (1.94 pp) — the durable edge is the dead-credential capability + cost/compliance, not raw rate vs an all-out retrier.
+VERDICT: under these assumptions the AX10M engine beats the baseline by 13.29 pp (recovery-rate), with a positive holdout-verified lower bound — it would bill $40,139. — CAVEAT: this 13.81 pp win is over the DEFAULT-reach baseline (what merchants run); against a maximally-persistent baseline it is ~parity on recovery rate (1.95 pp) — the durable edge is the dead-credential capability + cost/compliance, not raw rate vs an all-out retrier.
 
 # AX10M Backtest — does the recovery engine beat Stripe Smart Retries?
 
@@ -9,15 +9,15 @@ _Synthetic backtest. Treatment = `ax10m-engine`, Control = `stripe-smart-retries
 | Metric | Control (Smart Retries) | Treatment (AX10M engine) |
 |---|---|---|
 | Recovery rate | 36.56% | 49.85% |
-| Recovered $ | $138,128 | $1,713,873 |
+| Recovered $ | $138,128 | $1,714,710 |
 
 - **Absolute recovery-rate lift:** 13.29 pp
 - **Relative lift:** 36.4%
 - **CUPED-adjusted incremental $/treated invoice (point):** $9 (SE $1)
 - **mSPRT lower bound $/treated invoice:** $7
-- **Proven lower-bound dollars (cum):** $333,662
-- **Would it bill?** yes — fee $40,039
-- CUPED variance reduction: 26.52% · SRM χ²=3.06
+- **Proven lower-bound dollars (cum):** $334,495
+- **Would it bill?** yes — fee $40,139
+- CUPED variance reduction: 26.66% · SRM χ²=3.06
 
 ## Fairness — is any engine gain just a longer retry window?
 
@@ -27,9 +27,9 @@ The headline compares the engine to Stripe Smart Retries' **default** reach (~da
 |---|---|---|---|
 | day 18 | 36.42% | 50.23% | 13.81 pp |
 | day 28 | 45.42% | 50.23% | 4.81 pp |
-| day 35 | 48.29% | 50.23% | 1.94 pp |
+| day 35 | 48.29% | 50.23% | 1.95 pp |
 
-**Reading it honestly.** The engine beats the **default** baseline (~day 18 — what merchants actually run) by 13.81 pp. Crucially, this is **not** a window-length effect: it does not flip to a loss when the baseline retries longer. The margin narrows as the baseline reaches window-close — to 1.94 pp vs a maximally-persistent (day 35) baseline, i.e. roughly **parity** — because a longer blanket retry catches up on the *soft/funds* declines, but it can **never** touch the dead-card book. The engine's gain is a fixed **capability** — dead-credential recovery (Account Updater `card_refresh`, `alternate_rail`, and dunning) — that no retry on the original card can reach (see the by-code table). That is why the edge survives the sweep instead of collapsing.
+**Reading it honestly.** The engine beats the **default** baseline (~day 18 — what merchants actually run) by 13.81 pp. Crucially, this is **not** a window-length effect: it does not flip to a loss when the baseline retries longer. The margin narrows as the baseline reaches window-close — to 1.95 pp vs a maximally-persistent (day 35) baseline, i.e. roughly **parity** — because a longer blanket retry catches up on the *soft/funds* declines, but it can **never** touch the dead-card book. The engine's gain is a fixed **capability** — dead-credential recovery (Account Updater `card_refresh`, `alternate_rail`, and dunning) — that no retry on the original card can reach (see the by-code table). That is why the edge survives the sweep instead of collapsing.
 
 So on recovery rate the honest picture is: **a material win over the realistic baseline, parity with a maximally-persistent one** — and that persistent baseline is itself cost- and compliance-infeasible (it burns far more attempts and breaches card-network retry caps). The next section prices exactly that, and the cross-merchant issuer flywheel (cold features here) is additional upside not yet exercised.
 
@@ -49,13 +49,13 @@ Recovery rate rewards blanket persistence. A merchant's actual objective is **ne
 
 | Do-not-retry fine | Engine net $/inv | Baseline net $/inv | Engine wins? |
 |---|---|---|---|
-| $0.00 | $34.09 | $32.99 | **yes** |
-| $0.50 | $34.09 | $32.73 | **yes** |
-| $1.00 | $34.09 | $32.47 | **yes** |
-| $2.50 | $34.09 | $31.68 | **yes** |
-| $5.00 | $34.09 | $30.37 | **yes** |
-| $10.00 | $34.09 | $27.75 | **yes** |
-| $20.00 | $34.09 | $22.51 | **yes** |
+| $0.00 | $34.10 | $32.99 | **yes** |
+| $0.50 | $34.10 | $32.73 | **yes** |
+| $1.00 | $34.10 | $32.47 | **yes** |
+| $2.50 | $34.10 | $31.68 | **yes** |
+| $5.00 | $34.10 | $30.37 | **yes** |
+| $10.00 | $34.10 | $27.75 | **yes** |
+| $20.00 | $34.10 | $22.51 | **yes** |
 
 **Conclusion.** The engine wins on net value across the fine range vs the most-persistent baseline — including with **zero** compliance fines — because the win is driven by recovering MORE (dead-credential capture) at FEWER attempts, not by penalizing the baseline. Fines only widen the gap. On both recovery rate and net value, then, the honest headline is: **a real, capability-driven win over what merchants actually run**, robust to the cost/fine assumptions. The cross-merchant flywheel (cold here) is further upside not yet exercised, and a live holdout is still what proves the magnitude.
 
@@ -64,7 +64,7 @@ Recovery rate rewards blanket persistence. A merchant's actual objective is **ne
 | Decline code | Volume share | Control recovery | Treatment recovery | Δ |
 |---|---|---|---|---|
 | insufficient_funds | 34.40% | 45.56% | 56.77% | 11.21 pp |
-| do_not_honor | 22.07% | 27.43% | 31.14% | 3.71 pp |
+| do_not_honor | 22.07% | 27.43% | 31.16% | 3.73 pp |
 | expired_card | 12.13% | 11.46% | 68.04% | 56.58 pp |
 | issuer_unavailable | 5.95% | 78.06% | 77.17% | -0.89 pp |
 | processing_error | 4.93% | 69.32% | 70.51% | 1.20 pp |
@@ -98,7 +98,7 @@ This is the **minimum viable merchant size** for billing: a merchant whose month
 
 | Parameter | ×0.7 Δrate | ×0.7 lower$ | ×1.3 Δrate | ×1.3 lower$ |
 |---|---|---|---|---|
-| recoverableScale | 10.63 pp | $4 | 15.16 pp | $8 |
+| recoverableScale | 10.63 pp | $4 | 15.17 pp | $8 |
 | onsetScale | 7.86 pp | $3 | 13.30 pp | $6 |
 | windowScale | 1.01 pp | $0 | 12.96 pp | $6 |
 | residualScale | 9.33 pp | $3 | 13.53 pp | $6 |

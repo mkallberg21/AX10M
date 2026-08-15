@@ -239,12 +239,14 @@ export class RecoveryFeatureStore {
     const issuerApprovalPrior = shrinkRate(issuer?.recovered ?? 0, issuer?.total ?? 0, this.config.issuerPrior);
 
     const tenureSource = ctx.customerCreatedAt ?? c?.createdAt ?? c?.firstSeen ?? ctx.now;
+    const binInfo = this.config.regionIndex.lookup(ctx.bin);
 
     return {
       declineCode: ctx.declineCode ?? DeclineCode.Unknown,
       amountMinor: ctx.amountMinor,
       currency: ctx.currency,
-      issuerRegion: this.config.regionIndex.lookup(ctx.bin).region,
+      issuerRegion: binInfo.region,
+      cardType: binInfo.cardType ?? 'unknown',
       customerTenureDays: daysBetween(tenureSource, ctx.now),
       priorRecoveryRate,
       attemptNumber: ctx.attemptNumber,

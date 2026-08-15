@@ -102,5 +102,9 @@ drives sequencing.
   rates aggregate by REAL issuer identity across an issuer's BINs, not a raw prefix), a real
   BIN table loads from `AX10M_BIN_TABLE_PATH` (illustrative seed as fallback), and the REAL
   customer signup date flows from the webhook `Customer` into tenure (via `observe()` +
-  `featuresFor`). *Remaining: ship an actual licensed BIN DB file; richer card metadata
-  (debit/prepaid) into the model's feature vector.*
+  `featuresFor`). Card product type (credit/debit/prepaid) is now a MODEL feature — appended
+  one-hot to the encoded vector (`CARD_TYPE_ORDER`), given a grounded DGP effect (prepaid
+  recovers worst, debit < credit), and the shipped bootstrap prior was regenerated to use it
+  (trained AUC 0.876 > heuristic 0.856; the learned card weights are prepaid −0.98 < debit
+  −0.51 < credit −0.21). `score()` now tolerates a shorter weight vector so appending a
+  feature never NaNs an older model. *Remaining: ship an actual licensed BIN DB file.*
