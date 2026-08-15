@@ -10,4 +10,5 @@ export * from './customer.js';
 export * from './idempotency.js';
 export * from './adapters/index.js';
 export * from './factory.js';
+export * from './validate-contact.js';
 export * as stripe from './stripe/index.js';

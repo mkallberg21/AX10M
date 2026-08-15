@@ -52,3 +52,28 @@ name/path was confirmed in the official reference — **not** a live authenticat
 
 Everything above is **fail-safe**: a missing/renamed field or a failed API lookup yields no
 contact, never a dropped recovery event.
+
+## Live-sandbox harness (closing the remaining `CONFIRM`s)
+
+Docs can't settle the last items (real webhook XML, optional-field population, whether a lookup
+returns contact for a given account). The harness `scripts/validate-contact-fields.mjs` does —
+against your own sandbox. It builds the **real adapter** from your sandbox credentials, replays a
+webhook **you captured**, and reports the contact that resolved (values **masked**, no PII in the
+output). For the API-lookup adapters (shopify / gocardless / zuora) the replay also triggers the
+live enrichment GET, so it validates that path too. It's read-only — it verifies signatures and
+does enrichment GETs; it never charges and commits nothing.
+
+```bash
+corepack pnpm --filter @ax10m/poal build   # once
+# per processor <P> (stripe, gocardless, zuora, …), point at YOUR sandbox creds + a captured webhook:
+AX10M_VAL_STRIPE_CONFIG_FILE=./stripe.creds.json \
+AX10M_VAL_STRIPE_BODY_FILE=./stripe.webhook.json \
+AX10M_VAL_STRIPE_HEADERS_FILE=./stripe.headers.json \
+node packages/poal/scripts/validate-contact-fields.mjs   # --help for the full env contract
+```
+
+`<P>_CONFIG` is the `buildAdapter` credentials bag (keys/secrets + the sandbox `baseUrl`);
+`<P>_BODY` is the captured raw webhook; `<P>_HEADERS` is its headers JSON (including the signature
+header, so verification passes). All values come from the environment — nothing is committed, and
+no credential is ever printed. The harness's parsing/report logic is unit-tested in CI
+(`validate-contact.test.ts`); the credentialed run is the operator's step.
