@@ -29,6 +29,7 @@ export * from './simulate.js';
 export * from './feature-store.js';
 export * from './ledger-samples.js';
 export * from './credential-recovery.js';
+export * from './bin-csv.js';
 export * from './retrain.js';
 export * from './bandit.js';
 export * from './bootstrap-weights.js';

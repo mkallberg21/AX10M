@@ -112,4 +112,7 @@ drives sequencing.
   left `unknown` — they need a licensed DB and aren't fabricated) with `data/README.md`
   documenting the licensed-DB plug-in path. *Remaining: a LICENSED commercial BIN DB is
   proprietary/paid and can't be redistributed here — the operator drops their own export at
-  `AX10M_BIN_TABLE_PATH` (same JSON shape) to populate region/issuer/country/cardType.*
+  `AX10M_BIN_TABLE_PATH` (same JSON shape) to populate region/issuer/country/cardType. A
+  **CSV→BinRange converter** (`parseBinCsv` + `data/bin-csv-to-json.mjs`) turns a vendor's
+  licensed CSV export into that JSON: auto-detects common column aliases, normalizes
+  brand/cardType, and derives issuer region from the country code.*

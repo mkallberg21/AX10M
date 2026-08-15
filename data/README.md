@@ -32,9 +32,26 @@ left `unknown`/absent on purpose; a fabricated value would be worse than an hone
 ## Plugging in a real (licensed) BIN DB
 
 1. License a commercial BIN/IIN database (issuer-level, with country + product type).
-2. Export it to this same `BinRange[]` JSON shape, filling `region`, `issuerId`, `country`,
-   and `cardType`.
-3. Set `AX10M_BIN_TABLE_PATH=/path/to/your-bin-table.json`.
+2. Convert its **CSV export** to the `BinRange[]` JSON with the bundled converter:
+
+   ```bash
+   corepack pnpm --filter @ax10m/recovery-engine build   # once
+   node data/bin-csv-to-json.mjs vendor-export.csv bin-table.json
+   ```
+
+   Columns **auto-detect** from common aliases (BIN/IIN/prefix, brand/scheme/network,
+   type/product_type, country/country_code, issuer/bank_name — space/underscore/case
+   insensitive). Values are normalized to this vocabulary, and **issuer region is derived
+   from the country code** when the export has no region column. Override anything:
+
+   ```bash
+   node data/bin-csv-to-json.mjs in.csv out.json \
+     --col prefix=BIN --col brand=Scheme --col cardType="Product Type" --delimiter ";"
+   ```
+
+   (`parseBinCsv` from `@ax10m/recovery-engine` is the pure converter if you'd rather call
+   it in code.)
+3. Set `AX10M_BIN_TABLE_PATH=/path/to/bin-table.json`.
 
 The loader (`buildFeatureStore`) validates and falls back to the illustrative seed if the
 file is missing or malformed. Nothing else changes — the feature store, issuer aggregation,
