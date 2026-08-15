@@ -62,12 +62,23 @@ Temporal server** in `packages/scheduler/src/temporal/worker.e2e.test.ts` (time-
 test server: it runs the workflow, fast-forwards the multi-day sleep, and asserts an
 activity retry settles no second charge).
 
+## Shared ledger (worker + API → one chain)
+
+With `DATABASE_URL` set (real Postgres), the API and the worker append to **one** shared
+hash-chained ledger: both build a `PersistedLedgerPort` over the same database, so a charge
+the worker records is in the same tamper-evident chain the API reads and the retrainer
+consumes. Concurrent appends from the two processes are serialized by a transaction-scoped
+advisory lock (with a seq-collision retry backstop), so the chain stays contiguous and
+`verifyChain` passes — proven under concurrent writes in
+`apps/api/src/recovery/shared-ledger.e2e.test.ts`.
+
+Without `DATABASE_URL`, each process keeps its own in-memory ledger — **pglite is
+single-process and cannot be shared across the API and worker**, so the shared ledger
+requires Postgres. The worker's startup log prints `ledger=shared-postgres` or
+`ledger=in-memory(single-process)` so you can see which mode you're in.
+
 ## Known limitations (honest)
 
-- **Worker and API hold separate in-memory ledgers today.** The live `RecoveryCaseService`
-  ledger is still in-process (see `docs/BACKLOG.md`). Until it is backed by the persisted
-  `@ax10m/persistence` `LedgerRepository`, run the worker as the single writer of charge
-  events, or co-locate — don't assume the API process sees the worker's charge ledger.
 - **Auto-dispatch needs the failed payment method on the event.** The API enqueues a
   durable saga only when the normalized `invoice.failed` event carries `payload.method`.
   Adapters that don't yet populate it fall back to inline shadow planning (logged).

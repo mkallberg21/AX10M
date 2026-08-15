@@ -95,7 +95,7 @@ describe('RecoveryCaseService.executeRecovery', () => {
 
   it('runs engine → guardrail → adapter and charges on an active soft decline', async () => {
     const adapter = new FakeAdapter('succeeded');
-    const head0 = svc.ledgerHead();
+    const head0 = await svc.ledgerHead();
     const { action, decision } = await svc.executeRecovery({
       adapter,
       invoice,
@@ -109,7 +109,7 @@ describe('RecoveryCaseService.executeRecovery', () => {
     expect(adapter.charges).toHaveLength(1);
     expect(adapter.charges[0]!.invoiceId).toBe('ax10m_inv_in_1');
     // charge.succeeded + case.recovered were appended → the chain head moved.
-    expect(svc.ledgerHead()).not.toBe(head0);
+    expect(await svc.ledgerHead()).not.toBe(head0);
   });
 
   it('SHADOW mode plans + records but never moves money', async () => {
@@ -179,7 +179,7 @@ describe('RecoveryCaseService.executeRecovery', () => {
 describe('RecoveryCaseService webhook ingress (shadow planning)', () => {
   it('plans recovery for a treatment case without charging', async () => {
     const svc = new RecoveryCaseService(new OnboardingService());
-    const head0 = svc.ledgerHead();
+    const head0 = await svc.ledgerHead();
     const failEvent: CanonicalEvent = {
       id: 'ce_1',
       type: 'invoice.failed',
@@ -193,7 +193,7 @@ describe('RecoveryCaseService webhook ingress (shadow planning)', () => {
     });
     await svc.ingestWithAdapter(adapter, { body: '{}', headers: {} });
     // holdout.assigned was appended regardless of bucket → the chain head moved.
-    expect(svc.ledgerHead()).not.toBe(head0);
+    expect(await svc.ledgerHead()).not.toBe(head0);
     expect((adapter as FakeAdapter).charges).toHaveLength(0);
   });
 });
@@ -275,9 +275,9 @@ describe('durable recovery dispatch (webhook → Temporal workflow)', () => {
 describe('ARSE sequence planning', () => {
   const DAY = 24 * 60 * 60 * 1000;
 
-  it('plans a network-aware NSF sequence that reaches into the pay-cycle window (day 1, 4, 14, ...)', () => {
+  it('plans a network-aware NSF sequence that reaches into the pay-cycle window (day 1, 4, 14, ...)', async () => {
     const svc = new RecoveryCaseService(new OnboardingService());
-    const steps = svc.planSequence({ invoice, method, decline: softDecline, attemptNumber: 1 });
+    const steps = await svc.planSequence({ invoice, method, decline: softDecline, attemptNumber: 1 });
     expect(steps.length).toBeGreaterThanOrEqual(3); // reaches at least ~day 14, not stopping at ~day 11
     expect(steps.every((s) => s.action === 'retry')).toBe(true);
     const t = steps.map((s) => Date.parse(s.at));
@@ -285,10 +285,10 @@ describe('ARSE sequence planning', () => {
     expect(t[2]! - t[1]!).toBe(10 * DAY); // day 4 → day 14 (the rework: reach the second/third week)
   });
 
-  it('plans a single terminal card_update step for an expired card', () => {
+  it('plans a single terminal card_update step for an expired card', async () => {
     const svc = new RecoveryCaseService(new OnboardingService());
     const expired = { code: DeclineCode.ExpiredCard, family: DeclineFamily.Gray };
-    const steps = svc.planSequence({ invoice, method, decline: expired, attemptNumber: 1 });
+    const steps = await svc.planSequence({ invoice, method, decline: expired, attemptNumber: 1 });
     expect(steps).toHaveLength(1);
     expect(steps[0]!.action).toBe('card_update');
   });
@@ -307,8 +307,8 @@ describe('feature enrichment flywheel', () => {
     }
 
     // Pull the priorRecoveryRate the engine saw at each successive decision from the ledger.
-    const rates = svc
-      .ledgerEntries()
+    const entries = await svc.ledgerEntries();
+    const rates = entries
       .filter((e) => e.type === 'recovery.planned')
       .map((e) => (e.detail.features as { priorRecoveryRate: number }).priorRecoveryRate);
 
@@ -317,6 +317,6 @@ describe('feature enrichment flywheel', () => {
     expect(rates[rates.length - 1]!).toBeGreaterThan(rates[0]!); // flywheel learned the customer recovers
     expect(rates[rates.length - 1]!).toBeGreaterThan(0.55);
     // The issuer/BIN approval prior also learned from the same wins.
-    expect(svc.ledgerEntries().length).toBeGreaterThan(12);
+    expect((await svc.ledgerEntries()).length).toBeGreaterThan(12);
   });
 });

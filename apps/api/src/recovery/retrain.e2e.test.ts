@@ -113,7 +113,7 @@ async function buildLedgerFromService(n: number, seed: number): Promise<Recovery
 describe('retrain on the ledger the service actually produces', () => {
   it('extracts a labeled corpus from the real ledger and fits a challenger through the promotion gate', async () => {
     const svc = await buildLedgerFromService(4000, 123);
-    const entries = svc.ledgerEntries();
+    const entries = await svc.ledgerEntries();
 
     // Against a blank champion (AUC 0.5), a challenger fit on the real ledger should
     // learn the decline/amount signal and be promoted.
@@ -131,7 +131,7 @@ describe('retrain on the ledger the service actually produces', () => {
 
   it('never ships a regression: if promoted, the challenger beat the champion on held-out data', async () => {
     const svc = await buildLedgerFromService(4000, 321);
-    const entries = svc.ledgerEntries();
+    const entries = await svc.ledgerEntries();
 
     // Compare against the strong shipped bootstrap champion. The gate must either
     // decline to promote, or promote something genuinely better — never a regression.
@@ -144,7 +144,7 @@ describe('retrain on the ledger the service actually produces', () => {
 
   it('rejects a too-thin ledger via the data-quality gate (no model shipped)', async () => {
     const svc = await buildLedgerFromService(60, 7);
-    const entries = svc.ledgerEntries();
+    const entries = await svc.ledgerEntries();
     const report = retrainFromLedger(entries, BOOTSTRAP_RECOVERABILITY_WEIGHTS);
     expect(report.accepted).toBe(false);
     expect(report.reason).toBe('insufficient_samples');

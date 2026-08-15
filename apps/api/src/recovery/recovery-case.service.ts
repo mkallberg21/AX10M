@@ -5,7 +5,6 @@ import type { ProcessorAdapter, RawWebhook } from '@ax10m/poal';
 import { idempotencyKey } from '@ax10m/poal';
 import {
   assign,
-  HashChainedLedger,
   type HoldoutConfig,
   type LedgerEntry,
   type Stratum,
@@ -30,6 +29,7 @@ import {
 import type { RecoveryWorkflowInput } from '@ax10m/scheduler/temporal';
 import { OnboardingService } from '../onboarding/onboarding.service.js';
 import { NoopRecoveryDispatcher, type RecoveryDispatcher } from './recovery-dispatcher.js';
+import { InMemoryLedgerPort, type LedgerPort } from './ledger-port.js';
 
 /**
  * RecoveryCaseService — the integration seam of the Phase-0 proof engine.
@@ -52,8 +52,19 @@ export class RecoveryCaseService {
 
   constructor(private readonly onboarding: OnboardingService) {}
 
-  // TODO(ax10m): one ledger per merchant, persisted to append-only Postgres.
-  private readonly ledger = new HashChainedLedger();
+  // The tamper-evident ledger. Defaults to in-process (dev/tests). A deployment calls
+  // useLedger() with a PersistedLedgerPort so the HTTP API and the recovery worker append
+  // to ONE shared Postgres-backed chain (see apps/api/src/recovery/ledger-port.ts).
+  private ledger: LedgerPort = new InMemoryLedgerPort();
+
+  /**
+   * Point the service at a shared, persisted ledger (must be called before ingest).
+   * With this wired, the API and worker write to the same hash-chained ledger, so the
+   * worker's real charges land in the ledger the API reads and the retrainer consumes.
+   */
+  useLedger(ledger: LedgerPort): void {
+    this.ledger = ledger;
+  }
 
   // TODO(ax10m): inject per-environment holdout config from env / config service.
   private readonly holdoutConfig?: HoldoutConfig;
@@ -119,7 +130,7 @@ export class RecoveryCaseService {
       const payload = event.payload as { invoice?: Invoice; decline?: DeclineEvent; method?: PaymentMethod };
       if (payload.invoice) {
         const stratum = deriveStratum(payload.invoice, payload.decline);
-        const { bucket } = this.openCase({ invoice: payload.invoice, stratum, occurredAt: event.occurredAt });
+        const { bucket } = await this.openCase({ invoice: payload.invoice, stratum, occurredAt: event.occurredAt });
         // Stamp first-contact time so the feature store can compute customer tenure.
         this.featureStore.observe({
           merchantId: payload.invoice.merchantId,
@@ -138,7 +149,7 @@ export class RecoveryCaseService {
         // we ALSO hand the case to the durable Temporal saga, which owns the timed,
         // exactly-once retry loop (and moves money only when liveCharging is on).
         if (bucket === 'treatment') {
-          this.planRecovery(payload.invoice, payload.decline);
+          await this.planRecovery(payload.invoice, payload.decline);
           if (this.durableRecovery && payload.method) {
             await this.dispatchDurableRecovery(payload.invoice, payload.method, payload.decline);
           } else if (this.durableRecovery && !payload.method) {
@@ -166,11 +177,11 @@ export class RecoveryCaseService {
    * it to the tamper-evident ledger. In shadow mode this is where measurement
    * begins; no charge is attempted.
    */
-  openCase(params: {
+  async openCase(params: {
     invoice: Invoice;
     stratum: Stratum;
     occurredAt: string;
-  }): { bucket: 'control' | 'treatment' } {
+  }): Promise<{ bucket: 'control' | 'treatment' }> {
     const { invoice, stratum } = params;
     // Assignment is a deterministic pure function, so recomputing on a redelivered
     // webhook yields the same bucket; only the ledger append must be de-duplicated.
@@ -189,7 +200,7 @@ export class RecoveryCaseService {
     }
     this.openedInvoices.add(invoice.id);
 
-    this.ledger.append({
+    await this.ledger.append({
       merchantId: invoice.merchantId,
       type: 'holdout.assigned',
       occurredAt: params.occurredAt,
@@ -221,7 +232,7 @@ export class RecoveryCaseService {
   }): Promise<{ result: 'suppressed' | 'shadowed' | 'attempted'; outcome?: ChargeOutcome }> {
     const decision = evaluateGuardrail(params.proposed);
     if (!decision.allow) {
-      this.ledger.append({
+      await this.ledger.append({
         merchantId: params.invoice.merchantId,
         type: 'action.suppressed',
         occurredAt: new Date().toISOString(),
@@ -247,7 +258,7 @@ export class RecoveryCaseService {
 
     if (params.shadow) {
       // Shadow mode: record the intent, do NOT move money.
-      this.ledger.append({
+      await this.ledger.append({
         merchantId: params.invoice.merchantId,
         type: 'charge.attempted',
         occurredAt: new Date().toISOString(),
@@ -262,7 +273,7 @@ export class RecoveryCaseService {
     // TODO(ax10m): host this call inside a Temporal activity for crash durability.
     this.attempts.set(params.invoice.id, Math.max(this.attempts.get(params.invoice.id) ?? 0, params.attemptNumber));
     const result = await params.adapter.attemptCharge(params.invoice, params.method, key);
-    this.ledger.append({
+    await this.ledger.append({
       merchantId: params.invoice.merchantId,
       type: result.outcome === 'succeeded' ? 'charge.succeeded' : 'charge.failed',
       occurredAt: new Date().toISOString(),
@@ -275,7 +286,7 @@ export class RecoveryCaseService {
       },
     });
     if (result.outcome === 'succeeded') {
-      this.ledger.append({
+      await this.ledger.append({
         merchantId: params.invoice.merchantId,
         type: 'case.recovered',
         occurredAt: new Date().toISOString(),
@@ -308,7 +319,7 @@ export class RecoveryCaseService {
    * active system *would* take on a treatment case, so the Uplift Statement can
    * later compare "what we'd have done" against the control arm's realized outcome.
    */
-  private planRecovery(invoice: Invoice, decline?: DeclineEvent): RecoveryDecision {
+  private async planRecovery(invoice: Invoice, decline?: DeclineEvent): Promise<RecoveryDecision> {
     return this.planAttempt({ invoice, decline, attemptNumber: (this.attempts.get(invoice.id) ?? 0) + 1 });
   }
 
@@ -330,14 +341,14 @@ export class RecoveryCaseService {
    * guardrail. This is the scheduler's `plan` step (it reads `retryAt` to decide when
    * to sleep) and shadow-mode's brain. Pure w.r.t. money; only appends a ledger note.
    */
-  planAttempt(params: { invoice: Invoice; method?: PaymentMethod; decline?: DeclineEvent; attemptNumber: number }): RecoveryDecision {
+  async planAttempt(params: { invoice: Invoice; method?: PaymentMethod; decline?: DeclineEvent; attemptNumber: number }): Promise<RecoveryDecision> {
     const { invoice, method, decline, attemptNumber } = params;
     const features = this.featuresFor({ invoice, method, decline, attemptNumber });
     const methods: AvailableMethod[] = method
       ? [{ ref: method.processorRef, isDefault: true, autoUpdated: method.autoUpdated }]
       : [];
     const decision = this.policy.decide(features, { now: new Date().toISOString(), methods });
-    this.ledger.append({
+    await this.ledger.append({
       merchantId: invoice.merchantId,
       type: 'recovery.planned',
       occurredAt: new Date().toISOString(),
@@ -389,7 +400,7 @@ export class RecoveryCaseService {
     ];
     const decision = this.policy.decide(features, { now: new Date().toISOString(), methods });
 
-    this.ledger.append({
+    await this.ledger.append({
       merchantId: invoice.merchantId,
       type: 'recovery.planned',
       occurredAt: new Date().toISOString(),
@@ -406,7 +417,7 @@ export class RecoveryCaseService {
 
     // The engine chose NOT to retry this card (dead credential, or EV ≤ threshold).
     if (decision.action !== 'retry') {
-      this.ledger.append({
+      await this.ledger.append({
         merchantId: invoice.merchantId,
         type: decision.action === 'card_update_comms' ? 'comms.sent' : 'action.suppressed',
         occurredAt: new Date().toISOString(),
@@ -439,7 +450,7 @@ export class RecoveryCaseService {
    * executes step-by-step. Records the plan to the ledger (with the feature snapshot,
    * so it's still a training row).
    */
-  planSequence(params: { invoice: Invoice; method: PaymentMethod; decline?: DeclineEvent; attemptNumber: number }): RetryStep[] {
+  async planSequence(params: { invoice: Invoice; method: PaymentMethod; decline?: DeclineEvent; attemptNumber: number }): Promise<RetryStep[]> {
     const { invoice, method, decline, attemptNumber } = params;
     const features = this.featuresFor({ invoice, method, decline, attemptNumber });
     const methods: AvailableMethod[] = [{ ref: method.processorRef, isDefault: true, autoUpdated: method.autoUpdated }];
@@ -449,7 +460,7 @@ export class RecoveryCaseService {
       methods,
       model: this.recoverabilityModel,
     });
-    this.ledger.append({
+    await this.ledger.append({
       merchantId: invoice.merchantId,
       type: 'recovery.planned',
       occurredAt: new Date().toISOString(),
@@ -486,7 +497,7 @@ export class RecoveryCaseService {
   }
 
   /** Expose the ledger head so callers can notarize / build statements. */
-  ledgerHead(): string {
+  async ledgerHead(): Promise<string> {
     return this.ledger.head();
   }
 
@@ -496,7 +507,7 @@ export class RecoveryCaseService {
    * joins each `recovery.planned` feature snapshot with its realized outcome, and
    * fits a challenger. In production this reads the persisted (Postgres) ledger.
    */
-  ledgerEntries(): readonly LedgerEntry[] {
+  async ledgerEntries(): Promise<readonly LedgerEntry[]> {
     return this.ledger.all();
   }
 }

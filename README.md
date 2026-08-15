@@ -236,10 +236,10 @@ must be **restricted, least-privilege** keys (ARCHITECTURE.md §7).
   honest-status block above; the backtest is what will test it.
 - Persistence (`@ax10m/persistence`): Postgres via Drizzle — **restart-safe hash-chained
   ledger** (tested, incl. tamper-detection) + **per-merchant connections with credentials
-  AES-256-GCM-encrypted at rest** + migrations + demo seed. The API's webhook router uses
-  the DB-backed store when `DATABASE_URL` is set (else in-memory). *Remaining: the live
-  `RecoveryCaseService` ledger is still in-memory (the async rewiring to the persisted
-  repo is a follow-up); reconciler scheduling.*
+  AES-256-GCM-encrypted at rest** + migrations + demo seed. When `DATABASE_URL` is set, the
+  live `RecoveryCaseService` appends to the **shared persisted ledger**, so the HTTP API and
+  the recovery worker write to ONE chain (advisory-lock-serialized; proven under concurrent
+  writes). Else in-memory (pglite is single-process). *Remaining: reconciler scheduling.*
 - 13 enterprise billing-platform adapters are capability-accurate skeletons.
 - Holdout-loss credit / certification-taper billing; live retention-value billing mode.
 

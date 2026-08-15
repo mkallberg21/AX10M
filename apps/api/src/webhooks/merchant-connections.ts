@@ -11,7 +11,8 @@
  */
 
 import type { AdapterCredentials } from '@ax10m/poal';
-import { ConnectionRepository, applyMigrations, loadKeyFromEnv, openFromEnv } from '@ax10m/persistence';
+import { ConnectionRepository, loadKeyFromEnv } from '@ax10m/persistence';
+import { getSharedDb } from '../persistence/database.js';
 
 /** A merchant's connection to one processor account. */
 export interface MerchantConnection {
@@ -104,9 +105,8 @@ export async function seedConnectionsFromEnv(store: MerchantConnectionStore, env
  */
 export async function buildConnectionStore(env: NodeJS.ProcessEnv = process.env): Promise<MerchantConnectionStore> {
   if (env.DATABASE_URL) {
-    const { db } = await openFromEnv();
-    await applyMigrations(db);
-    return new DbMerchantConnectionStore(new ConnectionRepository(db, loadKeyFromEnv()));
+    const db = await getSharedDb(env);
+    if (db) return new DbMerchantConnectionStore(new ConnectionRepository(db, loadKeyFromEnv()));
   }
   const store = new InMemoryMerchantConnectionStore();
   await seedConnectionsFromEnv(store, env);

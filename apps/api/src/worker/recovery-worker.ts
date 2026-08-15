@@ -19,12 +19,15 @@ import { readTemporalEnv, runRecoveryWorker } from '@ax10m/scheduler/temporal';
 import { OnboardingService } from '../onboarding/onboarding.service.js';
 import { RecoveryCaseService } from '../recovery/recovery-case.service.js';
 import { ServiceRecoveryCasePort, type AdapterResolver } from '../recovery/recovery-case.port.js';
+import { buildLedgerPort } from '../recovery/ledger-port.js';
 import { buildConnectionStore } from '../webhooks/merchant-connections.js';
 
 export interface RecoveryWorkerRuntime {
   service: RecoveryCaseService;
   port: ServiceRecoveryCasePort;
   shadow: boolean;
+  /** true when appending to the shared persisted (Postgres) ledger, not in-memory. */
+  sharedLedger: boolean;
   address: string;
   namespace: string;
   taskQueue: string;
@@ -37,6 +40,13 @@ export interface RecoveryWorkerRuntime {
 export async function buildRecoveryWorkerRuntime(env: NodeJS.ProcessEnv = process.env): Promise<RecoveryWorkerRuntime> {
   const temporal = readTemporalEnv(env);
   const service = new RecoveryCaseService(new OnboardingService());
+
+  // Share the persisted ledger with the API (same Postgres) so the worker's real charges
+  // land in the chain the API reads and the retrainer consumes. Falls back to in-memory
+  // (single-process) when no DATABASE_URL is set.
+  const ledger = await buildLedgerPort(env);
+  if (ledger) service.useLedger(ledger);
+  const sharedLedger = ledger !== null;
 
   // Preload the configured processor connections into a merchant→adapter map. The saga's
   // resolver is synchronous, so we resolve credentials up front (the worker starts with a
@@ -67,6 +77,7 @@ export async function buildRecoveryWorkerRuntime(env: NodeJS.ProcessEnv = proces
     service,
     port,
     shadow: !temporal.liveCharging,
+    sharedLedger,
     address: temporal.address,
     namespace: temporal.namespace,
     taskQueue: temporal.taskQueue,
@@ -79,6 +90,7 @@ export async function startRecoveryWorker(env: NodeJS.ProcessEnv = process.env):
   // eslint-disable-next-line no-console
   console.log(
     `[recovery-worker] queue=${rt.taskQueue} address=${rt.address} namespace=${rt.namespace} ` +
+      `ledger=${rt.sharedLedger ? 'shared-postgres' : 'in-memory(single-process)'} ` +
       `shadow=${rt.shadow}${rt.shadow ? ' (NO money will move — set AX10M_LIVE_CHARGING=true to charge)' : ' (LIVE CHARGING)'}`,
   );
   await runRecoveryWorker({ port: rt.port, address: rt.address, namespace: rt.namespace, taskQueue: rt.taskQueue });

@@ -194,9 +194,11 @@ The `ARCHITECTURE.md` phases are re-prioritized accordingly:
 2. **Stripe adapter → real** (done) + the "take control" charge path in a durable
    (Temporal) activity with exactly-once semantics — **wired and runnable**: a worker
    (`apps/api run worker`), an API durable dispatcher, a local cluster harness, and an
-   e2e against a real Temporal server. Remaining: real processor creds + a cluster to
-   move actual money (gated behind `AX10M_LIVE_CHARGING`), and a shared persisted ledger
-   so the worker's charges feed the retrainer.
+   e2e against a real Temporal server. The **shared persisted ledger** is wired: with
+   `DATABASE_URL` set, the API and worker append to one advisory-lock-serialized
+   hash-chained ledger (proven under concurrent writes), so the worker's charges feed the
+   retrainer. Remaining: real processor creds + a cluster to move actual money (gated
+   behind `AX10M_LIVE_CHARGING`).
 3. **Holdout economics** — certification taper + holdout-loss credit in billing.
 4. **One design partner**, certification window, published signed statement.
 5. Then breadth (more adapters, marketplace, SOC 2) and ML depth (bandit/RL,

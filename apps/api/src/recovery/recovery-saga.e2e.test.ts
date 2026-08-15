@@ -99,13 +99,13 @@ describe('recovery saga end-to-end (scheduler → port → service → engine/gu
     const rt = new InMemoryRuntime('2026-08-14T12:00:00.000Z');
     const input: RecoverySagaInput = { attempt: { invoice, method, decline }, shadow: false };
 
-    const head0 = svc.ledgerHead();
+    const head0 = await svc.ledgerHead();
     const res = await runRecoverySaga(port, rt, input);
 
     expect(res.status).toBe('recovered');
     expect(adapter.keys).toHaveLength(2); // attempt 1 failed, attempt 2 succeeded
     expect(new Set(adapter.keys).size).toBe(2); // distinct keys per attempt (exactly-once within an attempt)
-    expect(svc.ledgerHead()).not.toBe(head0); // charges + case.recovered were ledgered
+    expect(await svc.ledgerHead()).not.toBe(head0); // charges + case.recovered were ledgered
   });
 
   it('moves no money in shadow mode but still plans + measures', async () => {

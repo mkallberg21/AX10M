@@ -33,7 +33,7 @@ export class ServiceRecoveryCasePort implements RecoveryCasePort {
   ) {}
 
   async plan(input: AttemptInput): Promise<PlanResult> {
-    const decision = this.service.planAttempt({
+    const decision = await this.service.planAttempt({
       invoice: input.invoice,
       method: input.method,
       decline: input.decline,

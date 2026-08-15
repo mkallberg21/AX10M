@@ -11,11 +11,13 @@ drives sequencing.
   time-skipping Temporal server) that proves the durable saga + exactly-once-under-retry.
   See `docs/RUNBOOK-WORKER.md`. **Remaining to actually charge real money:** an operator
   supplies real processor creds + a real cluster, and flips `AX10M_LIVE_CHARGING=true`.
-- **Shared persisted ledger across worker + API.** The live `RecoveryCaseService` ledger is
-  still in-process, so the worker and HTTP API hold separate in-memory ledgers. Back it with
-  the `@ax10m/persistence` `LedgerRepository` (already restart-safe) so both processes append
-  to one hash-chained ledger — the prerequisite for the worker's real charges to feed the
-  retrainer/flywheel the API reads. (This is what makes "a real ledger to retrain on" real.)
+- ~~**Shared persisted ledger across worker + API.**~~ **DONE** — a `LedgerPort` seam
+  (in-memory default; `PersistedLedgerPort` over `@ax10m/persistence` `LedgerRepository`).
+  With `DATABASE_URL` set, both the API and worker append to one shared hash-chained ledger,
+  serialized by a transaction-scoped advisory lock (seq-collision retry backstop); proven
+  contiguous + `verifyChain`-valid under concurrent writes in
+  `apps/api/src/recovery/shared-ledger.e2e.test.ts`. *Remaining downstream: run the retrainer
+  against the persisted (Postgres) ledger the worker fills once live charging is on.*
 - **Adapters populate `invoice.failed` payload.method.** The API auto-dispatches a durable
   saga only when the normalized failure event carries the failed payment method. Have each
   adapter's `ingestWebhook` include it so durable dispatch covers every processor (today it
