@@ -234,6 +234,36 @@ SHAP per decision; every recovery action carries a human-readable rationale ("re
 - **Infra**: Kubernetes, Terraform, multi-region, per-tenant isolation.
 - **Repo**: monorepo (Turborepo/Nx) — `adapters/`, `core/`, `attribution/`, `comms/`, `dashboard/`, `sdk/`, `infra/`.
 
+### 10.1 Persistence (`@ax10m/persistence`, Phase 4)
+
+**ORM: Drizzle (chosen over Prisma).** Rationale:
+- **SQL-first, no codegen or engine binary.** Drizzle is a thin typed query builder over
+  the driver; Prisma ships a Rust query engine + a generated client, which is heavier to
+  build, deploy, and keep in sync in a pnpm monorepo.
+- **Testable against real Postgres with no server.** Drizzle runs on
+  `@electric-sql/pglite` (in-process Postgres/WASM), so the persistence layer — including
+  a genuine **restart** (close a file-backed pglite client, reopen it) — is unit-tested
+  with real Postgres semantics and zero infrastructure. The same schema drives a real
+  Postgres via `node-postgres` (`pg`) in production. Prisma's engine makes in-process
+  testing far more awkward.
+- **One schema, two drivers.** `createPg(connectionString)` (prod) and `createPglite(dir)`
+  (dev/tests) return the same schema-typed `Db`.
+
+**What's persisted:**
+- **Hash-chained ledger** (`ledger_entries`) — the SAME chaining as the in-memory
+  `HashChainedLedger` (it reuses `hashEntry`/`GENESIS_HASH`), so `verifyChain` over the
+  persisted rows still passes **after a restart** (tested, incl. tamper-detection). Append
+  reads the head then inserts; production must serialize appends (advisory lock /
+  SERIALIZABLE) to keep `seq` monotonic under concurrency (flagged in code).
+- **Per-merchant connections** (`merchant_connections`) — the source for per-merchant
+  adapter resolution. Credentials are **AES-256-GCM encrypted at rest** under
+  `AX10M_ENCRYPTION_KEY` (KMS/HSM-wrapped in prod), **never stored in plaintext, never
+  logged**. The API's webhook router resolves a connection → decrypts config → builds the
+  adapter; plaintext lives only transiently in memory while handling a webhook.
+- **Migrations** are portable idempotent DDL tracked in `schema_migrations` (runs the same
+  on pglite and Postgres). A **seed** loads the Phase-2 demo dataset (same world-model
+  generator as the backtest).
+
 ---
 
 ## 11. Pricing & business model

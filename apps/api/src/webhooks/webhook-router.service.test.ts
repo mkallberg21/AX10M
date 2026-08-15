@@ -48,8 +48,8 @@ function router(store = new InMemoryMerchantConnectionStore()) {
 describe('WebhookRouterService', () => {
   it('routes by connection id to the right merchant + credentials', async () => {
     const { svc, store, built } = router();
-    store.register({ connectionId: 'conn_A', merchantId: 'mrc_A', processor: 'stripe', config: { secretKey: 'sk_A', webhookSecret: 'wh_A' } });
-    store.register({ connectionId: 'conn_B', merchantId: 'mrc_B', processor: 'stripe', config: { secretKey: 'sk_B', webhookSecret: 'wh_B' } });
+    await store.register({ connectionId: 'conn_A', merchantId: 'mrc_A', processor: 'stripe', config: { secretKey: 'sk_A', webhookSecret: 'wh_A' } });
+    await store.register({ connectionId: 'conn_B', merchantId: 'mrc_B', processor: 'stripe', config: { secretKey: 'sk_B', webhookSecret: 'wh_B' } });
 
     await svc.ingest('stripe', 'conn_B', { body: '{}', headers: {} });
 
@@ -59,7 +59,7 @@ describe('WebhookRouterService', () => {
 
   it('falls back to the processor default for single-tenant ingress', async () => {
     const { svc, store, built } = router();
-    store.register({ connectionId: 'stripe-default', merchantId: 'mrc_1', processor: 'stripe', config: { secretKey: 'sk', webhookSecret: 'wh' } });
+    await store.register({ connectionId: 'stripe-default', merchantId: 'mrc_1', processor: 'stripe', config: { secretKey: 'sk', webhookSecret: 'wh' } });
     await svc.ingest('stripe', null, { body: '{}', headers: {} });
     expect(built[0]!.merchantId).toBe('mrc_1');
   });
@@ -76,20 +76,20 @@ describe('WebhookRouterService', () => {
 
   it('rejects a URL that pairs a connection with the wrong processor', async () => {
     const { svc, store } = router();
-    store.register({ connectionId: 'conn_A', merchantId: 'mrc_A', processor: 'stripe', config: {} });
+    await store.register({ connectionId: 'conn_A', merchantId: 'mrc_A', processor: 'stripe', config: {} });
     await expect(svc.ingest('adyen', 'conn_A', { body: '{}', headers: {} })).rejects.toThrow(/is for 'stripe', not 'adyen'/);
   });
 });
 
 describe('seedConnectionsFromEnv', () => {
-  it('registers a default only when the required secrets are present', () => {
+  it('registers a default only when the required secrets are present', async () => {
     const store = new InMemoryMerchantConnectionStore();
-    seedConnectionsFromEnv(store, {
+    await seedConnectionsFromEnv(store, {
       STRIPE_SECRET_KEY: 'sk', STRIPE_WEBHOOK_SECRET: 'wh', STRIPE_MERCHANT_ID: 'mrc_env',
       // chargebee left unconfigured → no default
     } as NodeJS.ProcessEnv);
 
-    expect(store.defaultFor('stripe')?.merchantId).toBe('mrc_env');
-    expect(store.defaultFor('chargebee')).toBeUndefined();
+    expect((await store.defaultFor('stripe'))?.merchantId).toBe('mrc_env');
+    expect(await store.defaultFor('chargebee')).toBeUndefined();
   });
 });

@@ -36,7 +36,7 @@ export class WebhookRouterService {
    * fall back to the processor's default connection (single-tenant deployments).
    */
   async ingest(processor: string, connectionId: string | null, raw: RawWebhook): Promise<void> {
-    const conn = connectionId ? this.connections.get(connectionId) : this.connections.defaultFor(processor);
+    const conn = connectionId ? await this.connections.get(connectionId) : await this.connections.defaultFor(processor);
     if (!conn) {
       throw new NotFoundException(
         connectionId

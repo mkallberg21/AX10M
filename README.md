@@ -53,7 +53,9 @@ lift/
 │  ├─ guardrail/                  # compliance hard-constraints (card-network retry caps, quiet hours, consent, fraud)
 │  ├─ onboarding/                 # shadow-first lifecycle + projection ("see the money before you pay")
 │  ├─ scheduler/                  # durable charge scheduler: adaptive + ARSE-sequenced sagas + Temporal binding
-│  └─ protocol/                   # the AX10M Protocol (AXP-01..06) typed message spec
+│  ├─ protocol/                   # the AX10M Protocol (AXP-01..06) typed message spec
+│  ├─ persistence/                # Postgres (Drizzle): restart-safe ledger + encrypted per-merchant creds
+│  └─ backtest/                   # engine-vs-Smart-Retries backtest (Phase 1) + demo-data generator
 └─ apps/
    ├─ api/                        # NestJS: webhook ingress (5 processors) · reconciler · recovery · onboarding
    └─ dashboard/                  # Next.js: shadow banner + projected uplift + cohort table + CFO reconciliation panel
@@ -158,7 +160,8 @@ corepack pnpm --filter @ax10m/api dev          # NestJS on :4000
 corepack pnpm --filter @ax10m/dashboard dev    # Next.js on :3000
 ```
 
-**380 unit tests** across the packages (poal 220 · recovery-engine 40 · attribution 41 ·
+**391 unit tests** across the packages (poal 220 · recovery-engine 40 · attribution 41 ·
+persistence 7 · backtest 4 ·
 scheduler 23 · api 21 · onboarding 18 · guardrail 13 · protocol 4), all green; the whole
 workspace typechecks and both apps build. See [`docs/BASELINE.md`](docs/BASELINE.md) for
 the authoritative verification snapshot.
@@ -208,7 +211,12 @@ must be **restricted, least-privilege** keys (ARCHITECTURE.md §7).
   runs shadow mode — measures, never moves money.**
 - **The engine is trained on synthetic data, not proven vs the incumbent** — see the
   honest-status block above; the backtest is what will test it.
-- Persistence: in-memory stores today → Postgres. Reconciler scheduling.
+- Persistence (`@ax10m/persistence`): Postgres via Drizzle — **restart-safe hash-chained
+  ledger** (tested, incl. tamper-detection) + **per-merchant connections with credentials
+  AES-256-GCM-encrypted at rest** + migrations + demo seed. The API's webhook router uses
+  the DB-backed store when `DATABASE_URL` is set (else in-memory). *Remaining: the live
+  `RecoveryCaseService` ledger is still in-memory (the async rewiring to the persisted
+  repo is a follow-up); reconciler scheduling.*
 - 13 enterprise billing-platform adapters are capability-accurate skeletons.
 - Holdout-loss credit / certification-taper billing; live retention-value billing mode.
 

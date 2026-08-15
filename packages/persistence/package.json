@@ -1,0 +1,35 @@
+{
+  "name": "@ax10m/persistence",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rimraf dist *.tsbuildinfo",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "seed": "tsc -b && node ./dist/seed-cli.js"
+  },
+  "dependencies": {
+    "@ax10m/attribution": "workspace:*",
+    "@ax10m/backtest": "workspace:*",
+    "@ax10m/canonical": "workspace:*",
+    "@electric-sql/pglite": "^0.2.0",
+    "drizzle-orm": "^0.36.0",
+    "pg": "^8.13.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.11.0",
+    "rimraf": "^6.0.0",
+    "typescript": "^5.5.4",
+    "vitest": "^2.1.0"
+  }
+}

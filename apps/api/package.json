@@ -16,6 +16,7 @@
     "@ax10m/canonical": "workspace:*",
     "@ax10m/guardrail": "workspace:*",
     "@ax10m/onboarding": "workspace:*",
+    "@ax10m/persistence": "workspace:*",
     "@ax10m/poal": "workspace:*",
     "@ax10m/recovery-engine": "workspace:*",
     "@ax10m/scheduler": "workspace:*",
