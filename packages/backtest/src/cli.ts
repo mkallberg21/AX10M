@@ -15,7 +15,7 @@ import { EnginePolicy } from './policy/engine-policy.js';
 import { StripeSmartRetriesBaseline } from './baselines/smart-retries.js';
 import { runComparison } from './estimate.js';
 import { armSummary } from './sim/simulate.js';
-import { aaTest, powerCurve, sensitivitySweep } from './checks.js';
+import { aaTest, baselineReachSweep, powerCurve, sensitivitySweep } from './checks.js';
 import { computeByCode, computeVerdict, cumulativePerInvoice, renderLiftSvg, renderReportMd, type RunResults } from './report.js';
 
 const STREAM_SEED = 20260814;
@@ -32,7 +32,15 @@ export async function runBacktest(): Promise<RunResults> {
   const cmp = runComparison({ invoices, controlPolicy, treatmentPolicy, controlSeed, treatmentSeed });
   const cs = armSummary(cmp.controlOutcomes);
   const ts = armSummary(cmp.treatmentOutcomes);
-  const verdict = computeVerdict(cmp.estimate);
+  const baselineReach = baselineReachSweep(20_000, deriveSeed(STREAM_SEED, 'reach'));
+  let verdict = computeVerdict(cmp.estimate);
+  // If the engine only beats the DEFAULT baseline but loses to one that retries as
+  // far, the top-line must say so — the "gain" is a window-length artifact.
+  const rFirst = baselineReach[0];
+  const rLast = baselineReach[baselineReach.length - 1];
+  if (rFirst && rLast && rFirst.rateDiff > 0 && rLast.rateDiff < 0) {
+    verdict += ' — BUT this edge is a longer-retry-window artifact: against a baseline that retries as far as the engine, the engine LOSES (see the fairness sweep). On recovery rate alone the engine does not beat a persistent baseline.';
+  }
 
   const results: RunResults = {
     inputs: {
@@ -49,6 +57,7 @@ export async function runBacktest(): Promise<RunResults> {
     aa: aaTest(N_CUSTOMERS, deriveSeed(STREAM_SEED, 'aa')),
     power: powerCurve(deriveSeed(STREAM_SEED, 'power'), [1, 3, 5, 10]),
     sensitivity: sensitivitySweep(20_000, deriveSeed(STREAM_SEED, 'sens')),
+    baselineReach,
     byCode: computeByCode(cmp.controlOutcomes, cmp.treatmentOutcomes),
     verdict,
   };

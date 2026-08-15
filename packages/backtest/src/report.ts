@@ -6,7 +6,7 @@
 
 import type { BillableUpliftResult } from '@ax10m/attribution';
 import type { InvoiceOutcome } from './sim/simulate.js';
-import type { AaResult, PowerPoint, SensitivityPoint } from './checks.js';
+import type { AaResult, BaselineReachPoint, PowerPoint, SensitivityPoint } from './checks.js';
 
 export interface CodeBreak {
   code: string;
@@ -53,6 +53,7 @@ export interface RunResults {
   aa: AaResult;
   power: PowerPoint[];
   sensitivity: SensitivityPoint[];
+  baselineReach: BaselineReachPoint[];
   byCode: CodeBreak[];
   verdict: string;
 }
@@ -109,6 +110,33 @@ export function renderReportMd(r: RunResults): string {
   lines.push(`- **Proven lower-bound dollars (cum):** ${usd(e.lowerDollarsCum.amount)}`);
   lines.push(`- **Would it bill?** ${e.billable ? `yes — fee ${usd(e.fee.amount)}` : `no (${e.gateReasons.join('; ')})`}`);
   lines.push(`- CUPED variance reduction: ${pct(e.cupedVarianceReduction)} · SRM χ²=${e.srm.chiSquare.toFixed(2)}${e.srm.breached ? ' (BREACHED)' : ''}`);
+  lines.push('');
+  lines.push('## Fairness — is any engine gain just a longer retry window?');
+  lines.push('');
+  lines.push('The headline compares the engine to Stripe Smart Retries\' **default** reach (~day 18). But a ' +
+    'baseline can simply retry longer. This sweep runs the engine against baselines that reach further:');
+  lines.push('');
+  lines.push('| Baseline reaches | Control recovery | Engine recovery | Δ (engine − baseline) |');
+  lines.push('|---|---|---|---|');
+  for (const p of r.baselineReach) {
+    lines.push(`| day ${p.lastDay} | ${pct(p.controlRate)} | ${pct(p.treatmentRate)} | ${pp(p.rateDiff)} |`);
+  }
+  lines.push('');
+  const first = r.baselineReach[0];
+  const last = r.baselineReach[r.baselineReach.length - 1];
+  const flips = first && last && first.rateDiff > 0 && last.rateDiff < 0;
+  lines.push(`**Reading it honestly.** ${flips
+    ? 'The engine only edges ahead of the *default* (short-reaching) baseline; against a baseline that retries as ' +
+      'far as the engine does, the engine **loses**. So the apparent gain is a **window-length effect any baseline ' +
+      'can copy**, not decline-specific intelligence. On recovery rate alone, in a world with no attempt cost, ' +
+      '"retry everything for longer" beats the engine.'
+    : 'See the table for how the comparison moves as the baseline reaches further.'}`);
+  lines.push('');
+  lines.push('The engine\'s real case therefore cannot rest on raw recovery rate. It rests on what this backtest does ' +
+    'NOT price: **per-attempt cost and card-network retry-cap fines** (a maximally-persistent baseline would breach ' +
+    'network caps — which the guardrail prevents but recovery-rate ignores), and the **cross-merchant issuer ' +
+    'flywheel** (the engine runs on cold features here). Proving that edge needs a cost/compliance-aware objective ' +
+    'and a live holdout — not this metric.');
   lines.push('');
   lines.push('## Where the difference comes from (by decline code)');
   lines.push('');

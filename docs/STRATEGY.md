@@ -43,6 +43,18 @@ whether we've succeeded — including telling us, early and cheaply, if we haven
 > The measurement did its job: it told us early that the engine is not yet a winner.
 > See `packages/backtest/out/report.md`.
 
+> **Update 2 — timing rework, and the deeper finding.** We fixed the front-loading (the
+> ARSE cadences now reach into the 2-4 week recovery window). That closed the ~19 pp gap
+> to roughly parity with Smart Retries' *default* reach. But a **fairness sweep** settled
+> it: against a baseline that simply retries *as far as the engine*, the engine **loses**
+> (-8 to -11 pp on recovery rate). The lesson is strategic, not a bug: **in a
+> recovery-rate-only frame with no attempt cost, "retry everything, for longer" beats
+> selective intelligence.** The engine's edge therefore cannot be raw recovery rate — it
+> has to be the things the rate metric ignores: per-attempt cost, card-network retry-cap
+> compliance (a maximally-persistent baseline would breach caps and incur fines), and the
+> cross-merchant issuer flywheel. Proving that needs a cost/compliance-aware objective and
+> a live holdout. Until then, the honest position stands: not yet a winner, bills $0.
+
 ## 1. Lead with the ledger, not "we prove lift"
 
 "We prove incremental lift" is no longer an unoccupied position — Slicker (and

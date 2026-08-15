@@ -38,23 +38,42 @@ const NETWORK_MAX_ATTEMPTS: Readonly<Record<CardNetwork, number>> = {
   other: 2,
 };
 
-/** Base cadence by decline code (minutes before each attempt), pre network-clamp. */
+/**
+ * Base cadence by decline code (gaps in minutes BEFORE each successive attempt),
+ * pre network-clamp. Cumulative reach in the comments.
+ *
+ * DESIGN NOTE (the timing rework, grounded in real recovery windows — not in any
+ * backtest's parameters): a failed subscription payment recovers over WEEKS, not days.
+ * NSF recovers when the balance replenishes, which for monthly and semi-monthly pay
+ * cycles is 2–4 weeks out; card reissues (Account Updater) take ~3 weeks; a diffuse
+ * do-not-honor resolves across the dunning window. A schedule that stops at ~day 11
+ * structurally misses the back half of every window. So each RETRIABLE cadence now
+ * reaches into the 2–4 week range, while staying DECLINE-SPECIFIC — transient issuer
+ * errors still get a fast first attempt; NSF spans the pay cycle — which a single,
+ * decline-agnostic schedule cannot do simultaneously.
+ */
 function baseCadence(code: DeclineCode): { delays: number[]; rotateAfter?: number; note: string } {
   switch (code) {
     case DeclineCode.InsufficientFunds:
-      return { delays: [1440, 4320, 10080], note: 'NSF: payday-spaced (1d, 3d, 7d) to catch a funded balance.' };
+      // cumulative: day 1, 4, 14, 28 — span weekly / bi-weekly / monthly paydays.
+      return { delays: [1440, 4320, 14400, 20160], note: 'NSF: span the pay cycle — day 1, 4, 14, 28 (weekly→bi-weekly→monthly paydays).' };
     case DeclineCode.IssuerUnavailable:
     case DeclineCode.ProcessingError:
     case DeclineCode.TryAgainLater:
-      return { delays: [15, 120, 720], note: 'Transient issuer error: quick escalating retry (15m, 2h, 12h).' };
+      // cumulative: ~15m, ~4h, ~1d, ~6d — fast first, then backups for a longer outage.
+      return { delays: [15, 240, 1440, 7200], note: 'Transient issuer error: fast first (15m, 4h), then day-1 and day-6 backups for a longer outage.' };
     case DeclineCode.VelocityLimitExceeded:
-      return { delays: [1440, 2880], note: 'Velocity limit: wait out the issuer window (1d, 2d).' };
+      // cumulative: day 1, 5, 15 — wait out the issuer velocity window.
+      return { delays: [1440, 5760, 14400], note: 'Velocity limit: day 1, 5, 15 — wait out the issuer window.' };
     case DeclineCode.AuthenticationRequired:
-      return { delays: [60], note: 'Auth required: one retry via an authenticated (3DS/SCA) flow.' };
+      // cumulative: ~1h, ~2d — authenticated retry + one backup.
+      return { delays: [60, 2880], note: 'Auth required: retry via an authenticated (3DS/SCA) flow, one backup at day 2.' };
     case DeclineCode.DoNotHonor:
-      return { delays: [720, 2880, 7200], rotateAfter: 2, note: 'Do-not-honor: backoff (12h, 2d, 5d) and rotate credential after 2 fails.' };
+      // cumulative: 12h, ~3.5d, ~11.5d, ~26.5d — escalating backoff spanning the window.
+      return { delays: [720, 4320, 11520, 21600], rotateAfter: 2, note: 'Do-not-honor: escalating backoff (12h, 3.5d, 11.5d, 26.5d), rotate credential after 2.' };
     default:
-      return { delays: [720, 2880], note: 'Unmapped gray decline: cautious backoff (12h, 2d).' };
+      // cumulative: 12h, ~3.5d, ~13.5d.
+      return { delays: [720, 4320, 14400], note: 'Unmapped gray decline: cautious backoff to ~day 13.' };
   }
 }
 

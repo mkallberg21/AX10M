@@ -1,4 +1,4 @@
-VERDICT: the AX10M engine does NOT beat the Stripe Smart Retries baseline in this simulated world (Δrecovery = -19.16 pp; the baseline is at least as good).
+VERDICT: inconclusive at this sample size — the point estimate favors the AX10M engine by 1.19 pp, but the mSPRT lower bound is not positive (lower bound not yet positive (lift unproven)), so it would bill $0. — BUT this edge is a longer-retry-window artifact: against a baseline that retries as far as the engine, the engine LOSES (see the fairness sweep). On recovery rate alone the engine does not beat a persistent baseline.
 
 # AX10M Backtest — does the recovery engine beat Stripe Smart Retries?
 
@@ -8,30 +8,44 @@ _Synthetic backtest. Treatment = `ax10m-engine`, Control = `stripe-smart-retries
 
 | Metric | Control (Smart Retries) | Treatment (AX10M engine) |
 |---|---|---|
-| Recovery rate | 36.91% | 17.75% |
-| Recovered $ | $138,828 | $608,777 |
+| Recovery rate | 36.91% | 38.11% |
+| Recovered $ | $138,828 | $1,305,697 |
 
-- **Absolute recovery-rate lift:** -19.16 pp
-- **Relative lift:** -51.9%
-- **CUPED-adjusted incremental $/treated invoice (point):** $-13 (SE $1)
+- **Absolute recovery-rate lift:** 1.19 pp
+- **Relative lift:** 3.2%
+- **CUPED-adjusted incremental $/treated invoice (point):** $1 (SE $1)
 - **mSPRT lower bound $/treated invoice:** $0
 - **Proven lower-bound dollars (cum):** $0
 - **Would it bill?** no (lower bound not yet positive (lift unproven))
-- CUPED variance reduction: 8.18% · SRM χ²=3.06
+- CUPED variance reduction: 17.67% · SRM χ²=3.06
+
+## Fairness — is any engine gain just a longer retry window?
+
+The headline compares the engine to Stripe Smart Retries' **default** reach (~day 18). But a baseline can simply retry longer. This sweep runs the engine against baselines that reach further:
+
+| Baseline reaches | Control recovery | Engine recovery | Δ (engine − baseline) |
+|---|---|---|---|
+| day 18 | 36.31% | 38.29% | 1.98 pp |
+| day 28 | 44.75% | 38.29% | -6.46 pp |
+| day 35 | 47.43% | 38.29% | -9.14 pp |
+
+**Reading it honestly.** The engine only edges ahead of the *default* (short-reaching) baseline; against a baseline that retries as far as the engine does, the engine **loses**. So the apparent gain is a **window-length effect any baseline can copy**, not decline-specific intelligence. On recovery rate alone, in a world with no attempt cost, "retry everything for longer" beats the engine.
+
+The engine's real case therefore cannot rest on raw recovery rate. It rests on what this backtest does NOT price: **per-attempt cost and card-network retry-cap fines** (a maximally-persistent baseline would breach network caps — which the guardrail prevents but recovery-rate ignores), and the **cross-merchant issuer flywheel** (the engine runs on cold features here). Proving that edge needs a cost/compliance-aware objective and a live holdout — not this metric.
 
 ## Where the difference comes from (by decline code)
 
 | Decline code | Volume share | Control recovery | Treatment recovery | Δ |
 |---|---|---|---|---|
-| insufficient_funds | 34.50% | 46.33% | 30.54% | -15.80 pp |
-| do_not_honor | 21.94% | 27.48% | 9.33% | -18.14 pp |
+| insufficient_funds | 34.50% | 46.33% | 56.71% | 10.38 pp |
+| do_not_honor | 21.94% | 27.48% | 31.11% | 3.64 pp |
 | expired_card | 12.12% | 14.84% | 0.00% | -14.84 pp |
-| issuer_unavailable | 5.95% | 77.81% | 35.73% | -42.08 pp |
-| processing_error | 4.97% | 71.43% | 32.65% | -38.78 pp |
-| try_again_later | 4.09% | 70.27% | 31.97% | -38.30 pp |
-| authentication_required | 4.04% | 25.11% | 0.00% | -25.11 pp |
+| issuer_unavailable | 5.95% | 77.81% | 77.11% | -0.70 pp |
+| processing_error | 4.97% | 71.43% | 70.11% | -1.32 pp |
+| try_again_later | 4.09% | 70.27% | 67.73% | -2.54 pp |
+| authentication_required | 4.04% | 25.11% | 1.60% | -23.52 pp |
 | lost_card | 3.21% | 0.59% | 0.00% | -0.59 pp |
-| velocity_limit_exceeded | 3.01% | 32.70% | 4.01% | -28.70 pp |
+| velocity_limit_exceeded | 3.01% | 32.70% | 26.65% | -6.05 pp |
 | stolen_card | 2.09% | 0.00% | 0.00% | 0.00 pp |
 | closed_account | 2.02% | 0.00% | 0.00% | 0.00 pp |
 | invalid_card | 1.55% | 1.87% | 0.00% | -1.87 pp |
@@ -40,7 +54,7 @@ _Synthetic backtest. Treatment = `ax10m-engine`, Control = `stripe-smart-retries
 
 ## Validity checks
 
-**A/A test (engine vs itself):** PASS — Δrate 1.09 pp, lower bound $0, billable false. The estimator does not manufacture lift where there is none.
+**A/A test (engine vs itself):** PASS — Δrate 0.65 pp, lower bound $0, billable false. The estimator does not manufacture lift where there is none.
 
 **Power curve** — minimum invoices to detect a given true lift (α=0.05, world amount variance + clustering):
 
@@ -57,13 +71,13 @@ This is the **minimum viable merchant size** for billing: a merchant whose month
 
 | Parameter | ×0.7 Δrate | ×0.7 lower$ | ×1.3 Δrate | ×1.3 lower$ |
 |---|---|---|---|---|
-| recoverableScale | -12.72 pp | $0 | -23.46 pp | $0 |
-| onsetScale | -18.94 pp | $0 | -17.94 pp | $0 |
-| windowScale | -18.31 pp | $0 | -18.31 pp | $0 |
-| residualScale | -17.90 pp | $0 | -18.01 pp | $0 |
-| nsfShareScale | -18.98 pp | $0 | -18.22 pp | $0 |
+| recoverableScale | 1.11 pp | $0 | 2.40 pp | $0 |
+| onsetScale | -4.87 pp | $0 | 3.73 pp | $0 |
+| windowScale | -7.97 pp | $0 | 1.57 pp | $0 |
+| residualScale | 0.15 pp | $0 | 1.29 pp | $0 |
+| nsfShareScale | 0.23 pp | $0 | 2.30 pp | $0 |
 
-Sign of the lift is **stable** across the sweep. 
+Sign of the lift is **NOT stable** across the sweep. A result whose sign flips under a ±30% parameter change is fragile — treat the headline as indicative only.
 
 ## Assumptions & Limitations (read before trusting any number)
 

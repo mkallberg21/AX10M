@@ -200,15 +200,14 @@ describe('RecoveryCaseService webhook ingress (shadow planning)', () => {
 describe('ARSE sequence planning', () => {
   const DAY = 24 * 60 * 60 * 1000;
 
-  it('plans a network-aware NSF sequence (Visa: 1d, +3d, +7d cadence, capped at 3)', () => {
+  it('plans a network-aware NSF sequence that reaches into the pay-cycle window (day 1, 4, 14, ...)', () => {
     const svc = new RecoveryCaseService(new OnboardingService());
     const steps = svc.planSequence({ invoice, method, decline: softDecline, attemptNumber: 1 });
-    expect(steps.length).toBe(3); // visa NSF cap
+    expect(steps.length).toBeGreaterThanOrEqual(3); // reaches at least ~day 14, not stopping at ~day 11
     expect(steps.every((s) => s.action === 'retry')).toBe(true);
-    // Cadence deltas are fixed regardless of wall clock: +1d to first, +3d, +7d.
     const t = steps.map((s) => Date.parse(s.at));
-    expect(t[1]! - t[0]!).toBe(3 * DAY);
-    expect(t[2]! - t[1]!).toBe(7 * DAY);
+    expect(t[1]! - t[0]!).toBe(3 * DAY); // day 1 → day 4
+    expect(t[2]! - t[1]!).toBe(10 * DAY); // day 4 → day 14 (the rework: reach the second/third week)
   });
 
   it('plans a single terminal card_update step for an expired card', () => {

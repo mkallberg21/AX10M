@@ -45,7 +45,7 @@ describe('strategyFor', () => {
   });
 
   it('applies per-network attempt ceilings', () => {
-    expect(strategyFor(DeclineCode.InsufficientFunds, 'visa').maxAttempts).toBe(3);
+    expect(strategyFor(DeclineCode.InsufficientFunds, 'visa').maxAttempts).toBe(4); // reaches ~day 28
     expect(strategyFor(DeclineCode.InsufficientFunds, 'other').maxAttempts).toBe(2); // clamped to 2
     expect(strategyFor(DeclineCode.InsufficientFunds, 'amex').maxAttempts).toBe(3);
   });
@@ -70,12 +70,16 @@ describe('planRetrySequence (ARSE)', () => {
       methods: [{ ref: 'pm_1', isDefault: true }],
     });
     expect(steps.length).toBeGreaterThan(0);
-    expect(steps.length).toBeLessThanOrEqual(3); // visa NSF cap
+    expect(steps.length).toBeLessThanOrEqual(4); // visa NSF cap
     for (let i = 1; i < steps.length; i++) {
       expect(Date.parse(steps[i]!.at)).toBeGreaterThan(Date.parse(steps[i - 1]!.at)); // strictly later
       expect(steps[i]!.attemptNumber).toBe(steps[i - 1]!.attemptNumber + 1);
     }
     expect(steps.every((s) => s.action === 'retry')).toBe(true);
+    // The timing rework: a recoverable NSF case now reaches into the pay-cycle window
+    // (past ~2 weeks), not stopping at ~day 11.
+    const lastDay = (Date.parse(steps[steps.length - 1]!.at) - Date.parse('2026-08-14T12:00:00.000Z')) / 86_400_000;
+    expect(lastDay).toBeGreaterThan(13);
   });
 
   it('returns a single terminal card_update step for an expired card (no charge retries)', () => {
@@ -111,7 +115,7 @@ describe('DeclineIntelligenceEngine facade', () => {
   it('exposes classify / strategy / predict / sequence / taxonomy', () => {
     const engine = new DeclineIntelligenceEngine();
     expect(engine.classify(DeclineCode.InsufficientFunds).recommendedAction).toBe('retry');
-    expect(engine.strategy(DeclineCode.InsufficientFunds, 'visa').maxAttempts).toBe(3);
+    expect(engine.strategy(DeclineCode.InsufficientFunds, 'visa').maxAttempts).toBe(4);
     expect(engine.predict(feat())).toBeGreaterThan(0);
     expect(engine.predict(feat())).toBeLessThan(1);
     expect(engine.sequence(feat({ priorRecoveryRate: 0.8, issuerApprovalPrior: 0.8 }), { now: '2026-08-14T12:00:00.000Z', network: 'visa' }).length).toBeGreaterThan(0);

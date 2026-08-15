@@ -24,9 +24,15 @@ keep the bill honest.
 > is front-loaded (last attempt ~day 11) while real recovery onsets — paydays, card
 > reissues — run 2–4 weeks, so the baseline's later attempts recover more. The A/A test
 > passed, so the estimator is sound; the sign is stable across a ±30% sensitivity sweep.
-> This is a useful early negative: the engine's timing needs rework, or the value case
-> rests on cost/compliance and the cross-merchant issuer flywheel rather than raw
-> recovery rate. AX10M's incremental lift over the baseline is **not yet demonstrated**.
+> **Update — timing rework + fairness sweep.** A decline-specific cadence rework
+> (reaching into the 2-4 week recovery window) closed that gap: the engine now roughly
+> **matches** Smart Retries' default. But the decisive check: against a baseline that
+> simply retries *as far as the engine*, the engine **loses** (-8 to -11 pp). So the
+> apparent gain was a window-length artifact any baseline can copy; decline-specific
+> timing does not beat blanket persistence on recovery rate. The engine's case must rest
+> on what this backtest does not price — per-attempt cost, network-cap compliance, and
+> the cross-merchant issuer flywheel (cold features here). AX10M's incremental lift is
+> **not yet demonstrated** and the bill would be **$0** either way.
 > See [`packages/backtest/out/report.md`](packages/backtest/out/report.md) (verdict +
 > assumptions) and [`docs/STRATEGY.md`](docs/STRATEGY.md).
 

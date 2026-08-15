@@ -35,11 +35,13 @@ export default function Page() {
           </a>
         </div>
         <p className="onboard-note" style={{ marginTop: 12 }}>
-          <strong>Honest status:</strong> in the first backtest the AX10M engine <strong>does not beat Stripe
-          Smart Retries</strong> — it underperforms by ~19 pp on recovery rate (front-loaded retry timing).
-          So the signed statement below correctly bills <strong>$0</strong>. The top card is the <em>projected
-          opportunity</em> we&apos;d measure in shadow mode — a model estimate, <strong>not holdout-verified</strong>.
-          Both are generated from the same world model, so this demo cannot show a number the backtest denies.
+          <strong>Honest status:</strong> the AX10M engine <strong>does not yet win on recovery rate</strong>.
+          A retry-timing fix closed the original gap (it now roughly matches Stripe Smart Retries&apos; default),
+          but against a baseline that simply retries as long, the engine <strong>loses</strong> — so its edge is
+          not raw recovery rate, and the signed statement below correctly bills <strong>$0</strong>. The top card
+          is the <em>projected opportunity</em> we&apos;d measure in shadow mode — a model estimate,
+          <strong>not holdout-verified</strong>. Both come from the same world model, so this demo cannot show a
+          number the backtest denies.
         </p>
       </div>
 
@@ -140,8 +142,8 @@ export default function Page() {
         </tbody>
       </table>
       <p className="subtitle" style={{ fontSize: 13, marginTop: 12 }}>
-        Treatment recovery is <strong>below</strong> control in most cohorts here — the engine&apos;s retry cadence
-        is too front-loaded for this world&apos;s recovery timing (see the backtest). The estimator reports that
+        Treatment and control recover at nearly the same rate here — after the retry-timing fix the engine matches
+        the default baseline but does not beat one that retries as long, so it bills $0. The estimator reports that
         faithfully rather than papering over it.
       </p>
 

@@ -90,6 +90,41 @@ export interface SensitivityPoint {
   billable: boolean;
 }
 
+// ── Baseline-reach fairness sweep: is any engine gain just a longer window? ────
+export interface BaselineReachPoint {
+  lastDay: number;
+  controlRate: number;
+  treatmentRate: number;
+  rateDiff: number;
+}
+
+/**
+ * Run the engine against baselines that retry to increasingly later days. If the
+ * engine only "wins" against a short-reaching baseline and loses once the baseline
+ * retries as long as the engine does, then the gain is a window-length effect (which
+ * any baseline can copy), NOT decline-specific intelligence. This is the honesty guard
+ * on the timing rework.
+ */
+export function baselineReachSweep(nCustomers: number, seed: number): BaselineReachPoint[] {
+  const schedules: number[][] = [
+    [1, 4, 10, 18], // Stripe Smart Retries default (~4 attempts, ~2.5 weeks)
+    [1, 4, 10, 18, 28], // a baseline that reaches as far as the engine's NSF cadence
+    [1, 4, 10, 18, 28, 35], // a maximally-persistent baseline (retry to window close)
+  ];
+  const invoices = generateStream(nCustomers, seed);
+  const engine = new EnginePolicy();
+  return schedules.map((days) => {
+    const r = runComparison({
+      invoices,
+      controlPolicy: new StripeSmartRetriesBaseline(days),
+      treatmentPolicy: engine,
+      controlSeed: deriveSeed(seed, 'reach-ctrl'),
+      treatmentSeed: deriveSeed(seed, 'reach-treat'),
+    });
+    return { lastDay: days[days.length - 1]!, controlRate: r.estimate.controlRate, treatmentRate: r.estimate.treatmentRate, rateDiff: r.estimate.rateDiff };
+  });
+}
+
 export function sensitivitySweep(nCustomers: number, seed: number): SensitivityPoint[] {
   const params: Array<keyof WorldParams> = ['recoverableScale', 'onsetScale', 'windowScale', 'residualScale', 'nsfShareScale'];
   const factors = [0.7, 1.3];

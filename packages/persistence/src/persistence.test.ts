@@ -1,7 +1,7 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { sql } from 'drizzle-orm';
 import { createPglite, type DbHandle } from './client.js';
 import { applyMigrations } from './migrate.js';
@@ -11,21 +11,12 @@ import { ConnectionRepository } from './connection-repo.js';
 import { loadDemoSeed } from './seed.js';
 
 const KEY = Buffer.from(generateKeyHex(), 'hex');
-const tmpDirs: string[] = [];
+// Each test gets a fresh temp dir; we deliberately do NOT rmSync it in an afterEach —
+// on Windows that races pglite's file handles and throws intermittently. The OS temp
+// cleaner reclaims these few-KB dirs. Handles are always closed via handle.close().
 function newTmpDir(): string {
-  const d = mkdtempSync(path.join(os.tmpdir(), 'ax10m-pglite-'));
-  tmpDirs.push(d);
-  return d;
+  return mkdtempSync(path.join(os.tmpdir(), 'ax10m-pglite-'));
 }
-afterEach(() => {
-  for (const d of tmpDirs.splice(0)) {
-    try {
-      rmSync(d, { recursive: true, force: true });
-    } catch {
-      /* best effort */
-    }
-  }
-});
 
 describe('credential encryption', () => {
   it('round-trips and never exposes plaintext', () => {
