@@ -15,7 +15,7 @@ import { EnginePolicy } from './policy/engine-policy.js';
 import { StripeSmartRetriesBaseline } from './baselines/smart-retries.js';
 import { runComparison } from './estimate.js';
 import { armSummary } from './sim/simulate.js';
-import { aaTest, baselineReachSweep, powerCurve, sensitivitySweep } from './checks.js';
+import { aaTest, baselineReachSweep, fineSensitivity, netValueComparison, powerCurve, sensitivitySweep } from './checks.js';
 import { computeByCode, computeVerdict, cumulativePerInvoice, renderLiftSvg, renderReportMd, type RunResults } from './report.js';
 
 const STREAM_SEED = 20260814;
@@ -58,6 +58,8 @@ export async function runBacktest(): Promise<RunResults> {
     power: powerCurve(deriveSeed(STREAM_SEED, 'power'), [1, 3, 5, 10]),
     sensitivity: sensitivitySweep(20_000, deriveSeed(STREAM_SEED, 'sens')),
     baselineReach,
+    netValue: netValueComparison(N_CUSTOMERS, deriveSeed(STREAM_SEED, 'nv')),
+    fineSensitivity: fineSensitivity(N_CUSTOMERS, deriveSeed(STREAM_SEED, 'fs')),
     byCode: computeByCode(cmp.controlOutcomes, cmp.treatmentOutcomes),
     verdict,
   };

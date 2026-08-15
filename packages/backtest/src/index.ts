@@ -12,6 +12,7 @@ export * from './policy/policy.js';
 export * from './baselines/smart-retries.js';
 export * from './policy/engine-policy.js';
 export * from './sim/simulate.js';
+export * from './economics.js';
 export * from './estimate.js';
 export * from './checks.js';
 export * from './report.js';

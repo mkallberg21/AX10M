@@ -11,6 +11,8 @@ import { DEFAULT_WORLD_PARAMS, generateStream, type WorldParams } from './world/
 import { deriveStratum, runComparison, splitArms } from './estimate.js';
 import { EnginePolicy } from './policy/engine-policy.js';
 import { StripeSmartRetriesBaseline } from './baselines/smart-retries.js';
+import { runPolicy } from './sim/simulate.js';
+import { DEFAULT_COST_MODEL, netValue, type CostModel } from './economics.js';
 
 // ── A/A: the same policy on both arms must show NO significant lift ────────────
 export interface AaResult {
@@ -122,6 +124,62 @@ export function baselineReachSweep(nCustomers: number, seed: number): BaselineRe
       treatmentSeed: deriveSeed(seed, 'reach-treat'),
     });
     return { lastDay: days[days.length - 1]!, controlRate: r.estimate.controlRate, treatmentRate: r.estimate.treatmentRate, rateDiff: r.estimate.rateDiff };
+  });
+}
+
+// ── Net value: does the engine's selectivity pay off once cost + fines are priced? ──
+export interface NetValuePoint {
+  baselineLastDay: number;
+  engineNetPerInvoice: number;
+  baselineNetPerInvoice: number;
+  engineRecoveredPerInvoice: number;
+  baselineRecoveredPerInvoice: number;
+  engineAttemptsPerInvoice: number;
+  baselineAttemptsPerInvoice: number;
+  engineWins: boolean;
+}
+
+/** Engine vs each baseline reach, scored on NET VALUE (recovered − cost − fines). */
+export function netValueComparison(nCustomers: number, seed: number, cost: CostModel = DEFAULT_COST_MODEL): NetValuePoint[] {
+  const invoices = generateStream(nCustomers, seed);
+  const engineOut = runPolicy(invoices, new EnginePolicy(), deriveSeed(seed, 'nv'));
+  const eng = netValue(engineOut, cost);
+  const schedules: number[][] = [[1, 4, 10, 18], [1, 4, 10, 18, 28], [1, 4, 10, 18, 28, 35]];
+  return schedules.map((days) => {
+    const baseOut = runPolicy(invoices, new StripeSmartRetriesBaseline(days), deriveSeed(seed, 'nv'));
+    const base = netValue(baseOut, cost);
+    return {
+      baselineLastDay: days[days.length - 1]!,
+      engineNetPerInvoice: eng.netPerInvoice,
+      baselineNetPerInvoice: base.netPerInvoice,
+      engineRecoveredPerInvoice: eng.recoveredPerInvoice,
+      baselineRecoveredPerInvoice: base.recoveredPerInvoice,
+      engineAttemptsPerInvoice: eng.attemptsPerInvoice,
+      baselineAttemptsPerInvoice: base.attemptsPerInvoice,
+      engineWins: eng.netPerInvoice > base.netPerInvoice,
+    };
+  });
+}
+
+// ── Fine sensitivity: at what compliance-fine level does the engine's net win? ──
+export interface FineSensitivityPoint {
+  finePerViolation: number;
+  engineNetPerInvoice: number;
+  baselineNetPerInvoice: number;
+  engineWins: boolean;
+}
+
+/** Vary the do-not-retry fine and see when the engine's net beats the MOST-persistent baseline. */
+export function fineSensitivity(nCustomers: number, seed: number): FineSensitivityPoint[] {
+  const invoices = generateStream(nCustomers, seed);
+  const engineOut = runPolicy(invoices, new EnginePolicy(), deriveSeed(seed, 'fs'));
+  const baseOut = runPolicy(invoices, new StripeSmartRetriesBaseline([1, 4, 10, 18, 28, 35]), deriveSeed(seed, 'fs'));
+  const fines = [0, 50, 100, 250, 500, 1000, 2000]; // ¢ per do-not-retry retry
+  return fines.map((f) => {
+    const cost: CostModel = { ...DEFAULT_COST_MODEL, finePerViolationMinor: f, finePerExcessAttemptMinor: f * 2 };
+    const eng = netValue(engineOut, cost);
+    const base = netValue(baseOut, cost);
+    return { finePerViolation: f, engineNetPerInvoice: eng.netPerInvoice, baselineNetPerInvoice: base.netPerInvoice, engineWins: eng.netPerInvoice > base.netPerInvoice };
   });
 }
 

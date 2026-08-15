@@ -397,6 +397,82 @@
       "rateDiff": -0.09138835433330467
     }
   ],
+  "netValue": [
+    {
+      "baselineLastDay": 18,
+      "engineNetPerInvoice": 26.052923135381608,
+      "baselineNetPerInvoice": 24.91066930843557,
+      "engineRecoveredPerInvoice": 26.594789744146492,
+      "baselineRecoveredPerInvoice": 25.978399920385044,
+      "engineAttemptsPerInvoice": 2.709333043824413,
+      "baselineAttemptsPerInvoice": 3.4914956754605,
+      "engineWins": true
+    },
+    {
+      "baselineLastDay": 28,
+      "engineNetPerInvoice": 26.052923135381608,
+      "baselineNetPerInvoice": 30.720413273984004,
+      "engineRecoveredPerInvoice": 26.594789744146492,
+      "baselineRecoveredPerInvoice": 32.00587630731372,
+      "engineAttemptsPerInvoice": 2.709333043824413,
+      "baselineAttemptsPerInvoice": 4.120924257228676,
+      "engineWins": false
+    },
+    {
+      "baselineLastDay": 35,
+      "engineNetPerInvoice": 26.052923135381608,
+      "baselineNetPerInvoice": 32.589087504071216,
+      "engineRecoveredPerInvoice": 26.594789744146492,
+      "baselineRecoveredPerInvoice": 34.07384485940723,
+      "engineAttemptsPerInvoice": 2.709333043824413,
+      "baselineAttemptsPerInvoice": 4.663952520537039,
+      "engineWins": false
+    }
+  ],
+  "fineSensitivity": [
+    {
+      "finePerViolation": 0,
+      "engineNetPerInvoice": 26.039357044148666,
+      "baselineNetPerInvoice": 32.79509364317405,
+      "engineWins": false
+    },
+    {
+      "finePerViolation": 50,
+      "engineNetPerInvoice": 26.039357044148666,
+      "baselineNetPerInvoice": 32.52442850389119,
+      "engineWins": false
+    },
+    {
+      "finePerViolation": 100,
+      "engineNetPerInvoice": 26.039357044148666,
+      "baselineNetPerInvoice": 32.25376336460833,
+      "engineWins": false
+    },
+    {
+      "finePerViolation": 250,
+      "engineNetPerInvoice": 26.039357044148666,
+      "baselineNetPerInvoice": 31.441767946759764,
+      "engineWins": false
+    },
+    {
+      "finePerViolation": 500,
+      "engineNetPerInvoice": 26.039357044148666,
+      "baselineNetPerInvoice": 30.08844225034548,
+      "engineWins": false
+    },
+    {
+      "finePerViolation": 1000,
+      "engineNetPerInvoice": 26.039357044148666,
+      "baselineNetPerInvoice": 27.38179085751691,
+      "engineWins": false
+    },
+    {
+      "finePerViolation": 2000,
+      "engineNetPerInvoice": 26.039357044148666,
+      "baselineNetPerInvoice": 21.96848807185977,
+      "engineWins": true
+    }
+  ],
   "byCode": [
     {
       "code": "insufficient_funds",

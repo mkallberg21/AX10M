@@ -55,6 +55,24 @@ whether we've succeeded — including telling us, early and cheaply, if we haven
 > cross-merchant issuer flywheel. Proving that needs a cost/compliance-aware objective and
 > a live holdout. Until then, the honest position stands: not yet a winner, bills $0.
 
+> **Update 3 — the cost/compliance objective, built.** We priced it: net value =
+> recovered − (attempts × per-attempt cost) − fines for retrying do-not-retry declines
+> (hard/fraud, *not* expired) and for exceeding the excessive-retry cap. The result is
+> genuinely mixed, and worth stating precisely. **Against the Smart Retries default (~day
+> 18 — what merchants actually run), the engine wins on net value**: it recovers marginally
+> more at **~22% fewer attempts** ($26.05 vs $24.91/invoice). That is a real, defensible
+> edge — same-or-better outcome, materially cheaper. **But against a maximally-persistent
+> baseline that retries to window-close, the engine loses** ($26.05 vs $32.59): the extra
+> recovery from brute persistence outweighs its extra cost and fines, and the engine only
+> overtakes it once the do-not-retry fine hits an **implausible ~$20/violation**. So the
+> selectivity edge is real but bounded — it beats *good* retrying, not *maximal* retrying.
+> The engine's full case still depends on the cross-merchant flywheel (not exercised here)
+> and on real attempt costs / hard network caps being higher than modeled. The honest
+> position is now sharper, not rosier: **a cheaper way to run recovery than the default,
+> not (yet) a way to recover more than a determined baseline** — and it still bills $0
+> until a live holdout proves incremental lift. See the "Net value" section of
+> `packages/backtest/out/report.md`.
+
 ## 1. Lead with the ledger, not "we prove lift"
 
 "We prove incremental lift" is no longer an unoccupied position — Slicker (and

@@ -6,7 +6,8 @@
 
 import type { BillableUpliftResult } from '@ax10m/attribution';
 import type { InvoiceOutcome } from './sim/simulate.js';
-import type { AaResult, BaselineReachPoint, PowerPoint, SensitivityPoint } from './checks.js';
+import type { AaResult, BaselineReachPoint, FineSensitivityPoint, NetValuePoint, PowerPoint, SensitivityPoint } from './checks.js';
+import { DEFAULT_COST_MODEL } from './economics.js';
 
 export interface CodeBreak {
   code: string;
@@ -54,6 +55,8 @@ export interface RunResults {
   power: PowerPoint[];
   sensitivity: SensitivityPoint[];
   baselineReach: BaselineReachPoint[];
+  netValue: NetValuePoint[];
+  fineSensitivity: FineSensitivityPoint[];
   byCode: CodeBreak[];
   verdict: string;
 }
@@ -132,11 +135,56 @@ export function renderReportMd(r: RunResults): string {
       '"retry everything for longer" beats the engine.'
     : 'See the table for how the comparison moves as the baseline reaches further.'}`);
   lines.push('');
-  lines.push('The engine\'s real case therefore cannot rest on raw recovery rate. It rests on what this backtest does ' +
-    'NOT price: **per-attempt cost and card-network retry-cap fines** (a maximally-persistent baseline would breach ' +
-    'network caps — which the guardrail prevents but recovery-rate ignores), and the **cross-merchant issuer ' +
-    'flywheel** (the engine runs on cold features here). Proving that edge needs a cost/compliance-aware objective ' +
-    'and a live holdout — not this metric.');
+  lines.push('The engine\'s real case therefore cannot rest on raw recovery rate. It rests on what recovery rate does ' +
+    'NOT price: **per-attempt cost and card-network retry-cap fines** (a maximally-persistent baseline burns more ' +
+    'attempts and risks breaching network caps), and the **cross-merchant issuer flywheel** (the engine runs on ' +
+    'cold features here). The next section prices the first of those.');
+  lines.push('');
+  lines.push('## Net value — the cost + compliance-aware objective');
+  lines.push('');
+  lines.push('Recovery rate rewards blanket persistence. A merchant\'s actual objective is **net value**: ' +
+    'recovered dollars, minus the cost of every charge attempt, minus card-network fines for retrying ' +
+    'do-not-retry declines (hard-decline / fraud codes — *not* expired, whose Account-Updater retry is ' +
+    'legitimate) and for exceeding the excessive-retry cap. This is where the engine\'s selectivity — fewer, ' +
+    'better-placed attempts — is supposed to pay off. Costs below are labeled assumptions, so the honest output ' +
+    `is a **threshold**, not one number (per-attempt $${(DEFAULT_COST_MODEL.perAttemptMinor / 100).toFixed(2)}, ` +
+    `do-not-retry fine $${(DEFAULT_COST_MODEL.finePerViolationMinor / 100).toFixed(2)}).`);
+  lines.push('');
+  lines.push('| Baseline reaches | Engine net $/inv | Baseline net $/inv | Engine attempts/inv | Baseline attempts/inv | Engine wins? |');
+  lines.push('|---|---|---|---|---|---|');
+  for (const p of r.netValue) {
+    lines.push(`| day ${p.baselineLastDay} | $${p.engineNetPerInvoice.toFixed(2)} | $${p.baselineNetPerInvoice.toFixed(2)} | ${p.engineAttemptsPerInvoice.toFixed(2)} | ${p.baselineAttemptsPerInvoice.toFixed(2)} | ${p.engineWins ? '**yes**' : 'no'} |`);
+  }
+  lines.push('');
+  const nvDefault = r.netValue.find((p) => p.baselineLastDay === 18);
+  const nvMax = r.netValue[r.netValue.length - 1];
+  lines.push(`**Reading it honestly.** Against the Stripe Smart Retries **default** reach (~day 18 — what merchants ` +
+    `actually run), the engine ${nvDefault && nvDefault.engineWins ? '**wins on net value**' : 'does not win on net value'}: ` +
+    `${nvDefault ? `$${nvDefault.engineNetPerInvoice.toFixed(2)} vs $${nvDefault.baselineNetPerInvoice.toFixed(2)} per invoice, ` +
+      `recovering marginally more at ${nvDefault.engineAttemptsPerInvoice.toFixed(2)} vs ${nvDefault.baselineAttemptsPerInvoice.toFixed(2)} attempts ` +
+      `(${((1 - nvDefault.engineAttemptsPerInvoice / nvDefault.baselineAttemptsPerInvoice) * 100).toFixed(0)}% fewer). ` : ''}` +
+    `But against a **maximally-persistent** baseline that retries to window-close (day ${nvMax?.baselineLastDay}), the engine ` +
+    `**loses** ($${nvMax?.engineNetPerInvoice.toFixed(2)} vs $${nvMax?.baselineNetPerInvoice.toFixed(2)}): the extra recovery from ` +
+    `brute persistence outweighs its extra cost and fines at realistic prices.`);
+  lines.push('');
+  lines.push('**At what fine level does the engine overtake the most-persistent baseline?** Varying the ' +
+    'do-not-retry fine (excess-attempt fine tracks at 2×):');
+  lines.push('');
+  lines.push('| Do-not-retry fine | Engine net $/inv | Baseline net $/inv | Engine wins? |');
+  lines.push('|---|---|---|---|');
+  for (const p of r.fineSensitivity) {
+    lines.push(`| $${(p.finePerViolation / 100).toFixed(2)} | $${p.engineNetPerInvoice.toFixed(2)} | $${p.baselineNetPerInvoice.toFixed(2)} | ${p.engineWins ? '**yes**' : 'no'} |`);
+  }
+  lines.push('');
+  const firstWin = r.fineSensitivity.find((p) => p.engineWins);
+  lines.push(`**Threshold.** The engine overtakes the maximally-persistent baseline on net value only once the ` +
+    `do-not-retry fine reaches ${firstWin ? `**$${(firstWin.finePerViolation / 100).toFixed(2)}/violation**` : 'a level beyond the swept range'}` +
+    ` — ${firstWin && firstWin.finePerViolation >= 1500 ? 'implausibly high for real card-network assessments' : 'within a plausible range for real card-network assessments'}. ` +
+    `**Honest conclusion:** the engine\'s edge over what merchants run today (the default) is real and rests on ` +
+    `**fewer attempts at equal-or-better recovery**; but "just retry to window-close" beats the engine on net value, ` +
+    `and no realistic compliance fine closes that gap in this world. The engine's remaining case rests on the ` +
+    `cross-merchant flywheel (not exercised here) and on real-world attempt costs / hard caps being higher than ` +
+    `modeled — neither of which this backtest can prove.`);
   lines.push('');
   lines.push('## Where the difference comes from (by decline code)');
   lines.push('');

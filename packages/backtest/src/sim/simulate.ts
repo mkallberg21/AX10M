@@ -15,6 +15,8 @@ export interface InvoiceOutcome {
   recoveredMinor: number;
   /** Day the recovery landed (null if never recovered). */
   recoveryDay: number | null;
+  /** Charge-retry attempts actually FIRED (up to success). Drives the cost/compliance objective. */
+  retriesMade: number;
 }
 
 export function runPolicy(
@@ -29,14 +31,16 @@ export function runPolicy(
     const rng = mulberry32(deriveSeed(seed, inv.id));
     let recovered = false;
     let recoveryDay: number | null = null;
+    let retriesMade = 0;
     for (const a of actions) {
+      if (a.kind === 'retry') retriesMade++; // count network charge attempts fired
       if (actionSucceeds(inv, a.day, a.kind, rng, params)) {
         recovered = true;
         recoveryDay = a.day;
         break;
       }
     }
-    out.push({ invoice: inv, recovered, recoveredMinor: recovered ? inv.amountMinor : 0, recoveryDay });
+    out.push({ invoice: inv, recovered, recoveredMinor: recovered ? inv.amountMinor : 0, recoveryDay, retriesMade });
   }
   return out;
 }

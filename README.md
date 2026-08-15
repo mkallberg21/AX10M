@@ -30,8 +30,17 @@ keep the bill honest.
 > simply retries *as far as the engine*, the engine **loses** (-8 to -11 pp). So the
 > apparent gain was a window-length artifact any baseline can copy; decline-specific
 > timing does not beat blanket persistence on recovery rate. The engine's case must rest
-> on what this backtest does not price — per-attempt cost, network-cap compliance, and
-> the cross-merchant issuer flywheel (cold features here). AX10M's incremental lift is
+> on what recovery rate does not price — per-attempt cost, network-cap compliance, and
+> the cross-merchant issuer flywheel (cold features here).
+> **Update — net value (cost + compliance objective).** Pricing per-attempt cost and
+> do-not-retry fines gives a mixed, honest result: against the Smart Retries **default**
+> (~day 18, what merchants actually run) the engine now **wins on net value** — it recovers
+> marginally more using **~22% fewer attempts** ($26.05 vs $24.91 per invoice). But against
+> a **maximally-persistent** baseline that retries to window-close, the engine **loses**
+> ($26.05 vs $32.59); brute persistence recovers so much more that its extra cost and fines
+> don't close the gap, and the engine only overtakes it once the do-not-retry fine reaches
+> an **implausible ~$20/violation**. So: a real edge over what merchants run today (cheaper,
+> equal-or-better), no edge over "just retry longer." AX10M's incremental *lift* is still
 > **not yet demonstrated** and the bill would be **$0** either way.
 > See [`packages/backtest/out/report.md`](packages/backtest/out/report.md) (verdict +
 > assumptions) and [`docs/STRATEGY.md`](docs/STRATEGY.md).

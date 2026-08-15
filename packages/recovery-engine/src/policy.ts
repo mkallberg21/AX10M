@@ -43,6 +43,9 @@ export interface PolicyConfig {
   retentionMultiplier: number;
 }
 
+// This attempt-cost EV is exactly the objective the backtest's net-value section prices
+// (packages/backtest/src/economics.ts): suppressing low-EV attempts is what lets the engine
+// win on net value vs the Smart Retries default at ~22% fewer attempts. See docs/STRATEGY.md §0.
 export const DEFAULT_POLICY_CONFIG: PolicyConfig = {
   minRecoverabilityToRetry: 0.04,
   attemptCostMinor: 15, // ~$0.15 processing + fine-risk allowance

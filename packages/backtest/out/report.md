@@ -31,7 +31,33 @@ The headline compares the engine to Stripe Smart Retries' **default** reach (~da
 
 **Reading it honestly.** The engine only edges ahead of the *default* (short-reaching) baseline; against a baseline that retries as far as the engine does, the engine **loses**. So the apparent gain is a **window-length effect any baseline can copy**, not decline-specific intelligence. On recovery rate alone, in a world with no attempt cost, "retry everything for longer" beats the engine.
 
-The engine's real case therefore cannot rest on raw recovery rate. It rests on what this backtest does NOT price: **per-attempt cost and card-network retry-cap fines** (a maximally-persistent baseline would breach network caps — which the guardrail prevents but recovery-rate ignores), and the **cross-merchant issuer flywheel** (the engine runs on cold features here). Proving that edge needs a cost/compliance-aware objective and a live holdout — not this metric.
+The engine's real case therefore cannot rest on raw recovery rate. It rests on what recovery rate does NOT price: **per-attempt cost and card-network retry-cap fines** (a maximally-persistent baseline burns more attempts and risks breaching network caps), and the **cross-merchant issuer flywheel** (the engine runs on cold features here). The next section prices the first of those.
+
+## Net value — the cost + compliance-aware objective
+
+Recovery rate rewards blanket persistence. A merchant's actual objective is **net value**: recovered dollars, minus the cost of every charge attempt, minus card-network fines for retrying do-not-retry declines (hard-decline / fraud codes — *not* expired, whose Account-Updater retry is legitimate) and for exceeding the excessive-retry cap. This is where the engine's selectivity — fewer, better-placed attempts — is supposed to pay off. Costs below are labeled assumptions, so the honest output is a **threshold**, not one number (per-attempt $0.20, do-not-retry fine $1.00).
+
+| Baseline reaches | Engine net $/inv | Baseline net $/inv | Engine attempts/inv | Baseline attempts/inv | Engine wins? |
+|---|---|---|---|---|---|
+| day 18 | $26.05 | $24.91 | 2.71 | 3.49 | **yes** |
+| day 28 | $26.05 | $30.72 | 2.71 | 4.12 | no |
+| day 35 | $26.05 | $32.59 | 2.71 | 4.66 | no |
+
+**Reading it honestly.** Against the Stripe Smart Retries **default** reach (~day 18 — what merchants actually run), the engine **wins on net value**: $26.05 vs $24.91 per invoice, recovering marginally more at 2.71 vs 3.49 attempts (22% fewer). But against a **maximally-persistent** baseline that retries to window-close (day 35), the engine **loses** ($26.05 vs $32.59): the extra recovery from brute persistence outweighs its extra cost and fines at realistic prices.
+
+**At what fine level does the engine overtake the most-persistent baseline?** Varying the do-not-retry fine (excess-attempt fine tracks at 2×):
+
+| Do-not-retry fine | Engine net $/inv | Baseline net $/inv | Engine wins? |
+|---|---|---|---|
+| $0.00 | $26.04 | $32.80 | no |
+| $0.50 | $26.04 | $32.52 | no |
+| $1.00 | $26.04 | $32.25 | no |
+| $2.50 | $26.04 | $31.44 | no |
+| $5.00 | $26.04 | $30.09 | no |
+| $10.00 | $26.04 | $27.38 | no |
+| $20.00 | $26.04 | $21.97 | **yes** |
+
+**Threshold.** The engine overtakes the maximally-persistent baseline on net value only once the do-not-retry fine reaches **$20.00/violation** — implausibly high for real card-network assessments. **Honest conclusion:** the engine's edge over what merchants run today (the default) is real and rests on **fewer attempts at equal-or-better recovery**; but "just retry to window-close" beats the engine on net value, and no realistic compliance fine closes that gap in this world. The engine's remaining case rests on the cross-merchant flywheel (not exercised here) and on real-world attempt costs / hard caps being higher than modeled — neither of which this backtest can prove.
 
 ## Where the difference comes from (by decline code)
 
