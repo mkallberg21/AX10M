@@ -262,6 +262,11 @@ export class RecoveryFeatureStore {
     return { total: c.total, recovered: c.recovered, rate: shrinkRate(c.recovered, c.total, this.config.customerPrior) };
   }
 
+  /** Observability: the joined issuer/region/card metadata for a BIN (from the loaded table). */
+  binLookup(bin: string | undefined): BinInfo {
+    return this.config.regionIndex.lookup(bin);
+  }
+
   /** Observability: an issuer/BIN's accumulated approval stats (or undefined if unseen). */
   issuerStats(bin: string): { total: number; recovered: number; rate: number } | undefined {
     const ik = this.issuerKeyFor(bin);

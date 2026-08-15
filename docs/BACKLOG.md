@@ -107,4 +107,9 @@ drives sequencing.
   recovers worst, debit < credit), and the shipped bootstrap prior was regenerated to use it
   (trained AUC 0.876 > heuristic 0.856; the learned card weights are prepaid −0.98 < debit
   −0.51 < credit −0.21). `score()` now tolerates a shorter weight vector so appending a
-  feature never NaNs an older model. *Remaining: ship an actual licensed BIN DB file.*
+  feature never NaNs an older model. A **public network-brand starter table** ships at
+  `data/bin-table.sample.json` (527 ISO/IEC-7812 IIN ranges → brand; region/issuer/cardType
+  left `unknown` — they need a licensed DB and aren't fabricated) with `data/README.md`
+  documenting the licensed-DB plug-in path. *Remaining: a LICENSED commercial BIN DB is
+  proprietary/paid and can't be redistributed here — the operator drops their own export at
+  `AX10M_BIN_TABLE_PATH` (same JSON shape) to populate region/issuer/country/cardType.*
