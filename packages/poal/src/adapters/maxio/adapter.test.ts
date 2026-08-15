@@ -83,6 +83,7 @@ describe('ingestWebhook', () => {
   // Chargify posts urlencoded `event` + `payload[...]` bodies.
   const failedBody =
     'event=payment_failure&payload[subscription][id]=101&payload[subscription][currency]=USD&payload[subscription][customer][id]=9' +
+    '&payload[subscription][customer][email]=ada%40example.com&payload[subscription][customer][phone]=%2B15555550123' +
     '&payload[transaction][id]=555&payload[transaction][amount_in_cents]=14900&payload[transaction][memo]=Insufficient%20funds';
   const sign = (body: string) => ({ 'x-chargify-webhook-signature-hmac-sha256': computeMaxioSignature(body, 'whsec') });
 
@@ -94,12 +95,19 @@ describe('ingestWebhook', () => {
     const ev = events[0]!;
     expect(ev.type).toBe('invoice.failed');
     expect(ev.merchantId).toBe('mrc_1');
-    const p = ev.payload as { invoice: Invoice; decline?: { code: DeclineCode; family: DeclineFamily } };
+    const p = ev.payload as {
+      invoice: Invoice;
+      decline?: { code: DeclineCode; family: DeclineFamily };
+      customer?: { email?: string; phone?: string };
+    };
     expect(p.invoice.processorRef).toBe('101');
     expect(p.invoice.subscriptionId).toBe('ax10m_sub_101');
     expect(p.invoice.amount).toEqual({ amount: 14900, currency: 'USD' });
     expect(p.decline?.code).toBe(DeclineCode.InsufficientFunds);
     expect(p.decline?.family).toBe(DeclineFamily.Soft);
+    // contact populated into the dunning path (SMS phone already E.164, kept as-is)
+    expect(p.customer?.email).toBe('ada@example.com');
+    expect(p.customer?.phone).toBe('+15555550123');
   });
 
   it('rejects a webhook whose signature does not match', async () => {

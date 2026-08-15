@@ -38,7 +38,7 @@ import {
   type PaymentMethod,
   type Subscription,
 } from '@ax10m/canonical';
-import { customerFromInvoice } from '../../customer.js';
+import { contactOverrides, customerFromInvoice } from '../../customer.js';
 import type {
   CapabilityMatrix,
   ChargeResult,
@@ -101,7 +101,11 @@ interface ChSubscription {
   current_period_ends_at?: string;
   created_at?: string;
   updated_at?: string;
-  customer?: { id?: number | string; email?: string };
+  customer?: {
+    id?: number | string;
+    email?: string;
+    phone?: string; // modeled on Maxio/Chargify webhook — CONFIRM
+  };
 }
 
 export class MaxioAdapter implements ProcessorAdapter {
@@ -175,7 +179,10 @@ export class MaxioAdapter implements ProcessorAdapter {
           attemptedAt: occurredAt,
         });
         const decline = this.buildDecline(rawReason, asString(transaction.id) ?? invoice.processorRef, invoice.id, attempt.id, occurredAt);
-        return [envelope('invoice.failed', { invoice, attempt, decline, customer: customerFromInvoice(invoice) })];
+        // Maxio/Chargify phone is often national (no country code); pass it as-is —
+        // contactOverrides→toE164 drops it unless it is already E.164. Never fabricate a cc.
+        const customer = customerFromInvoice(invoice, contactOverrides(subscription.customer?.email, subscription.customer?.phone));
+        return [envelope('invoice.failed', { invoice, attempt, decline, customer })];
       }
       case 'payment_success':
       case 'renewal_success': {

@@ -39,7 +39,7 @@ import {
   type PaymentMethod,
   type Subscription,
 } from '@ax10m/canonical';
-import { customerFromInvoice } from '../../customer.js';
+import { customerFromInvoice, contactOverrides } from '../../customer.js';
 import type {
   CapabilityMatrix,
   ChargeResult,
@@ -89,7 +89,26 @@ interface CkoWebhookEnvelope {
     response_code?: string;
     response_summary?: string;
     source?: { id?: string };
+    // Checkout.com echoes the payment's `customer` object on the webhook; email is the
+    // dunning-email destination and `phone` (country_code + national number) the SMS one.
+    customer?: {
+      id?: string;
+      email?: string; // modeled on Checkout.com webhook — CONFIRM
+      phone?: { country_code?: string; number?: string }; // modeled on Checkout.com webhook — CONFIRM
+    };
   };
+}
+
+/**
+ * Build an E.164 candidate from Checkout's `customer.phone` ({ country_code, number }).
+ * With a country code we assemble `+<cc><national>`; with only a national number we pass it
+ * through as-is so `toE164` drops it (an un-dialable national number is worse than none) — we
+ * never fabricate a country code. Returns undefined when no phone is present.
+ */
+function checkoutPhone(phone: { country_code?: string; number?: string } | undefined): string | undefined {
+  if (!phone?.number) return undefined;
+  const cc = phone.country_code?.replace(/[^\d]/g, '');
+  return cc ? `+${cc}${phone.number}` : phone.number;
 }
 
 const CENTS = (n: number | undefined): number => (typeof n === 'number' ? n : 0);
@@ -175,7 +194,10 @@ export class CheckoutAdapter implements ProcessorAdapter {
         const invoice = this.mapInvoice(data, occurredAt, /*failed*/ true);
         const attempt = this.mapAttempt(data, invoice.id, /*failed*/ true, occurredAt);
         const decline = this.mapDecline(data, invoice.id, attempt.id, occurredAt);
-        return [{ ...base, type: 'invoice.failed', payload: { invoice, attempt, decline, customer: customerFromInvoice(invoice) } }];
+        // Contact info from the echoed `customer` object feeds the dunning channels (email /
+        // SMS destinations); present when the merchant sent a customer on the payment.
+        const customer = customerFromInvoice(invoice, contactOverrides(data.customer?.email, checkoutPhone(data.customer?.phone)));
+        return [{ ...base, type: 'invoice.failed', payload: { invoice, attempt, decline, customer } }];
       }
       case 'payment_captured':
       case 'payment_approved': {

@@ -88,7 +88,7 @@ describe('attemptCharge', () => {
 describe('ingestWebhook', () => {
   const failedXml = `<?xml version="1.0"?>
     <failed_payment_notification>
-      <account><account_code>acct1</account_code></account>
+      <account><account_code>acct1</account_code><email>verena@example.com</email></account>
       <invoice><uuid>inv_1</uuid><state>past_due</state><currency>USD</currency><total_in_cents>14900</total_in_cents></invoice>
       <transaction><uuid>txn_1</uuid><status>declined</status><error_code>insufficient_funds</error_code><message>Not enough funds</message></transaction>
     </failed_payment_notification>`;
@@ -101,9 +101,12 @@ describe('ingestWebhook', () => {
     const ev = events[0]!;
     expect(ev.type).toBe('invoice.failed');
     expect(ev.merchantId).toBe('mrc_1');
-    const p = ev.payload as { invoice: Invoice; decline?: { code: DeclineCode; family: DeclineFamily } };
+    const p = ev.payload as { invoice: Invoice; customer?: Customer; decline?: { code: DeclineCode; family: DeclineFamily } };
     expect(p.invoice.processorRef).toBe('inv_1');
     expect(p.invoice.amount).toEqual({ amount: 14900, currency: 'USD' });
+    // Contact from the notification <account> block feeds the email dunning channel.
+    expect(p.customer?.email).toBe('verena@example.com');
+    expect(p.customer?.phone).toBeUndefined();
     expect(p.decline?.code).toBe(DeclineCode.InsufficientFunds);
     expect(p.decline?.family).toBe(DeclineFamily.Soft);
   });

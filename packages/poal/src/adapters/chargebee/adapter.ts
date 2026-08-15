@@ -30,7 +30,7 @@ import {
   type PaymentMethod,
   type Subscription,
 } from '@ax10m/canonical';
-import { customerFromInvoice } from '../../customer.js';
+import { customerFromInvoice, contactOverrides } from '../../customer.js';
 import type {
   CapabilityMatrix,
   ChargeResult,
@@ -82,6 +82,11 @@ interface CbTransaction {
   payment_source_id?: string;
   date?: number;
 }
+interface CbCustomer {
+  id: string;
+  email?: string; // modeled on Chargebee webhook content.customer — CONFIRM
+  phone?: string; // modeled on Chargebee webhook content.customer — CONFIRM (often national, no country code)
+}
 interface CbPaymentSource {
   id: string;
   customer_id?: string;
@@ -127,7 +132,7 @@ export class ChargebeeAdapter implements ProcessorAdapter {
       id?: string;
       occurred_at?: number;
       event_type?: string;
-      content?: { invoice?: CbInvoice; transaction?: CbTransaction; payment_source?: CbPaymentSource; subscription?: { id: string; status?: string } };
+      content?: { invoice?: CbInvoice; transaction?: CbTransaction; customer?: CbCustomer; payment_source?: CbPaymentSource; subscription?: { id: string; status?: string } };
     };
     try {
       event = JSON.parse(raw.body);
@@ -153,7 +158,11 @@ export class ChargebeeAdapter implements ProcessorAdapter {
         const invoice = this.mapInvoice(content.invoice, occurredAt, /*failed*/ true);
         const attempt = content.transaction ? this.mapAttempt(content.transaction, invoice.id) : undefined;
         const decline = content.transaction ? this.mapDecline(content.transaction, invoice.id, attempt?.id ?? '') : undefined;
-        return [envelope('invoice.failed', { invoice, attempt, decline, customer: customerFromInvoice(invoice) })];
+        // Contact info from content.customer feeds the dunning channels. Chargebee phone is
+        // often national (no country code) — pass as-is; contactOverrides/toE164 drops it if
+        // not E.164 rather than fabricating a country code.
+        const customer = customerFromInvoice(invoice, contactOverrides(content.customer?.email, content.customer?.phone));
+        return [envelope('invoice.failed', { invoice, attempt, decline, customer })];
       }
       case 'payment_succeeded': {
         if (!content.invoice) return [];

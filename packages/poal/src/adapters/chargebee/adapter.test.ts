@@ -55,6 +55,7 @@ describe('ingestWebhook', () => {
     content: {
       invoice: { id: 'inv_1', customer_id: 'c1', subscription_id: 'sub_1', currency_code: 'USD', amount_due: 14900, status: 'payment_due', date: 1_699_990_000 },
       transaction: { id: 'txn_1', status: 'failure', error_code: 'insufficient_funds', error_text: 'Not enough funds', amount: 14900, currency_code: 'USD', payment_source_id: 'pm_1', date: 1_699_999_999 },
+      customer: { id: 'c1', email: 'jane@example.com', phone: '+14155551234' },
     },
   });
 
@@ -67,12 +68,15 @@ describe('ingestWebhook', () => {
     expect(ev.type).toBe('invoice.failed');
     expect(ev.merchantId).toBe('mrc_1');
     expect(ev.processorEventId).toBe('ev_1');
-    const p = ev.payload as { invoice: Invoice; decline?: { code: DeclineCode; family: DeclineFamily } };
+    const p = ev.payload as { invoice: Invoice; customer?: Customer; decline?: { code: DeclineCode; family: DeclineFamily } };
     expect(p.invoice.processorRef).toBe('inv_1');
     expect(p.invoice.amount).toEqual({ amount: 14900, currency: 'USD' });
     expect(p.invoice.firstFailedAt).toBe('2023-11-14T22:13:19.000Z');
     expect(p.decline?.code).toBe(DeclineCode.InsufficientFunds);
     expect(p.decline?.family).toBe(DeclineFamily.Soft);
+    // contact from content.customer feeds the dunning channels
+    expect(p.customer?.email).toBe('jane@example.com');
+    expect(p.customer?.phone).toBe('+14155551234');
   });
 
   it('rejects a webhook whose Basic auth does not match the configured credentials', async () => {

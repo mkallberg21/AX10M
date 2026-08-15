@@ -57,6 +57,7 @@ describe('ingestWebhook', () => {
   const failedOrder = JSON.stringify({
     id: 500, status: 'failed', currency: 'USD', total: '149.00', customer_id: 55, subscription_id: 9,
     failure_message: 'Card declined: insufficient funds', date_modified_gmt: '2026-08-14T10:00:00.000Z', date_created_gmt: '2026-08-01T00:00:00.000Z',
+    billing: { email: 'dana@example.test', phone: '+15555550123' },
   });
 
   it('normalizes a failed order into invoice.failed with a mapped decline and minor-unit amount', async () => {
@@ -67,12 +68,15 @@ describe('ingestWebhook', () => {
     const ev = events[0]!;
     expect(ev.type).toBe('invoice.failed');
     expect(ev.merchantId).toBe('mrc_1');
-    const p = ev.payload as { invoice: Invoice; decline?: { code: DeclineCode; family: DeclineFamily } };
+    const p = ev.payload as { invoice: Invoice; customer?: { email?: string; phone?: string }; decline?: { code: DeclineCode; family: DeclineFamily } };
     expect(p.invoice.amount).toEqual({ amount: 14900, currency: 'USD' }); // "149.00" → 14900 cents
     expect(p.invoice.processorRef).toBe('500');
     expect(p.invoice.subscriptionId).toBe('ax10m_sub_9');
     expect(p.decline?.code).toBe(DeclineCode.InsufficientFunds);
     expect(p.decline?.family).toBe(DeclineFamily.Soft);
+    // Billing contact from order.billing feeds the dunning channels.
+    expect(p.customer?.email).toBe('dana@example.test');
+    expect(p.customer?.phone).toBe('+15555550123');
   });
 
   it('rejects a webhook whose signature does not match (fail closed on bad signature)', async () => {

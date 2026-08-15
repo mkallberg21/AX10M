@@ -16,14 +16,32 @@ import type { Customer, Invoice } from '@ax10m/canonical';
 const CUSTOMER_PREFIX = 'ax10m_cus_';
 
 /**
+ * Normalize a raw webhook phone to E.164 (`+` and 8–15 digits), the format the SMS provider
+ * (Twilio) requires. Accepts already-international numbers (a `+` prefix, or a `00` access code
+ * we rewrite to `+`), stripping spaces / dashes / parens. A NATIONAL-only number is returned as
+ * `undefined` — without a country code it is not safely dialable, so we drop it (an un-dialable
+ * number is worse than none: adapters that know the country build `+<cc><national>` first).
+ * Returns undefined for anything that doesn't validate. Never a PAN.
+ */
+export function toE164(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  let s = raw.trim();
+  if (s.startsWith('00')) s = '+' + s.slice(2); // international access code → +
+  if (!s.startsWith('+')) return undefined; // national-only → not safely dialable
+  const digits = s.replace(/\D/g, '');
+  return digits.length >= 8 && digits.length <= 15 ? `+${digits}` : undefined;
+}
+
+/**
  * Build customer overrides from webhook contact fields, dropping empties so a blank string
- * never shadows an absent value. Feeds the dunning channels (email / SMS destinations).
- * Contact info only — never a PAN.
+ * never shadows an absent value, and normalizing the phone to E.164 (un-dialable numbers are
+ * dropped). Feeds the dunning channels (email / SMS destinations). Contact info only — never a PAN.
  */
 export function contactOverrides(email: string | undefined, phone: string | undefined): { email?: string; phone?: string } {
   const o: { email?: string; phone?: string } = {};
   if (email) o.email = email;
-  if (phone) o.phone = phone;
+  const e164 = toE164(phone);
+  if (e164) o.phone = e164;
   return o;
 }
 

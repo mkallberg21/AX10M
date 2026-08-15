@@ -70,18 +70,29 @@ describe('ingestWebhook', () => {
   it('verifies Cko-Signature and normalizes payment_declined into invoice.failed with a mapped decline', async () => {
     const { fetch } = makeFetch(() => res(200, {}));
     const adapter = new CheckoutAdapter({ ...baseCfg, fetch });
-    const body = webhook('payment_declined', { response_code: '20051', response_summary: 'Insufficient funds' });
+    const body = webhook('payment_declined', {
+      response_code: '20051',
+      response_summary: 'Insufficient funds',
+      customer: { id: 'cus_1', email: 'jane@example.com', phone: { country_code: '1', number: '4155552671' } },
+    });
     const events = await adapter.ingestWebhook({ body, headers: { 'Cko-Signature': computeCheckoutSignature(body, SECRET) } });
     expect(events).toHaveLength(1);
     const ev = events[0]!;
     expect(ev.type).toBe('invoice.failed');
     expect(ev.merchantId).toBe('mrc_1');
     expect(ev.processorEventId).toBe('evt_1');
-    const p = ev.payload as { invoice: Invoice; decline?: { code: DeclineCode; family: DeclineFamily } };
+    const p = ev.payload as {
+      invoice: Invoice;
+      decline?: { code: DeclineCode; family: DeclineFamily };
+      customer?: { email?: string; phone?: string };
+    };
     expect(p.invoice.processorRef).toBe('inv_1');
     expect(p.invoice.amount).toEqual({ amount: 14900, currency: 'USD' });
     expect(p.decline?.code).toBe(DeclineCode.InsufficientFunds);
     expect(p.decline?.family).toBe(DeclineFamily.Soft);
+    // contact info flows into the dunning path: email verbatim, phone assembled to E.164
+    expect(p.customer?.email).toBe('jane@example.com');
+    expect(p.customer?.phone).toBe('+14155552671');
   });
 
   it('rejects a webhook whose signature does not match (case-insensitive header)', async () => {

@@ -43,7 +43,7 @@ import {
   type PaymentMethod,
   type Subscription,
 } from '@ax10m/canonical';
-import { customerFromInvoice } from '../../customer.js';
+import { customerFromInvoice, contactOverrides } from '../../customer.js';
 import type {
   CapabilityMatrix,
   ChargeResult,
@@ -147,6 +147,7 @@ interface RlNotification {
   invoiceId?: string;
   subscriptionId?: string;
   accountCode?: string;
+  accountEmail?: string; // modeled on Recurly webhook — CONFIRM (notification <account> block carries <email>; phone is not reliably present)
   currency?: string;
   amountInCents?: number;
   transactionErrorCode?: string;
@@ -180,7 +181,7 @@ export function parseRecurlyNotification(body: string): RlNotification | null {
         invoice?: { uuid?: string; id?: string; number?: string; currency?: string; total_in_cents?: number; balance_in_cents?: number };
         transaction?: { id?: string; uuid?: string; status?: string; error_code?: string; decline_code?: string; message?: string };
         subscription?: { uuid?: string; id?: string };
-        account?: { account_code?: string; code?: string };
+        account?: { account_code?: string; code?: string; email?: string };
         occurred_at?: string;
       };
       const type = j.type ?? j.event_type ?? '';
@@ -190,6 +191,7 @@ export function parseRecurlyNotification(body: string): RlNotification | null {
         invoiceId: j.invoice?.uuid ?? j.invoice?.id ?? j.invoice?.number,
         subscriptionId: j.subscription?.uuid ?? j.subscription?.id,
         accountCode: j.account?.account_code ?? j.account?.code,
+        accountEmail: j.account?.email,
         currency: j.invoice?.currency,
         amountInCents: j.invoice?.balance_in_cents ?? j.invoice?.total_in_cents,
         transactionErrorCode: j.transaction?.error_code ?? j.transaction?.decline_code,
@@ -212,6 +214,7 @@ export function parseRecurlyNotification(body: string): RlNotification | null {
     invoiceId: firstMatch(invoiceBlock, /<uuid>([^<]+)<\/uuid>/i) ?? firstMatch(invoiceBlock, /<invoice_number(?:[^>]*)>([^<]+)<\/invoice_number>/i),
     subscriptionId: firstMatch(trimmed, /<subscription>[\s\S]*?<uuid>([^<]+)<\/uuid>/i),
     accountCode: firstMatch(trimmed, /<account>[\s\S]*?<account_code>([^<]+)<\/account_code>/i),
+    accountEmail: firstMatch(trimmed, /<account>[\s\S]*?<email>([^<]+)<\/email>/i),
     currency: firstMatch(invoiceBlock, /<currency>([^<]+)<\/currency>/i),
     amountInCents: Number(firstMatch(invoiceBlock, /<total_in_cents(?:[^>]*)>([^<]+)<\/total_in_cents>/i)) || undefined,
     transactionErrorCode: firstMatch(txnBlock, /<error_code(?:[^>]*)>([^<]+)<\/error_code>/i),
@@ -285,7 +288,11 @@ export class RecurlyAdapter implements ProcessorAdapter {
           attemptedAt: occurredAt,
         });
         const decline = this.buildDecline(note, invoice.id, attempt.id, occurredAt);
-        return [envelope('invoice.failed', { invoice, attempt, decline, customer: customerFromInvoice(invoice) })];
+        // Recurly's notification <account> block carries the customer email (feeds the
+        // email dunning channel); it does NOT reliably carry a phone, so pass undefined
+        // rather than fabricate a country code.
+        const customer = customerFromInvoice(invoice, contactOverrides(note.accountEmail, undefined));
+        return [envelope('invoice.failed', { invoice, attempt, decline, customer })];
       }
       case 'successful_payment_notification':
       case 'paid_charge': {

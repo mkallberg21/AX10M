@@ -37,7 +37,7 @@ import {
   type PaymentMethod,
   type Subscription,
 } from '@ax10m/canonical';
-import { customerFromInvoice } from '../../customer.js';
+import { customerFromInvoice, contactOverrides } from '../../customer.js';
 import type {
   CapabilityMatrix,
   ChargeResult,
@@ -80,6 +80,11 @@ interface WooOrder {
   failure_code?: string;
   failure_message?: string;
   customer_note?: string;
+  /** Billing contact block — feeds the dunning channels. modeled on WooCommerce order.billing — CONFIRM */
+  billing?: {
+    email?: string; // modeled on WooCommerce order.billing.email — CONFIRM
+    phone?: string; // modeled on WooCommerce order.billing.phone — CONFIRM (often national, no country code)
+  };
 }
 
 /** Response of the retry-payment action (fields plugin-dependent — confirm on install). */
@@ -190,7 +195,10 @@ export class WooCommerceAdapter implements ProcessorAdapter {
             attemptedAt: occurredAt,
           });
           const decline = this.buildDecline(rawReason, invoice.id, attempt.id, occurredAt, eventId);
-          return [{ ...base, type: 'invoice.failed', payload: { invoice, attempt, decline, customer: customerFromInvoice(invoice) } }];
+          // Billing contact feeds the dunning channels. Woo phone is often national (no country
+          // code) — pass as-is; contactOverrides/toE164 drops it if not E.164 (never fabricate a cc).
+          const customer = customerFromInvoice(invoice, contactOverrides(order.billing?.email, order.billing?.phone));
+          return [{ ...base, type: 'invoice.failed', payload: { invoice, attempt, decline, customer } }];
         }
         if (order.status === 'completed' || order.status === 'processing') {
           const invoice = this.mapOrder(order, occurredAt, false);

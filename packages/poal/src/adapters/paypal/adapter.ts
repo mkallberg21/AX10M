@@ -101,9 +101,10 @@ interface PpResource {
   payer?: {
     payer_id?: string;
     email_address?: string;
-    // PayPal gives the national number without a guaranteed country code — best-effort for the
-    // SMS channel; a real deployment should normalize to E.164. Contact only, never a PAN.
-    phone?: { phone_number?: { national_number?: string } };
+    // PayPal splits the phone into an optional country code + national number. We build
+    // `+<cc><national>` when the country code is present (→ valid E.164); a national-only
+    // number is dropped downstream by toE164 as not safely dialable. Contact only, never a PAN.
+    phone?: { phone_number?: { country_code?: string; national_number?: string } };
   };
 }
 
@@ -201,7 +202,9 @@ export class PayPalAdapter implements ProcessorAdapter {
         const invoice = this.mapResourceInvoice(resource, occurredAt, /*failed*/ true);
         const attempt = this.mapResourceAttempt(resource, invoice.id, true);
         const decline = this.mapResourceDecline(resource, invoice.id, attempt.id, occurredAt);
-        const customer = customerFromInvoice(invoice, contactOverrides(resource.payer?.email_address, resource.payer?.phone?.phone_number?.national_number));
+        const pn = resource.payer?.phone?.phone_number;
+        const phone = pn?.country_code && pn?.national_number ? `+${pn.country_code}${pn.national_number}` : pn?.national_number;
+        const customer = customerFromInvoice(invoice, contactOverrides(resource.payer?.email_address, phone));
         return [envelope('invoice.failed', { invoice, attempt, decline, customer })];
       }
       case 'PAYMENT.CAPTURE.COMPLETED':
