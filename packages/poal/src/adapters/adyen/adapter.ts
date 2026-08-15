@@ -32,7 +32,7 @@ import {
   type PaymentMethod,
   type Subscription,
 } from '@ax10m/canonical';
-import { customerFromInvoice } from '../../customer.js';
+import { customerFromInvoice, contactOverrides } from '../../customer.js';
 import type {
   CapabilityMatrix,
   ChargeResult,
@@ -134,7 +134,10 @@ export class AdyenAdapter implements ProcessorAdapter {
     };
     if (failed) {
       const decline = this.mapDecline(item, invoice.id, attempt.id, occurredAt);
-      return { ...base, type: 'invoice.failed', payload: { invoice, attempt, decline, customer: customerFromInvoice(invoice) } };
+      // Contact info from additionalData feeds the dunning channels (present when the merchant
+      // includes shopperEmail / shopperTelephone on the payment).
+      const customer = customerFromInvoice(invoice, contactOverrides(item.additionalData?.shopperEmail, item.additionalData?.shopperTelephone));
+      return { ...base, type: 'invoice.failed', payload: { invoice, attempt, decline, customer } };
     }
     return { ...base, type: 'invoice.paid', payload: { invoice, attempt } };
   }

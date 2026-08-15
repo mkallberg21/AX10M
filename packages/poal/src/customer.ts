@@ -15,6 +15,18 @@ import type { Customer, Invoice } from '@ax10m/canonical';
 
 const CUSTOMER_PREFIX = 'ax10m_cus_';
 
+/**
+ * Build customer overrides from webhook contact fields, dropping empties so a blank string
+ * never shadows an absent value. Feeds the dunning channels (email / SMS destinations).
+ * Contact info only — never a PAN.
+ */
+export function contactOverrides(email: string | undefined, phone: string | undefined): { email?: string; phone?: string } {
+  const o: { email?: string; phone?: string } = {};
+  if (email) o.email = email;
+  if (phone) o.phone = phone;
+  return o;
+}
+
 export function customerFromInvoice(invoice: Invoice, overrides: Partial<Customer> = {}): Customer {
   const processorRef = invoice.customerId.startsWith(CUSTOMER_PREFIX)
     ? invoice.customerId.slice(CUSTOMER_PREFIX.length)

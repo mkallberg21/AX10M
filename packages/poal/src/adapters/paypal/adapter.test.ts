@@ -138,7 +138,7 @@ describe('ingestWebhook', () => {
       status: 'DECLINED',
       amount: { value: '149.00', currency_code: 'USD' },
       invoice_id: 'inv_1',
-      payer: { payer_id: 'PAYER1' },
+      payer: { payer_id: 'PAYER1', email_address: 'dana@example.test', phone: { phone_number: { national_number: '5555550123' } } },
       status_details: { reason: 'INSTRUMENT_DECLINED' },
     },
   });
@@ -163,12 +163,15 @@ describe('ingestWebhook', () => {
     expect(ev.type).toBe('invoice.failed');
     expect(ev.merchantId).toBe('mrc_1');
     expect(ev.processorEventId).toBe('ev_1');
-    const p = ev.payload as { invoice: Invoice; decline?: { code: DeclineCode; family: DeclineFamily } };
+    const p = ev.payload as { invoice: Invoice; customer?: { email?: string; phone?: string }; decline?: { code: DeclineCode; family: DeclineFamily } };
     expect(p.invoice.processorRef).toBe('inv_1');
     expect(p.invoice.amount).toEqual({ amount: 14900, currency: 'USD' });
     expect(p.invoice.customerId).toBe('ax10m_cus_PAYER1');
     expect(p.decline?.code).toBe(DeclineCode.DoNotHonor);
     expect(p.decline?.family).toBe(DeclineFamily.Gray);
+    // Contact info from the payer feeds the dunning channels.
+    expect(p.customer?.email).toBe('dana@example.test');
+    expect(p.customer?.phone).toBe('5555550123');
 
     // The verify call forwarded the webhook id + transmission headers.
     const verifyCall = calls.find((c) => c.url.includes('/verify-webhook-signature'))!;

@@ -39,7 +39,7 @@ import type {
   ProcessorAdapter,
   RawWebhook,
 } from '../adapter.js';
-import { customerFromInvoice } from '../customer.js';
+import { customerFromInvoice, contactOverrides } from '../customer.js';
 import { StripeClient, StripeError, type FetchLike } from './client.js';
 import { mapStripeDeclineCode } from './decline-map.js';
 import { verifyStripeSignature } from './signature.js';
@@ -95,17 +95,6 @@ interface StripeEvent {
 const CENTS = (n: number | undefined): number => (typeof n === 'number' ? n : 0);
 const isoFromEpoch = (sec: number | undefined): string =>
   typeof sec === 'number' ? new Date(sec * 1000).toISOString() : new Date(0).toISOString();
-
-/**
- * Build customer overrides from webhook contact fields, dropping empties so a blank string
- * never shadows an absent value. Feeds the dunning channels (email / SMS destinations).
- */
-function contactOverrides(email: string | undefined, phone: string | undefined): { email?: string; phone?: string } {
-  const o: { email?: string; phone?: string } = {};
-  if (email) o.email = email;
-  if (phone) o.phone = phone;
-  return o;
-}
 
 export class StripeAdapter implements ProcessorAdapter {
   readonly id = 'stripe';

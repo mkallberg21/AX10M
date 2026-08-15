@@ -39,7 +39,7 @@ import {
   type PaymentMethod,
   type Subscription,
 } from '@ax10m/canonical';
-import { customerFromInvoice } from '../../customer.js';
+import { customerFromInvoice, contactOverrides } from '../../customer.js';
 import type {
   CapabilityMatrix,
   ChargeResult,
@@ -98,7 +98,13 @@ interface PpResource {
   invoice_id?: string;
   reason?: string;
   status_details?: { reason?: string };
-  payer?: { payer_id?: string };
+  payer?: {
+    payer_id?: string;
+    email_address?: string;
+    // PayPal gives the national number without a guaranteed country code — best-effort for the
+    // SMS channel; a real deployment should normalize to E.164. Contact only, never a PAN.
+    phone?: { phone_number?: { national_number?: string } };
+  };
 }
 
 /** Parse a PayPal MAJOR-unit decimal string ("149.00") into integer minor units (14900). */
@@ -195,7 +201,8 @@ export class PayPalAdapter implements ProcessorAdapter {
         const invoice = this.mapResourceInvoice(resource, occurredAt, /*failed*/ true);
         const attempt = this.mapResourceAttempt(resource, invoice.id, true);
         const decline = this.mapResourceDecline(resource, invoice.id, attempt.id, occurredAt);
-        return [envelope('invoice.failed', { invoice, attempt, decline, customer: customerFromInvoice(invoice) })];
+        const customer = customerFromInvoice(invoice, contactOverrides(resource.payer?.email_address, resource.payer?.phone?.phone_number?.national_number));
+        return [envelope('invoice.failed', { invoice, attempt, decline, customer })];
       }
       case 'PAYMENT.CAPTURE.COMPLETED':
       case 'PAYMENT.SALE.COMPLETED': {

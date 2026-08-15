@@ -74,16 +74,19 @@ describe('ingestWebhook', () => {
   it('verifies the HMAC and normalizes a failed AUTHORISATION to invoice.failed', async () => {
     const { fetch } = makeFetch(() => res(200, {}));
     const adapter = new AdyenAdapter({ ...baseCfg, fetch, hmacKey: KEY });
-    const events = await adapter.ingestWebhook({ body: notification(signedItem()), headers: {} });
+    const events = await adapter.ingestWebhook({ body: notification(signedItem({ additionalData: { shopperEmail: 'dana@example.test', shopperTelephone: '+15555550123' } })), headers: {} });
     expect(events).toHaveLength(1);
     const ev = events[0]!;
     expect(ev.type).toBe('invoice.failed');
     expect(ev.merchantId).toBe('mrc_1');
-    const p = ev.payload as { invoice: Invoice; decline?: { code: DeclineCode; family: DeclineFamily } };
+    const p = ev.payload as { invoice: Invoice; customer?: { email?: string; phone?: string }; decline?: { code: DeclineCode; family: DeclineFamily } };
     expect(p.invoice.processorRef).toBe('inv_1');
     expect(p.invoice.amount).toEqual({ amount: 14900, currency: 'USD' });
     expect(p.decline?.code).toBe(DeclineCode.ExpiredCard);
     expect(p.decline?.family).toBe(DeclineFamily.Gray);
+    // Contact info from additionalData feeds the dunning channels.
+    expect(p.customer?.email).toBe('dana@example.test');
+    expect(p.customer?.phone).toBe('+15555550123');
   });
 
   it('rejects a notification whose HMAC signature is wrong', async () => {

@@ -36,7 +36,7 @@ import {
   type PaymentMethod,
   type Subscription,
 } from '@ax10m/canonical';
-import { customerFromInvoice } from '../../customer.js';
+import { customerFromInvoice, contactOverrides } from '../../customer.js';
 import type {
   CapabilityMatrix,
   ChargeResult,
@@ -170,7 +170,10 @@ export class BraintreeAdapter implements ProcessorAdapter {
       };
       if (failed) {
         const decline = this.buildDecline(txn, invoice.id, attempt.id, occurredAt);
-        return [{ ...base, type: 'invoice.failed', payload: { invoice, attempt, decline, customer: customerFromInvoice(invoice) } }];
+        // Contact info from the transaction's <customer> block feeds the dunning channels.
+        const cust = xmlInner(txn, 'customer') ?? '';
+        const customer = customerFromInvoice(invoice, contactOverrides(xmlLeaf(cust, 'email'), xmlLeaf(cust, 'phone')));
+        return [{ ...base, type: 'invoice.failed', payload: { invoice, attempt, decline, customer } }];
       }
       return [{ ...base, type: 'invoice.paid', payload: { invoice, attempt } }];
     }
