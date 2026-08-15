@@ -6,8 +6,9 @@
  *
  * The processor's customer ref is recovered by stripping the canonical `ax10m_cus_`
  * prefix that every adapter adds to `invoice.customerId` — `listPaymentMethods` queries
- * the processor by `customer.processorRef`. Adapters with richer webhook data (email, a
- * distinct customer ref, issuer region) can pass overrides.
+ * the processor by `customer.processorRef`. Adapters with richer webhook data (email,
+ * phone for the SMS dunning channel, a distinct customer ref, issuer region, consent) can
+ * pass overrides.
  */
 
 import type { Customer, Invoice } from '@ax10m/canonical';

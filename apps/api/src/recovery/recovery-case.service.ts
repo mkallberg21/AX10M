@@ -246,7 +246,7 @@ export class RecoveryCaseService {
       globallyOptedOut: consent?.globallyOptedOut ?? false,
     });
     if (!gate.allow) return { status: 'suppressed', channel, reason: gate.reason };
-    const recipient: DunningRecipient = { channel, email: p.customer?.email };
+    const recipient: DunningRecipient = { channel, email: p.customer?.email, phone: p.customer?.phone };
     // No destination address for the channel → can't send (honest skip, not a failure).
     if ((channel === 'email' && !recipient.email) || (channel === 'sms' && !recipient.phone)) {
       return { status: 'skipped', channel, reason: 'no recipient address for channel' };

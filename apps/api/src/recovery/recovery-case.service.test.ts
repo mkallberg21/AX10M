@@ -412,6 +412,28 @@ describe('credential recovery in the live charge path (card_refresh + alternate_
     expect(delivery?.reason).toMatch(/no recipient address/);
   });
 
+  it('SMS: now addresses the recipient by phone (canonical Customer.phone)', async () => {
+    const svc = new RecoveryCaseService(new OnboardingService());
+    svc.useDunningAgent(new TemplateDunningAgent(), { ...dunningConfig, channel: 'sms' });
+    const provider = new FakeSender({ status: 'sent', channel: 'sms', provider: 'twilio', providerMessageId: 'SM-1' });
+    svc.useDunningSender(provider, { live: true });
+    const smsCustomer: Customer = { ...customer, phone: '+15555550123', consent: { email: false, sms: true, whatsapp: false, push: false, globallyOptedOut: false } };
+    const delivery = await runDunning(svc, smsCustomer);
+    expect(delivery).toMatchObject({ status: 'sent', channel: 'sms', provider: 'twilio' });
+    expect(provider.calls).toHaveLength(1);
+    expect(provider.calls[0]!.recipient.phone).toBe('+15555550123');
+    expect(provider.calls[0]!.message.channel).toBe('sms');
+  });
+
+  it('SMS still SKIPS when the customer has no phone', async () => {
+    const svc = new RecoveryCaseService(new OnboardingService());
+    svc.useDunningAgent(new TemplateDunningAgent(), { ...dunningConfig, channel: 'sms' });
+    svc.useDunningSender(new FakeSender({ status: 'sent', channel: 'sms', provider: 'twilio' }), { live: true });
+    const smsNoPhone: Customer = { ...customer, consent: { email: false, sms: true, whatsapp: false, push: false, globallyOptedOut: false } };
+    const delivery = await runDunning(svc, smsNoPhone);
+    expect(delivery?.status).toBe('skipped');
+  });
+
   it('SHADOW mode records the intent but performs no credential-recovery charge', async () => {
     const svc = new RecoveryCaseService(new OnboardingService());
     const refreshed: PaymentMethod = { ...method, id: 'ax10m_pm_refreshed', token: 'tok_new' };

@@ -63,6 +63,8 @@ export interface Customer {
   merchantId: string;
   processorRef: string;
   email?: string;
+  /** E.164 phone (e.g. "+15555550123") — the SMS dunning channel's destination. Never a PAN. */
+  phone?: string;
   /** Coarse issuer region derived from the primary payment method BIN. */
   issuerRegion: IssuerRegion;
   /** When the customer relationship started — feeds tenure features. */
