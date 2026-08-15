@@ -90,6 +90,32 @@ describe('ingestWebhook', () => {
     expect(p.decline?.family).toBe(DeclineFamily.Soft);
   });
 
+  it('enriches the shopper email from the payment query (best-effort; Worldpay has no phone)', async () => {
+    const { fetch, calls } = makeFetch((url, init) => {
+      if (init.method === 'GET' && url.includes('/payments/pay_1')) {
+        return res(200, { shopper: { shopperEmailAddress: 'dana@example.test' } });
+      }
+      return res(200, {});
+    });
+    const adapter = new WorldpayAdapter({ ...baseCfg, fetch });
+    const body = notification('payment.refused', { refusalCode: '51', paymentId: 'pay_1' });
+    const events = await adapter.ingestWebhook({ body, headers: { 'X-WP-Signature': computeWorldpaySignature(body, SECRET) } });
+    const p = events[0]!.payload as { customer?: { email?: string; phone?: string } };
+    expect(p.customer?.email).toBe('dana@example.test');
+    expect(p.customer?.phone).toBeUndefined();
+    expect(calls.some((c) => c.url.includes('/payments/pay_1'))).toBe(true); // keyed off the notification paymentId
+  });
+
+  it('still emits invoice.failed when the payment query fails (best-effort)', async () => {
+    const { fetch } = makeFetch(() => res(500, { message: 'boom' }));
+    const adapter = new WorldpayAdapter({ ...baseCfg, fetch });
+    const body = notification('payment.refused', { paymentId: 'pay_1' });
+    const events = await adapter.ingestWebhook({ body, headers: { 'X-WP-Signature': computeWorldpaySignature(body, SECRET) } });
+    expect(events).toHaveLength(1); // enrichment failure did NOT drop the event
+    const p = events[0]!.payload as { customer?: { email?: string } };
+    expect(p.customer?.email).toBeUndefined();
+  });
+
   it('rejects a notification whose signature does not match (case-insensitive header)', async () => {
     const { fetch } = makeFetch(() => res(200, {}));
     const adapter = new WorldpayAdapter({ ...baseCfg, fetch });

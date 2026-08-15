@@ -139,6 +139,32 @@ describe('ingestWebhook', () => {
     expect(p.decline?.family).toBe(DeclineFamily.Gray);
   });
 
+  it('enriches contact from the account bill-to (GET /v1/accounts/:id) — work email + phone', async () => {
+    const { fetch, calls } = makeFetch((url) => {
+      if (url.includes('/oauth/token')) return TOKEN_OK;
+      if (url.includes('/v1/accounts/ACC1')) return res(200, { billToContact: { workEmail: 'dana@example.test', workPhone: '+15555550123' } });
+      return res(200, {});
+    });
+    const adapter = new ZuoraAdapter({ ...baseCfg, fetch });
+    const events = await adapter.ingestWebhook({ body: failedBody, headers: sign(failedBody) });
+    const p = events[0]!.payload as { customer?: { email?: string; phone?: string } };
+    expect(p.customer?.email).toBe('dana@example.test');
+    expect(p.customer?.phone).toBe('+15555550123');
+    expect(calls.some((c) => c.url.includes('/v1/accounts/ACC1'))).toBe(true); // keyed off callout accountId
+  });
+
+  it('still emits invoice.failed when the account lookup fails (best-effort)', async () => {
+    const { fetch } = makeFetch((url) => {
+      if (url.includes('/oauth/token')) return TOKEN_OK;
+      return res(500, { message: 'boom' }); // /v1/accounts fails
+    });
+    const adapter = new ZuoraAdapter({ ...baseCfg, fetch });
+    const events = await adapter.ingestWebhook({ body: failedBody, headers: sign(failedBody) });
+    expect(events).toHaveLength(1); // enrichment failure did NOT drop the event
+    const p = events[0]!.payload as { customer?: { email?: string } };
+    expect(p.customer?.email).toBeUndefined();
+  });
+
   it('rejects a callout whose signature does not match', async () => {
     const { fetch } = makeFetch(() => res(200, {}));
     const adapter = new ZuoraAdapter({ ...baseCfg, fetch });

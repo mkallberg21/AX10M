@@ -39,7 +39,7 @@ import {
   type PaymentMethod,
   type Subscription,
 } from '@ax10m/canonical';
-import { customerFromInvoice } from '../../customer.js';
+import { customerFromInvoice, contactOverrides } from '../../customer.js';
 import type {
   CapabilityMatrix,
   ChargeResult,
@@ -104,6 +104,18 @@ interface ZInvoice {
   status?: string; // Posted | Paid | Canceled | ...
   invoiceDate?: string;
 }
+/** Zuora Account with its bill-to contact — the source for dunning email/phone. Field names
+ *  per Zuora Billing REST (GET /v1/accounts/{key}) — confirm on pin. */
+interface ZAccount {
+  billToContact?: {
+    workEmail?: string;
+    personalEmail?: string;
+    workPhone?: string;
+    mobilePhone?: string;
+    homePhone?: string;
+  };
+}
+
 /** A Zuora Callout notification (configurable — union of the fields we read). */
 interface ZCallout {
   eventType?: string;
@@ -187,7 +199,11 @@ export class ZuoraAdapter implements ProcessorAdapter {
         attemptedAt: occurredAt,
       });
       const decline = this.buildDecline(callout, invoice.id, attempt.id, occurredAt);
-      return [envelope('invoice.failed', { invoice, attempt, decline, customer: customerFromInvoice(invoice) })];
+      // The callout carries no contact — fetch the account's bill-to contact for the dunning
+      // channels (best-effort; an enrichment failure yields no contact, never a dropped event).
+      const contact = await this.getAccountContact(callout.invoice?.accountId);
+      const customer = customerFromInvoice(invoice, contactOverrides(contact?.email, contact?.phone));
+      return [envelope('invoice.failed', { invoice, attempt, decline, customer })];
     }
     // Payment processed → invoice.paid.
     if (type.includes('paymentprocessed') || type.includes('payment_processed') || type === 'paymentsuccess') {
@@ -209,6 +225,27 @@ export class ZuoraAdapter implements ProcessorAdapter {
       return [envelope('subscription.updated', { processorRef: callout.subscription.id, status: callout.subscription.status ?? 'Cancelled' })];
     }
     return []; // callout we don't act on
+  }
+
+  /**
+   * Best-effort contact enrichment: the callout has no contact, so read the account's bill-to
+   * contact (GET /v1/accounts/{accountId}). Prefers work over personal fields. A missing/failed
+   * lookup returns null so the recovery event still emits — enrichment must never break ingestion.
+   * Zuora phone fields are often national; contactOverrides/toE164 drops any non-E.164 number.
+   */
+  private async getAccountContact(accountId: string | undefined): Promise<{ email?: string; phone?: string } | null> {
+    if (!accountId) return null;
+    try {
+      const res = (await this.client.get(`/v1/accounts/${encodeURIComponent(accountId)}`)) as ZAccount;
+      const c = res.billToContact;
+      if (!c) return null;
+      return {
+        email: c.workEmail ?? c.personalEmail,
+        phone: c.workPhone ?? c.mobilePhone ?? c.homePhone,
+      };
+    } catch {
+      return null;
+    }
   }
 
   // ── reconciliation poll ──────────────────────────────────────────────────────
