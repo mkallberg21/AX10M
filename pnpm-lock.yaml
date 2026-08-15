@@ -32,6 +32,9 @@ importers:
       '@ax10m/canonical':
         specifier: workspace:*
         version: link:../../packages/canonical
+      '@ax10m/comms':
+        specifier: workspace:*
+        version: link:../../packages/comms
       '@ax10m/guardrail':
         specifier: workspace:*
         version: link:../../packages/guardrail
@@ -173,6 +176,22 @@ importers:
         version: 2.1.9(@types/node@20.19.43)(terser@5.50.0)
 
   packages/canonical:
+    devDependencies:
+      rimraf:
+        specifier: ^6.0.0
+        version: 6.1.3
+      typescript:
+        specifier: ^5.5.4
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.0
+        version: 2.1.9(@types/node@20.19.43)(terser@5.50.0)
+
+  packages/comms:
+    dependencies:
+      '@ax10m/canonical':
+        specifier: workspace:*
+        version: link:../canonical
     devDependencies:
       rimraf:
         specifier: ^6.0.0

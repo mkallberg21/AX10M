@@ -28,6 +28,7 @@ import {
   type RetryStep,
 } from '@ax10m/recovery-engine';
 import type { RecoveryWorkflowInput } from '@ax10m/scheduler/temporal';
+import { TemplateDunningAgent, type DunningAgent, type DunningChannel, type DunningMessage } from '@ax10m/comms';
 import { OnboardingService } from '../onboarding/onboarding.service.js';
 import { NoopRecoveryDispatcher, type RecoveryDispatcher } from './recovery-dispatcher.js';
 import { InMemoryLedgerPort, type LedgerPort } from './ledger-port.js';
@@ -126,6 +127,47 @@ export class RecoveryCaseService {
 
   private credentialKey(invoiceId: string, method: PaymentMethod): string {
     return `${invoiceId}:${method.token}`;
+  }
+
+  // Dunning-comms composer. Composes the card-update prompt written into the `comms.sent`
+  // ledger detail for an audit trail — it does NOT send (a comms provider + outward-facing
+  // action) and is never in the charge-decision path. Composition is OPT-IN: only when an
+  // operator supplies where the card-update page lives (`dunningConfig`) do we compose a
+  // message, since the update URL + opt-out are merchant-configured, not inferable. Default
+  // agent is the deterministic template (no LLM/API key needed).
+  private dunningAgent: DunningAgent = new TemplateDunningAgent();
+  private dunningConfig?: DunningCommsConfig;
+
+  /**
+   * Wire the dunning-comms composer. Pass a `config` with the merchant's card-update URL +
+   * opt-out instruction to have the composed message recorded in the `comms.sent` ledger
+   * detail. Swap `agent` for an LlmDunningAgent (validated, template-fallback) to personalize.
+   * Without a config, comms are recorded as before (reason/rationale only) — nothing composed.
+   */
+  useDunningAgent(agent: DunningAgent, config?: DunningCommsConfig): void {
+    this.dunningAgent = agent;
+    this.dunningConfig = config;
+  }
+
+  /** Compose the card-update message for the ledger, or null if no comms config is wired. */
+  private async composeDunning(p: {
+    invoice: Invoice;
+    method: PaymentMethod;
+    declineCode: DeclineCode;
+    customer?: Customer;
+  }): Promise<DunningMessage | null> {
+    const cfg = this.dunningConfig;
+    if (!cfg) return null;
+    return this.dunningAgent.compose({
+      channel: cfg.channel ?? 'email',
+      declineCode: p.declineCode,
+      merchantName: cfg.merchantName?.(p.invoice.merchantId) ?? p.invoice.merchantId,
+      amountMinor: p.invoice.amount.amount,
+      currency: p.invoice.amount.currency,
+      updateCardUrl: cfg.updateCardUrl({ invoice: p.invoice, customerId: p.invoice.customerId }),
+      optOutInstruction: cfg.optOutInstruction,
+      cardLast4: p.method.last4, // display-only, never the PAN
+    });
   }
 
   /**
@@ -484,11 +526,22 @@ export class RecoveryCaseService {
         const rec = await this.executeCredentialRecovery({ adapter, invoice, method, features, attemptNumber, attemptsSoFar, customer: params.customer, nowIso: params.nowIso });
         if (rec?.outcome === 'succeeded') return { action: 'attempted', outcome: 'succeeded', decision };
       }
+      const isComms = decision.action === 'card_update_comms';
+      const message = isComms && !shadow
+        ? await this.composeDunning({ invoice, method, declineCode: features.declineCode, customer: params.customer })
+        : null;
       await this.ledger.append({
         merchantId: invoice.merchantId,
-        type: decision.action === 'card_update_comms' ? 'comms.sent' : 'action.suppressed',
+        type: isComms ? 'comms.sent' : 'action.suppressed',
         occurredAt: new Date().toISOString(),
-        detail: { invoiceId: invoice.id, reason: decision.action, rationale: decision.rationale },
+        detail: {
+          invoiceId: invoice.id,
+          reason: decision.action,
+          rationale: decision.rationale,
+          // Composed card-update copy (audit trail only — NOT sent here). Present only when a
+          // dunning-comms config is wired; carries the update link + opt-out, never a PAN.
+          ...(message ? { message } : {}),
+        },
       });
       return { action: decision.action, decision };
     }
@@ -661,6 +714,22 @@ export class RecoveryCaseService {
   async ledgerEntries(): Promise<readonly LedgerEntry[]> {
     return this.ledger.all();
   }
+}
+
+/**
+ * Operator-supplied config for composing dunning comms. The card-update URL and opt-out are
+ * merchant-owned (a billing-portal link, an unsubscribe route), so composition is opt-in:
+ * without this, the service records comms as before and composes nothing.
+ */
+export interface DunningCommsConfig {
+  /** Builds the customer's card-update link — MUST appear verbatim in every message. */
+  updateCardUrl: (p: { invoice: Invoice; customerId: string }) => string;
+  /** How the customer opts out (unsubscribe link / "Reply STOP"). Required in every message. */
+  optOutInstruction: string;
+  /** Channel to compose for (default 'email'). */
+  channel?: DunningChannel;
+  /** Optional display-name lookup; falls back to the merchant id. */
+  merchantName?: (merchantId: string) => string;
 }
 
 /** Outcome of an end-to-end recovery decision — engine verdict OR guardrail/execution result. */

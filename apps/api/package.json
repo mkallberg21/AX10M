@@ -16,6 +16,7 @@
   "dependencies": {
     "@ax10m/attribution": "workspace:*",
     "@ax10m/canonical": "workspace:*",
+    "@ax10m/comms": "workspace:*",
     "@ax10m/guardrail": "workspace:*",
     "@ax10m/onboarding": "workspace:*",
     "@ax10m/persistence": "workspace:*",

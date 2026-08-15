@@ -10,6 +10,7 @@ import {
   type Subscription,
 } from '@ax10m/canonical';
 import type { Cursor, OpenFailuresPage, ProcessorAdapter, RawWebhook } from '@ax10m/poal';
+import { TemplateDunningAgent } from '@ax10m/comms';
 import { RecoveryCaseService } from './recovery-case.service.js';
 import { OnboardingService } from '../onboarding/onboarding.service.js';
 import type { DurableRecoveryRequest, RecoveryDispatcher } from './recovery-dispatcher.js';
@@ -266,6 +267,35 @@ describe('credential recovery in the live charge path (card_refresh + alternate_
     const { action } = await svc.executeRecovery({ adapter, invoice, method, decline: expired, attemptNumber: 1, shadow: false });
     expect(action).toBe('card_update_comms');
     expect(adapter.charges).toHaveLength(0);
+  });
+
+  it('records the composed card-update message in the comms.sent ledger detail when a dunning config is wired', async () => {
+    const svc = new RecoveryCaseService(new OnboardingService());
+    svc.useDunningAgent(new TemplateDunningAgent(), {
+      updateCardUrl: ({ invoice: inv }) => `https://pay.test/update/${inv.id}`,
+      optOutInstruction: 'Unsubscribe: https://pay.test/unsub',
+      merchantName: () => 'Acme Streaming',
+    });
+    const adapter = new CredentialAdapter(null, []); // dead card, no fresh credential → dunning
+    const { action } = await svc.executeRecovery({ adapter, invoice, method, decline: expired, attemptNumber: 1, shadow: false });
+    expect(action).toBe('card_update_comms');
+    const comms = (await svc.ledgerEntries()).find((e) => e.type === 'comms.sent');
+    expect(comms).toBeDefined();
+    const message = (comms!.detail as { message?: { body: string; subject?: string; generatedBy: string } }).message;
+    expect(message).toBeDefined();
+    expect(message!.body).toContain(`https://pay.test/update/${invoice.id}`); // the update link, verbatim
+    expect(message!.body).toContain('Unsubscribe'); // the opt-out
+    expect(message!.body).toMatch(/expired/i); // decline-aware copy
+    expect(message!.generatedBy).toBe('template');
+  });
+
+  it('composes nothing (records reason only) when no dunning config is wired', async () => {
+    const svc = new RecoveryCaseService(new OnboardingService());
+    const adapter = new CredentialAdapter(null, []);
+    await svc.executeRecovery({ adapter, invoice, method, decline: expired, attemptNumber: 1, shadow: false });
+    const comms = (await svc.ledgerEntries()).find((e) => e.type === 'comms.sent');
+    expect(comms).toBeDefined();
+    expect((comms!.detail as { message?: unknown }).message).toBeUndefined();
   });
 
   it('SHADOW mode records the intent but performs no credential-recovery charge', async () => {
