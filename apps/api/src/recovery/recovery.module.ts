@@ -4,6 +4,7 @@ import { buildLedgerPort } from './ledger-port.js';
 import { buildCredentialAttemptStore } from './credential-attempt-store.js';
 import { buildFeatureStore } from './feature-store-builder.js';
 import { buildDunningComms } from './dunning-comms-builder.js';
+import { buildSendDedupeStore } from './send-dedupe-store.js';
 import { loadActiveChampion } from './retrain-job.js';
 import { OnboardingModule } from '../onboarding/onboarding.module.js';
 import { OnboardingService } from '../onboarding/onboarding.service.js';
@@ -32,6 +33,8 @@ import { OnboardingService } from '../onboarding/onboarding.service.js';
         const { agent, config, sender, live } = buildDunningComms(process.env);
         service.useDunningAgent(agent, config);
         if (sender) service.useDunningSender(sender, { live });
+        const sendDedupe = await buildSendDedupeStore(process.env);
+        if (sendDedupe) service.useSendDedupeStore(sendDedupe);
         return service;
       },
       inject: [OnboardingService],

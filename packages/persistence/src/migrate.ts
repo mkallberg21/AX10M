@@ -65,6 +65,15 @@ const MIGRATIONS: Migration[] = [
       )`,
     ],
   },
+  {
+    name: '0004_dunning_sends',
+    statements: [
+      `CREATE TABLE IF NOT EXISTS dunning_sends (
+        key text PRIMARY KEY,
+        sent_at text NOT NULL
+      )`,
+    ],
+  },
 ];
 
 /** Apply all pending migrations. Returns the names actually run. Idempotent. */

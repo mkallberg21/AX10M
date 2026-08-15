@@ -9,6 +9,7 @@ import { decryptCredentials, encryptCredentials, generateKeyHex, loadKeyFromEnv 
 import { LedgerRepository } from './ledger-repo.js';
 import { ConnectionRepository } from './connection-repo.js';
 import { CredentialAttemptRepository } from './credential-attempt-repo.js';
+import { DunningSendRepository } from './dunning-send-repo.js';
 import { loadDemoSeed } from './seed.js';
 
 const KEY = Buffer.from(generateKeyHex(), 'hex');
@@ -107,6 +108,30 @@ describe('per-credential attempt counter — persisted + atomic + restart-safe',
     expect(await c.count('inv_1:tok_A')).toBe(10);
     expect(await c.count('inv_1:tok_B')).toBe(1);
     expect(await c.count('inv_1:tok_missing')).toBe(0);
+    await handle.close();
+  });
+});
+
+describe('dunning-send idempotency — persisted + idempotent + restart-safe', () => {
+  it('records a sent reminder, ignores a repeat, and survives a restart', async () => {
+    const dir = newTmpDir();
+    let handle: DbHandle = await createPglite(dir);
+    await applyMigrations(handle.db);
+
+    const key = 'mrc_1:inv_1:1:email';
+    const a = new DunningSendRepository(handle.db);
+    const b = new DunningSendRepository(handle.db); // API + worker over the same db
+    expect(await a.has(key)).toBe(false);
+    await a.record(key, '2026-08-15T00:00:00.000Z');
+    await b.record(key, '2026-08-15T01:00:00.000Z'); // repeat → no-op (ON CONFLICT DO NOTHING)
+    expect(await a.has(key)).toBe(true);
+    expect(await a.has('mrc_1:inv_1:2:email')).toBe(false); // a different attempt is a distinct key
+    await handle.close();
+
+    // Restart: reopen the SAME dir — the send record persists, so no re-send after a restart.
+    handle = await createPglite(dir);
+    const c = new DunningSendRepository(handle.db);
+    expect(await c.has(key)).toBe(true);
     await handle.close();
   });
 });

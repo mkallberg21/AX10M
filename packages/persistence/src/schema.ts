@@ -71,4 +71,14 @@ export const credentialAttempts = pgTable('credential_attempts', {
   lastAt: text('last_at').notNull(),
 });
 
-export const schema = { merchants, merchantConnections, ledgerEntries, recoveryModels, credentialAttempts };
+/**
+ * Dunning-send idempotency: one row per reminder actually sent, keyed by
+ * `${merchantId}:${invoiceId}:${attempt}:${channel}`. Persisted so exactly-once survives
+ * restarts and is shared across the API + worker (a re-invoked delivery never re-sends).
+ */
+export const dunningSends = pgTable('dunning_sends', {
+  key: text('key').primaryKey(),
+  sentAt: text('sent_at').notNull(),
+});
+
+export const schema = { merchants, merchantConnections, ledgerEntries, recoveryModels, credentialAttempts, dunningSends };

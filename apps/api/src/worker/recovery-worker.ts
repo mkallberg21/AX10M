@@ -23,6 +23,7 @@ import { buildLedgerPort } from '../recovery/ledger-port.js';
 import { buildCredentialAttemptStore } from '../recovery/credential-attempt-store.js';
 import { buildFeatureStore } from '../recovery/feature-store-builder.js';
 import { buildDunningComms } from '../recovery/dunning-comms-builder.js';
+import { buildSendDedupeStore } from '../recovery/send-dedupe-store.js';
 import { loadActiveChampion } from '../recovery/retrain-job.js';
 import { buildConnectionStore } from '../webhooks/merchant-connections.js';
 
@@ -64,6 +65,9 @@ export async function buildRecoveryWorkerRuntime(env: NodeJS.ProcessEnv = proces
   const { agent: dunningAgent, config: dunningConfig, sender: dunningSender, live: liveComms } = buildDunningComms(env);
   service.useDunningAgent(dunningAgent, dunningConfig);
   if (dunningSender) service.useDunningSender(dunningSender, { live: liveComms });
+  // Share the send-idempotency store across API + worker (same Postgres) so a reminder is sent once.
+  const sendDedupe = await buildSendDedupeStore(env);
+  if (sendDedupe) service.useSendDedupeStore(sendDedupe);
 
   // Preload the configured processor connections into a merchant→adapter map. The saga's
   // resolver is synchronous, so we resolve credentials up front (the worker starts with a
