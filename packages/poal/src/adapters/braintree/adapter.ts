@@ -171,8 +171,15 @@ export class BraintreeAdapter implements ProcessorAdapter {
       if (failed) {
         const decline = this.buildDecline(txn, invoice.id, attempt.id, occurredAt);
         // Contact info from the transaction's <customer> block feeds the dunning channels.
+        // Phone: prefer the structured <international-phone> (country-code + national-number →
+        // E.164); the flat <phone> is deprecated by Braintree (validated against the transaction
+        // reference, 2026-08). XML element names per Braintree's webhook representation — CONFIRM.
         const cust = xmlInner(txn, 'customer') ?? '';
-        const customer = customerFromInvoice(invoice, contactOverrides(xmlLeaf(cust, 'email'), xmlLeaf(cust, 'phone')));
+        const intl = xmlInner(cust, 'international-phone') ?? '';
+        const cc = xmlLeaf(intl, 'country-code');
+        const nn = xmlLeaf(intl, 'national-number');
+        const phone = cc && nn ? `+${cc}${nn}` : xmlLeaf(cust, 'phone');
+        const customer = customerFromInvoice(invoice, contactOverrides(xmlLeaf(cust, 'email'), phone));
         return [{ ...base, type: 'invoice.failed', payload: { invoice, attempt, decline, customer } }];
       }
       return [{ ...base, type: 'invoice.paid', payload: { invoice, attempt } }];

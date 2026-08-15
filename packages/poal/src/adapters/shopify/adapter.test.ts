@@ -85,7 +85,7 @@ describe('ingestWebhook', () => {
     const { fetch, calls } = makeFetch((url, init) => {
       const body = init.body ?? '';
       if (body.includes('subscriptionContractCustomer')) {
-        return res(200, { data: { subscriptionContract: { customer: { email: 'dana@example.test', phone: '+15555550123' } } } });
+        return res(200, { data: { subscriptionContract: { customer: { defaultEmailAddress: { emailAddress: 'dana@example.test' }, defaultPhoneNumber: { phoneNumber: '+15555550123' } } } } });
       }
       return res(200, {});
     });

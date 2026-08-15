@@ -109,15 +109,6 @@ export class WorldpayClient {
     return { body: await this.parse(res), idempotentReplay };
   }
 
-  /** GET a resource (e.g. a payment's details for contact enrichment). Throws on non-2xx. */
-  async get(path: string): Promise<Record<string, unknown>> {
-    const res = await this.transport()(`${this.base()}${path}`, {
-      method: 'GET',
-      headers: { Authorization: this.authHeader() },
-    });
-    return this.parse(res);
-  }
-
   private async parse(res: FetchResponseLike): Promise<Record<string, unknown>> {
     const raw = await res.text();
     if (!res.ok) {

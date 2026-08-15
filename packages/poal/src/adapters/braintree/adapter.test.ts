@@ -41,15 +41,17 @@ const invoice: Invoice = {
 };
 const method: PaymentMethod = { id: 'ax10m_pm_TOKEN', customerId: 'ax10m_cus_c1', processorRef: 'TOKEN', token: 'TOKEN' };
 
-function notificationBody(kind: string, opts: { status: string; code?: string; email?: string; phone?: string } = { status: 'processor_declined' }): string {
+function notificationBody(kind: string, opts: { status: string; code?: string; email?: string; phone?: string; intlPhone?: { countryCode: string; nationalNumber: string } } = { status: 'processor_declined' }): string {
+  const customerInner =
+    (opts.email ? `<email>${opts.email}</email>` : '') +
+    (opts.intlPhone ? `<international-phone><country-code>${opts.intlPhone.countryCode}</country-code><national-number>${opts.intlPhone.nationalNumber}</national-number></international-phone>` : '') +
+    (opts.phone ? `<phone>${opts.phone}</phone>` : '');
   const xml =
     `<notification><kind>${kind}</kind>` +
     `<timestamp type="datetime">2026-08-14T10:00:00Z</timestamp>` +
     `<subject><subscription><id>sub_1</id><transactions type="array"><transaction>` +
     `<id>txn_1</id><status>${opts.status}</status><amount>49.99</amount><currency-iso-code>USD</currency-iso-code>` +
-    (opts.email || opts.phone
-      ? `<customer>${opts.email ? `<email>${opts.email}</email>` : ''}${opts.phone ? `<phone>${opts.phone}</phone>` : ''}</customer>`
-      : '') +
+    (customerInner ? `<customer>${customerInner}</customer>` : '') +
     (opts.code ? `<processor-response-code>${opts.code}</processor-response-code><processor-response-text>Reason</processor-response-text>` : '') +
     `</transaction></transactions></subscription></subject></notification>`;
   const b64 = Buffer.from(xml).toString('base64');
@@ -85,7 +87,18 @@ describe('ingestWebhook', () => {
     expect(p.decline?.family).toBe(DeclineFamily.Soft);
     // Contact info from the transaction's <customer> block feeds the dunning channels.
     expect(p.customer?.email).toBe('dana@example.test');
-    expect(p.customer?.phone).toBe('+15555550123');
+    expect(p.customer?.phone).toBe('+15555550123'); // flat <phone> (already E.164) via fallback
+  });
+
+  it('prefers the structured international-phone (assembled to E.164) over the deprecated flat phone', async () => {
+    const { fetch } = makeFetch(() => res(200, ''));
+    const adapter = new BraintreeAdapter({ ...baseCfg, fetch });
+    const events = await adapter.ingestWebhook({
+      body: notificationBody('subscription_charged_unsuccessfully', { status: 'processor_declined', code: '2001', email: 'dana@example.test', phone: '555-1234', intlPhone: { countryCode: '1', nationalNumber: '5555550123' } }),
+      headers: {},
+    });
+    const p = events[0]!.payload as { customer?: { phone?: string } };
+    expect(p.customer?.phone).toBe('+15555550123'); // international-phone assembled; deprecated flat <phone> ignored
   });
 
   it('rejects a webhook with a bad signature', async () => {

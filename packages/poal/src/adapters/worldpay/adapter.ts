@@ -40,7 +40,7 @@ import {
   type PaymentMethod,
   type Subscription,
 } from '@ax10m/canonical';
-import { customerFromInvoice, contactOverrides } from '../../customer.js';
+import { customerFromInvoice } from '../../customer.js';
 import type {
   CapabilityMatrix,
   ChargeResult,
@@ -78,13 +78,6 @@ interface WpPaymentResponse {
   refusalDescription?: string;
   transactionReference?: string;
   paymentId?: string;
-}
-
-/** Worldpay payment-details query response — the shopper email supplied on the instruction.
- *  Endpoint + field are version-gated (Access Worldpay may not echo shopper contact) — CONFIRM.
- *  There is no shopper phone field in Access Worldpay, so email is the only contact available. */
-interface WpPaymentDetails {
-  shopper?: { shopperEmailAddress?: string };
 }
 
 /** Shape of a Worldpay event notification (only the fields we use). */
@@ -187,12 +180,12 @@ export class WorldpayAdapter implements ProcessorAdapter {
         const invoice = this.mapInvoice(details, occurredAt, /*failed*/ true);
         const attempt = this.mapAttempt(details, invoice.id, /*failed*/ true, occurredAt);
         const decline = this.mapDecline(details, invoice.id, attempt.id, occurredAt);
-        // The notification carries no contact — query the payment for the shopper email supplied
-        // on the original instruction (best-effort; a lookup failure yields no contact, never a
-        // dropped event). Access Worldpay has no shopper phone field, so email only.
-        const email = await this.fetchShopperEmail(details.paymentId);
-        const customer = customerFromInvoice(invoice, contactOverrides(email, undefined));
-        return [{ ...base, type: 'invoice.failed', payload: { invoice, attempt, decline, customer } }];
+        // No contact enrichment: Access Worldpay carries no shopper contact in the notification,
+        // and its payment-retrieval API (GET /paymentQueries/payments/{id}) does NOT return the
+        // shopper email either — `shopperEmailAddress` is a write-only auth-request input that is
+        // never echoed back (validated against Access Worldpay docs, 2026-08). Recovering contact
+        // would require persisting it at authorization time, which this recovery overlay doesn't do.
+        return [{ ...base, type: 'invoice.failed', payload: { invoice, attempt, decline, customer: customerFromInvoice(invoice) } }];
       }
       case 'payment.settled':
       case 'payment.authorized': {
@@ -202,22 +195,6 @@ export class WorldpayAdapter implements ProcessorAdapter {
       }
       default:
         return []; // event we don't act on
-    }
-  }
-
-  /**
-   * Best-effort contact enrichment: the notification carries no contact, so query the payment
-   * for the shopper email supplied on the original instruction. A missing paymentId or a failed
-   * lookup returns undefined so the recovery event still emits — enrichment must never break
-   * ingestion. Endpoint + field are version-gated (CONFIRM); Access Worldpay has no shopper phone.
-   */
-  private async fetchShopperEmail(paymentId: string | undefined): Promise<string | undefined> {
-    if (!paymentId) return undefined;
-    try {
-      const res = (await this.client.get(`/payments/${encodeURIComponent(paymentId)}`)) as WpPaymentDetails;
-      return res.shopper?.shopperEmailAddress;
-    } catch {
-      return undefined;
     }
   }
 

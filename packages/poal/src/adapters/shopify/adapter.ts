@@ -86,11 +86,16 @@ const BILLING_ATTEMPT_CREATE = /* GraphQL */ `
 `;
 
 /** Contact lookup: the billing-attempt webhook carries the contract id but no contact, so we
- *  read the contract's customer email/phone. Field names per Admin API 2024-07 — confirm on pin. */
+ *  read the contract's customer email/phone. Uses the non-deprecated Customer.defaultEmailAddress
+ *  / defaultPhoneNumber accessors (the flat Customer.email/phone are deprecated in the current
+ *  Admin GraphQL — validated against shopify.dev, 2026-08). */
 const SUBSCRIPTION_CONTRACT_CUSTOMER = /* GraphQL */ `
   query subscriptionContractCustomer($id: ID!) {
     subscriptionContract(id: $id) {
-      customer { email phone }
+      customer {
+        defaultEmailAddress { emailAddress }
+        defaultPhoneNumber { phoneNumber }
+      }
     }
   }
 `;
@@ -251,8 +256,12 @@ export class ShopifyAdapter implements ProcessorAdapter {
     if (!contractGid.startsWith('gid://')) return null; // no contract gid → nothing to look up
     try {
       const data = await this.client.graphql(SUBSCRIPTION_CONTRACT_CUSTOMER, { id: contractGid });
-      const customer = (data.subscriptionContract as { customer?: { email?: string; phone?: string } } | undefined)?.customer;
-      return customer ? { email: customer.email ?? undefined, phone: customer.phone ?? undefined } : null;
+      const customer = (data.subscriptionContract as
+        | { customer?: { defaultEmailAddress?: { emailAddress?: string }; defaultPhoneNumber?: { phoneNumber?: string } } }
+        | undefined)?.customer;
+      if (!customer) return null;
+      // Shopify's phoneNumber may not be E.164; contactOverrides/toE164 drops it if it isn't.
+      return { email: customer.defaultEmailAddress?.emailAddress, phone: customer.defaultPhoneNumber?.phoneNumber };
     } catch {
       return null;
     }

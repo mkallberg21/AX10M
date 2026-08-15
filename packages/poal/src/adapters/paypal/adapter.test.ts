@@ -138,7 +138,7 @@ describe('ingestWebhook', () => {
       status: 'DECLINED',
       amount: { value: '149.00', currency_code: 'USD' },
       invoice_id: 'inv_1',
-      payer: { payer_id: 'PAYER1', email_address: 'dana@example.test', phone: { phone_number: { country_code: '1', national_number: '5555550123' } } },
+      payer: { payer_id: 'PAYER1', email_address: 'dana@example.test', phone: { phone_number: { national_number: '5555550123' } } },
       status_details: { reason: 'INSTRUMENT_DECLINED' },
     },
   });
@@ -169,9 +169,9 @@ describe('ingestWebhook', () => {
     expect(p.invoice.customerId).toBe('ax10m_cus_PAYER1');
     expect(p.decline?.code).toBe(DeclineCode.DoNotHonor);
     expect(p.decline?.family).toBe(DeclineFamily.Gray);
-    // Contact info from the payer feeds the dunning channels (phone normalized to E.164).
+    // Email is the reliable PayPal contact; the payer phone is national-only → dropped by toE164.
     expect(p.customer?.email).toBe('dana@example.test');
-    expect(p.customer?.phone).toBe('+15555550123');
+    expect(p.customer?.phone).toBeUndefined();
 
     // The verify call forwarded the webhook id + transmission headers.
     const verifyCall = calls.find((c) => c.url.includes('/verify-webhook-signature'))!;

@@ -82,10 +82,14 @@ interface CbTransaction {
   payment_source_id?: string;
   date?: number;
 }
+// Chargebee Customer resource carries `email` + `phone` (validated against apidocs.chargebee.com,
+// 2026-08). The Customer resource + field names are confirmed; what's unverified is whether
+// `content.customer` is ALWAYS populated on a payment_failed event — hence the null-guard at the
+// call site (a missing customer node → no contact, never a crash).
 interface CbCustomer {
   id: string;
-  email?: string; // modeled on Chargebee webhook content.customer — CONFIRM
-  phone?: string; // modeled on Chargebee webhook content.customer — CONFIRM (often national, no country code)
+  email?: string;
+  phone?: string; // often national (no country code) — toE164 drops it if not E.164
 }
 interface CbPaymentSource {
   id: string;
