@@ -73,7 +73,9 @@ export async function runRecoverySaga(
     }
 
     // 2) EXECUTE — engine → guardrail → adapter (or shadow). attemptNumber → exactly-once.
-    const result = await port.execute(attempt);
+    // Stamp the post-sleep saga time so the service measures the per-credential min-interval
+    // in the saga's clock (durable sleeps have advanced it), not the wall clock.
+    const result = await port.execute({ ...attempt, nowIso: runtime.now() });
     record('executed', attemptNumber, { action: result.action, outcome: result.outcome ?? null });
 
     // 3) DECIDE what happens next.

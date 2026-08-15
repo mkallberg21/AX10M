@@ -10,10 +10,28 @@
 import { CredentialAttemptRepository, type Db } from '@ax10m/persistence';
 import { getSharedDb } from '../persistence/database.js';
 
+/** The guardrail inputs for a credential's network retry-cap. */
+export interface CredentialAttemptWindow {
+  attemptsInWindow: number;
+  /**
+   * Minutes since the last attempt on this credential — computed ONLY when `nowIso` is a
+   * saga-clock time (durable sleeps advance it), so the min-interval is measured in the
+   * saga's timeline, never the service's wall clock.
+   */
+  minutesSinceLastAttempt?: number;
+}
+
+function minutesBetween(nowIso: string | undefined, lastAt: string): number | undefined {
+  if (!nowIso) return undefined;
+  return Math.floor((Date.parse(nowIso) - Date.parse(lastAt)) / 60_000);
+}
+
 export interface CredentialAttemptStore {
   /** Attempts recorded against a credential (0 if none). */
   count(key: string): Promise<number>;
-  /** Atomically bump a credential's attempt count. */
+  /** The network-cap window: attempt count + (saga-time) minutes since last attempt. */
+  window(key: string, nowIso?: string): Promise<CredentialAttemptWindow>;
+  /** Atomically bump a credential's attempt count, stamping `nowIso` as the last-attempt time. */
   increment(key: string, nowIso: string): Promise<void>;
 }
 
@@ -22,6 +40,11 @@ export class InMemoryCredentialAttemptStore implements CredentialAttemptStore {
   private readonly m = new Map<string, { count: number; lastAt: string }>();
   async count(key: string): Promise<number> {
     return this.m.get(key)?.count ?? 0;
+  }
+  async window(key: string, nowIso?: string): Promise<CredentialAttemptWindow> {
+    const e = this.m.get(key);
+    if (!e) return { attemptsInWindow: 0 };
+    return { attemptsInWindow: e.count, minutesSinceLastAttempt: minutesBetween(nowIso, e.lastAt) };
   }
   async increment(key: string, nowIso: string): Promise<void> {
     this.m.set(key, { count: (this.m.get(key)?.count ?? 0) + 1, lastAt: nowIso });
@@ -33,6 +56,11 @@ export class PersistedCredentialAttemptStore implements CredentialAttemptStore {
   constructor(private readonly repo: CredentialAttemptRepository) {}
   async count(key: string): Promise<number> {
     return this.repo.count(key);
+  }
+  async window(key: string, nowIso?: string): Promise<CredentialAttemptWindow> {
+    const r = await this.repo.get(key);
+    if (!r) return { attemptsInWindow: 0 };
+    return { attemptsInWindow: r.count, minutesSinceLastAttempt: minutesBetween(nowIso, r.lastAt) };
   }
   async increment(key: string, nowIso: string): Promise<void> {
     await this.repo.increment(key, nowIso);

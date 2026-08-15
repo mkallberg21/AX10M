@@ -61,7 +61,8 @@ export async function runSequencedRecoverySaga(
     record('slept', step.attemptNumber, { until: step.at, methodRef: step.methodRef ?? null });
 
     const attempt: AttemptInput = { ...input.attempt, attemptNumber: step.attemptNumber };
-    const result = await port.execute(attempt);
+    // Stamp post-sleep saga time → per-credential min-interval measured in the saga's clock.
+    const result = await port.execute({ ...attempt, nowIso: runtime.now() });
     record('executed', step.attemptNumber, { action: result.action, outcome: result.outcome ?? null });
 
     switch (result.action) {

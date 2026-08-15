@@ -301,6 +301,26 @@ describe('credential recovery in the live charge path (card_refresh + alternate_
     expect(await svc.credentialAttemptCount(invoice.id, refreshed)).toBe(1); // refreshed card: 1 (failed) attempt
     expect(await svc.credentialAttemptCount(invoice.id, backup)).toBe(1); // backup card: 1 (succeeded) attempt
   });
+
+  it('enforces the network min-interval in SAGA time — a rapid (saga-clock) same-card retry is suppressed', async () => {
+    const svc = new RecoveryCaseService(new OnboardingService());
+    const adapter = new FakeAdapter('failed');
+    await svc.executeRecovery({ adapter, invoice, method, decline: softDecline, attemptNumber: 1, nowIso: '2026-08-15T00:00:00.000Z', shadow: false });
+    // 30 min later in the SAGA's clock (< default visa 60-min min-interval) → suppressed.
+    const soon = await svc.executeRecovery({ adapter, invoice, method, decline: softDecline, attemptNumber: 2, nowIso: '2026-08-15T00:30:00.000Z', shadow: false });
+    expect(soon.action).toBe('suppressed');
+    expect(adapter.charges).toHaveLength(1);
+  });
+
+  it('allows the retry once the saga clock has advanced past the min-interval', async () => {
+    const svc = new RecoveryCaseService(new OnboardingService());
+    const adapter = new FakeAdapter('failed');
+    await svc.executeRecovery({ adapter, invoice, method, decline: softDecline, attemptNumber: 1, nowIso: '2026-08-15T00:00:00.000Z', shadow: false });
+    // 3 days later in saga time (durable sleep advanced the clock) → well past the interval.
+    const later = await svc.executeRecovery({ adapter, invoice, method, decline: softDecline, attemptNumber: 2, nowIso: '2026-08-18T00:00:00.000Z', shadow: false });
+    expect(later.action).toBe('attempted');
+    expect(adapter.charges).toHaveLength(2);
+  });
 });
 
 describe('durable recovery dispatch (webhook → Temporal workflow)', () => {

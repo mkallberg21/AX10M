@@ -26,4 +26,10 @@ export class CredentialAttemptRepository {
     const rows = await this.db.select({ count: credentialAttempts.count }).from(credentialAttempts).where(eq(credentialAttempts.key, key)).limit(1);
     return rows[0]?.count ?? 0;
   }
+
+  /** The credential's count + last-attempt time (null if none) — drives the min-interval. */
+  async get(key: string): Promise<{ count: number; lastAt: string } | null> {
+    const rows = await this.db.select({ count: credentialAttempts.count, lastAt: credentialAttempts.lastAt }).from(credentialAttempts).where(eq(credentialAttempts.key, key)).limit(1);
+    return rows[0] ?? null;
+  }
 }

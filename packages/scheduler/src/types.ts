@@ -28,6 +28,12 @@ export interface AttemptInput {
   minutesSinceLastAttempt?: number;
   /** The customer, for alternate-rail backup-method discovery on dead credentials. */
   customer?: Customer;
+  /**
+   * The saga's current time at execution (from the SchedulerRuntime clock, which advances
+   * via durable sleeps). Lets the service measure the per-credential min-interval in the
+   * SAGA's timeline rather than the service's wall clock. Set by the driver on execute().
+   */
+  nowIso?: string;
 }
 
 /** What the engine/guardrail did on an execute() call. */

@@ -268,6 +268,8 @@ export class RecoveryCaseService {
     method: PaymentMethod;
     proposed: ProposedAction;
     attemptNumber: number;
+    /** Saga-clock time to stamp as this credential's last-attempt (for the min-interval). */
+    nowIso?: string;
     shadow: boolean;
   }): Promise<{ result: 'suppressed' | 'shadowed' | 'attempted'; outcome?: ChargeOutcome }> {
     const decision = evaluateGuardrail(params.proposed);
@@ -313,8 +315,9 @@ export class RecoveryCaseService {
     // TODO(ax10m): host this call inside a Temporal activity for crash durability.
     this.attempts.set(params.invoice.id, Math.max(this.attempts.get(params.invoice.id) ?? 0, params.attemptNumber));
     const result = await params.adapter.attemptCharge(params.invoice, params.method, key);
-    // Count this attempt against THIS credential's network-cap window (not the case's).
-    await this.credentialAttempts.increment(this.credentialKey(params.invoice.id, params.method), new Date().toISOString());
+    // Count this attempt against THIS credential's network-cap window (not the case's),
+    // stamped with the saga clock (when present) so the min-interval is saga-timeline.
+    await this.credentialAttempts.increment(this.credentialKey(params.invoice.id, params.method), params.nowIso ?? new Date().toISOString());
     await this.ledger.append({
       merchantId: params.invoice.merchantId,
       type: result.outcome === 'succeeded' ? 'charge.succeeded' : 'charge.failed',
@@ -436,6 +439,8 @@ export class RecoveryCaseService {
     minutesSinceLastAttempt?: number;
     /** Customer (for alternate-rail backup-method discovery on dead credentials). */
     customer?: Customer;
+    /** Saga-clock time at execution — drives the per-credential min-interval (saga timeline). */
+    nowIso?: string;
     shadow: boolean;
   }): Promise<{ action: RecoveryActionOutcome; outcome?: ChargeOutcome; decision: RecoveryDecision }> {
     const { adapter, invoice, method, attemptNumber, shadow } = params;
@@ -468,7 +473,7 @@ export class RecoveryCaseService {
       // active mode; shadow just records the intent. If a fresh credential recovers, we're
       // done; otherwise fall through to the dunning comm.
       if (decision.action === 'card_update_comms' && !shadow) {
-        const rec = await this.executeCredentialRecovery({ adapter, invoice, method, features, attemptNumber, attemptsSoFar, customer: params.customer });
+        const rec = await this.executeCredentialRecovery({ adapter, invoice, method, features, attemptNumber, attemptsSoFar, customer: params.customer, nowIso: params.nowIso });
         if (rec?.outcome === 'succeeded') return { action: 'attempted', outcome: 'succeeded', decision };
       }
       await this.ledger.append({
@@ -481,19 +486,20 @@ export class RecoveryCaseService {
     }
 
     // The engine proposed a retry — hand it to the guardrail + execution path.
+    const credWin = await this.credentialAttempts.window(this.credentialKey(invoice.id, method), params.nowIso);
     const proposed: ProposedAction = {
       kind: 'charge_retry',
       declineCode: features.declineCode,
       declineFamily: familyOf(features.declineCode),
       attemptsSoFar, // per-CASE → global attempt cap
       cardNetwork: mapCardNetwork(method.brand),
-      attemptsInWindow: await this.credentialAttemptCount(invoice.id, method), // per-CREDENTIAL → network retry cap
-      minutesSinceLastAttempt: params.minutesSinceLastAttempt, // saga-provided timing
+      attemptsInWindow: credWin.attemptsInWindow, // per-CREDENTIAL → network retry cap
+      minutesSinceLastAttempt: credWin.minutesSinceLastAttempt ?? params.minutesSinceLastAttempt, // saga-clock min-interval
       localHour: params.localHour ?? new Date().getUTCHours(),
       hasConsent: true,
       globallyOptedOut: false,
     };
-    const exec = await this.attemptRecovery({ adapter, invoice, method, proposed, attemptNumber, shadow });
+    const exec = await this.attemptRecovery({ adapter, invoice, method, proposed, attemptNumber, shadow, nowIso: params.nowIso });
     return { action: exec.result, outcome: exec.outcome, decision };
   }
 
@@ -517,21 +523,26 @@ export class RecoveryCaseService {
     attemptNumber: number;
     attemptsSoFar: number;
     customer?: Customer;
+    nowIso?: string;
   }): Promise<{ outcome: ChargeOutcome } | null> {
-    const freshProposed = async (m: PaymentMethod): Promise<ProposedAction> => ({
+    const freshProposed = async (m: PaymentMethod): Promise<ProposedAction> => {
       // Per-credential window: a refreshed / backup card starts fresh (count 0), so its
       // charges are NOT blocked by the dead card's exhausted network cap. Global cap
       // (attemptsSoFar, per-case) still bounds total attempts to prevent infinite hopping.
-      kind: 'fresh_credential_charge',
-      declineCode: p.features.declineCode,
-      declineFamily: familyOf(p.features.declineCode),
-      attemptsSoFar: p.attemptsSoFar,
-      cardNetwork: mapCardNetwork(m.brand),
-      attemptsInWindow: await this.credentialAttemptCount(p.invoice.id, m),
-      localHour: new Date().getUTCHours(),
-      hasConsent: true,
-      globallyOptedOut: false,
-    });
+      const credWin = await this.credentialAttempts.window(this.credentialKey(p.invoice.id, m), p.nowIso);
+      return {
+        kind: 'fresh_credential_charge',
+        declineCode: p.features.declineCode,
+        declineFamily: familyOf(p.features.declineCode),
+        attemptsSoFar: p.attemptsSoFar,
+        cardNetwork: mapCardNetwork(m.brand),
+        attemptsInWindow: credWin.attemptsInWindow,
+        minutesSinceLastAttempt: credWin.minutesSinceLastAttempt,
+        localHour: new Date().getUTCHours(),
+        hasConsent: true,
+        globallyOptedOut: false,
+      };
+    };
     const charge = async (m: PaymentMethod, via: 'card_refresh' | 'alternate_rail'): Promise<ChargeOutcome | undefined> => {
       await this.ledger.append({
         merchantId: p.invoice.merchantId,
@@ -539,7 +550,7 @@ export class RecoveryCaseService {
         occurredAt: new Date().toISOString(),
         detail: { invoiceId: p.invoice.id, action: via, methodRef: m.processorRef },
       });
-      const exec = await this.attemptRecovery({ adapter: p.adapter, invoice: p.invoice, method: m, proposed: await freshProposed(m), attemptNumber: p.attemptNumber, shadow: false });
+      const exec = await this.attemptRecovery({ adapter: p.adapter, invoice: p.invoice, method: m, proposed: await freshProposed(m), attemptNumber: p.attemptNumber, nowIso: p.nowIso, shadow: false });
       return exec.outcome;
     };
 

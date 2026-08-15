@@ -52,10 +52,15 @@ drives sequencing.
   when `DATABASE_URL` is set; `increment` is an atomic `ON CONFLICT DO UPDATE count+1`),
   so the network-cap count survives restarts and is shared across the API + worker — proven
   in `persistence.test.ts` (concurrent bumps lose no increments, independent per card,
-  survives a restart). *Remaining: advisory adapters (BigCommerce/Kajabi/SamCart/ThriveCart)
-  can't charge so they skip customer; the adapter-provided customer is minimal (no email/
-  issuer region) — richer fields would need a customer-details fetch; a saga-timeline
-  per-credential min-interval is a further refinement.*
+  survives a restart). The **min-interval is now enforced in the SAGA's timeline**: the
+  driver stamps the post-sleep `runtime.now()` onto `AttemptInput.nowIso`, the store records
+  each attempt's last-time in that clock, and `minutesSinceLastAttempt` is computed against
+  it — so a real days-apart retry passes while a rapid one is suppressed, correctly, whether
+  the clock is virtual (tests) or Temporal workflow time. Direct (non-saga) callers pass no
+  `nowIso`, so they get no wall-clock min-interval (spacing there is the caller's job).
+  *Remaining: advisory adapters (BigCommerce/Kajabi/SamCart/ThriveCart) can't charge so they
+  skip customer; the adapter-provided customer is minimal (no email/issuer region) — richer
+  fields would need a customer-details fetch.*
 
 ## Hygiene / correctness
 - **`@ax10m/canonical` has no tests**, which breaks `pnpm -r test`. Add a trivial test
