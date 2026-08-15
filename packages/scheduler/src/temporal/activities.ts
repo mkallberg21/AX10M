@@ -12,12 +12,14 @@
  * stays independently testable.
  */
 
-import type { AttemptInput, ExecuteResult, PlanResult, RecoveryCasePort } from '../types.js';
+import type { AttemptInput, ExecuteResult, PlanResult, RecoveryCasePort, RetryStep } from '../types.js';
 
 /** The activity surface the workflow proxies. */
 export interface RecoveryActivities {
   planAttempt(input: AttemptInput): Promise<PlanResult>;
   executeAttempt(input: AttemptInput): Promise<ExecuteResult>;
+  /** Plan the full ARSE sequence up front (used by the sequenced workflow). */
+  planSequence(input: AttemptInput): Promise<RetryStep[]>;
 }
 
 /** Bind the activities to a concrete port (registered on the Temporal worker). */
@@ -25,5 +27,9 @@ export function createRecoveryActivities(port: RecoveryCasePort): RecoveryActivi
   return {
     planAttempt: (input) => port.plan(input),
     executeAttempt: (input) => port.execute(input),
+    planSequence: (input) => {
+      if (!port.planSequence) throw new Error('createRecoveryActivities: port does not implement planSequence.');
+      return port.planSequence(input);
+    },
   };
 }

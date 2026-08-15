@@ -14,6 +14,7 @@ import type {
   ExecutedAction,
   PlanResult,
   RecoveryCasePort,
+  RetryStep,
 } from '@ax10m/scheduler';
 import { RecoveryCaseService } from './recovery-case.service.js';
 
@@ -39,6 +40,15 @@ export class ServiceRecoveryCasePort implements RecoveryCasePort {
       attemptNumber: input.attemptNumber,
     });
     return { decision };
+  }
+
+  async planSequence(input: AttemptInput): Promise<RetryStep[]> {
+    return this.service.planSequence({
+      invoice: input.invoice,
+      method: input.method,
+      decline: input.decline,
+      attemptNumber: input.attemptNumber,
+    });
   }
 
   async execute(input: AttemptInput): Promise<ExecuteResult> {

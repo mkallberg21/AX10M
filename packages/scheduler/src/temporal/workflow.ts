@@ -16,13 +16,14 @@
 import { proxyActivities, sleep } from '@temporalio/workflow';
 import type { RecoveryActivities } from './activities.js';
 import { runRecoverySaga, type RecoverySagaInput } from '../driver.js';
+import { runSequencedRecoverySaga } from '../sequenced-driver.js';
 import type { SchedulerConfig } from '../config.js';
 import type { SchedulerRuntime } from '../runtime.js';
 import type { RecoveryCasePort, RecoverySagaResult } from '../types.js';
 
 // Activities get their own retry policy (transport blips retry); the SAGA owns the
 // business-level attempt cap. Idempotency keeps activity retries safe.
-const { planAttempt, executeAttempt } = proxyActivities<RecoveryActivities>({
+const { planAttempt, executeAttempt, planSequence } = proxyActivities<RecoveryActivities>({
   startToCloseTimeout: '2 minutes',
   retry: { maximumAttempts: 5, initialInterval: '5s', backoffCoefficient: 2 },
 });
@@ -32,11 +33,12 @@ export interface RecoveryWorkflowInput {
   config?: SchedulerConfig;
 }
 
-/** Durable recovery saga. One workflow per failed-invoice case; workflowId = the case id. */
-export async function recoveryWorkflow(input: RecoveryWorkflowInput): Promise<RecoverySagaResult> {
+/** Build the workflow-side port + runtime (durable sleeps via Temporal time). */
+function workflowPortAndRuntime(): { port: RecoveryCasePort; runtime: SchedulerRuntime } {
   const port: RecoveryCasePort = {
     plan: (attempt) => planAttempt(attempt),
     execute: (attempt) => executeAttempt(attempt),
+    planSequence: (attempt) => planSequence(attempt),
   };
   const runtime: SchedulerRuntime = {
     // Inside the sandbox Date is deterministic (backed by workflow time).
@@ -46,5 +48,17 @@ export async function recoveryWorkflow(input: RecoveryWorkflowInput): Promise<Re
       if (ms > 0) await sleep(ms);
     },
   };
+  return { port, runtime };
+}
+
+/** Durable adaptive recovery saga. One workflow per failed-invoice case; workflowId = the case id. */
+export async function recoveryWorkflow(input: RecoveryWorkflowInput): Promise<RecoverySagaResult> {
+  const { port, runtime } = workflowPortAndRuntime();
   return runRecoverySaga(port, runtime, input.saga, input.config);
+}
+
+/** Durable ARSE sequence saga: plans the whole schedule up front, then executes it. */
+export async function recoverySequenceWorkflow(input: RecoveryWorkflowInput): Promise<RecoverySagaResult> {
+  const { port, runtime } = workflowPortAndRuntime();
+  return runSequencedRecoverySaga(port, runtime, input.saga, input.config);
 }

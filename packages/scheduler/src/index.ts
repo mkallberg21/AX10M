@@ -14,3 +14,4 @@ export * from './types.js';
 export * from './saga.js';
 export * from './runtime.js';
 export * from './driver.js';
+export * from './sequenced-driver.js';

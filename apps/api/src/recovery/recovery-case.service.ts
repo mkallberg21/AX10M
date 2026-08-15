@@ -19,11 +19,13 @@ import {
   BOOTSTRAP_RECOVERABILITY_WEIGHTS,
   HeuristicPolicy,
   LogisticRecoverability,
+  planRetrySequence,
   RecoveryFeatureStore,
   type AvailableMethod,
   type RecoveryDecision,
   type RecoveryFeatures,
   type RetryPolicy,
+  type RetryStep,
 } from '@ax10m/recovery-engine';
 import { OnboardingService } from '../onboarding/onboarding.service.js';
 
@@ -59,9 +61,10 @@ export class RecoveryCaseService {
   // @ax10m/recovery-engine's trainer; held-out AUC 0.881 vs 0.869 heuristic). Retrain on
   // the live ledger via samplesFromLedger, or swap in an online BanditPolicy — the
   // RetryPolicy/RecoverabilityModel seam means neither touches this wiring.
-  private readonly policy: RetryPolicy = new HeuristicPolicy(
-    new LogisticRecoverability(BOOTSTRAP_RECOVERABILITY_WEIGHTS),
-  );
+  // The trained recoverability model, shared by the single-step policy AND the ARSE
+  // sequence planner so both speak with the same brain.
+  private readonly recoverabilityModel = new LogisticRecoverability(BOOTSTRAP_RECOVERABILITY_WEIGHTS);
+  private readonly policy: RetryPolicy = new HeuristicPolicy(this.recoverabilityModel);
 
   // Enrichment layer + data flywheel: turns a raw failure into the high-signal feature
   // vector (customer recovery rate, issuer/BIN approval prior + region, tenure) from
@@ -384,6 +387,39 @@ export class RecoveryCaseService {
     };
     const exec = await this.attemptRecovery({ adapter, invoice, method, proposed, attemptNumber, shadow });
     return { action: exec.result, outcome: exec.outcome, decision };
+  }
+
+  /**
+   * Plan the FULL ARSE retry sequence for a case: network-aware cadence, credential
+   * rotation, and a recoverability-floor cutoff, scored by the trained model. This is
+   * what the durable sequenced saga (`@ax10m/scheduler` `runSequencedRecoverySaga`)
+   * executes step-by-step. Records the plan to the ledger (with the feature snapshot,
+   * so it's still a training row).
+   */
+  planSequence(params: { invoice: Invoice; method: PaymentMethod; decline?: DeclineEvent; attemptNumber: number }): RetryStep[] {
+    const { invoice, method, decline, attemptNumber } = params;
+    const features = this.featuresFor({ invoice, method, decline, attemptNumber });
+    const methods: AvailableMethod[] = [{ ref: method.processorRef, isDefault: true, autoUpdated: method.autoUpdated }];
+    const steps = planRetrySequence(features, {
+      now: new Date().toISOString(),
+      network: mapCardNetwork(method.brand),
+      methods,
+      model: this.recoverabilityModel,
+    });
+    this.ledger.append({
+      merchantId: invoice.merchantId,
+      type: 'recovery.planned',
+      occurredAt: new Date().toISOString(),
+      detail: {
+        invoiceId: invoice.id,
+        sequenceLength: steps.length,
+        actions: steps.map((s) => s.action),
+        retryAts: steps.map((s) => s.at),
+        features,
+      },
+    });
+    this.logger.debug(`Planned ${steps.length}-step ARSE sequence for ${invoice.id}`);
+    return steps;
   }
 
   /**

@@ -10,7 +10,9 @@
  */
 
 import type { DeclineEvent, Invoice, PaymentMethod } from '@ax10m/canonical';
-import type { RecoveryDecision } from '@ax10m/recovery-engine';
+import type { RecoveryDecision, RetryStep } from '@ax10m/recovery-engine';
+
+export type { RetryStep };
 
 /** Inputs the port needs to plan or execute a single attempt. */
 export interface AttemptInput {
@@ -59,6 +61,12 @@ export interface RecoveryCasePort {
   plan(input: AttemptInput): Promise<PlanResult>;
   /** Run engine → guardrail → adapter for the given attempt. In shadow mode, moves no money. */
   execute(input: AttemptInput): Promise<ExecuteResult>;
+  /**
+   * Plan the FULL ARSE retry sequence for a case up front (network-aware cadence,
+   * credential rotation, bounded by predicted recoverability). Required by
+   * `runSequencedRecoverySaga`; the adaptive per-attempt saga only needs `plan`.
+   */
+  planSequence?(input: AttemptInput): Promise<RetryStep[]>;
 }
 
 /** Why the recovery saga stopped. */

@@ -11,7 +11,7 @@ import {
   type Subscription,
 } from '@ax10m/canonical';
 import type { Cursor, OpenFailuresPage, ProcessorAdapter, RawWebhook } from '@ax10m/poal';
-import { InMemoryRuntime, runRecoverySaga, type RecoverySagaInput } from '@ax10m/scheduler';
+import { InMemoryRuntime, runRecoverySaga, runSequencedRecoverySaga, type RecoverySagaInput } from '@ax10m/scheduler';
 import { RecoveryCaseService } from './recovery-case.service.js';
 import { ServiceRecoveryCasePort } from './recovery-case.port.js';
 import { OnboardingService } from '../onboarding/onboarding.service.js';
@@ -119,5 +119,20 @@ describe('recovery saga end-to-end (scheduler → port → service → engine/gu
 
     expect(res.status).toBe('shadow_complete');
     expect(adapter.keys).toHaveLength(0); // never charged
+  });
+
+  it('runs the ARSE-planned sequence end-to-end and recovers', async () => {
+    const svc = newService();
+    const adapter = new FlakyAdapter(1); // first step fails, second succeeds
+    const port = new ServiceRecoveryCasePort(svc, () => adapter, /*shadow*/ false);
+    const rt = new InMemoryRuntime('2026-08-14T12:00:00.000Z');
+    const input: RecoverySagaInput = { attempt: { invoice, method, decline }, shadow: false };
+
+    const res = await runSequencedRecoverySaga(port, rt, input);
+
+    expect(res.status).toBe('recovered');
+    expect(adapter.keys).toHaveLength(2); // walked step 1 (fail) → step 2 (success)
+    expect(res.timeline.some((e) => e.kind === 'planned')).toBe(true);
+    expect(res.timeline.filter((e) => e.kind === 'slept').length).toBe(2); // slept to each step
   });
 });

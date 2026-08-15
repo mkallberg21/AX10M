@@ -197,6 +197,29 @@ describe('RecoveryCaseService webhook ingress (shadow planning)', () => {
   });
 });
 
+describe('ARSE sequence planning', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+
+  it('plans a network-aware NSF sequence (Visa: 1d, +3d, +7d cadence, capped at 3)', () => {
+    const svc = new RecoveryCaseService(new OnboardingService());
+    const steps = svc.planSequence({ invoice, method, decline: softDecline, attemptNumber: 1 });
+    expect(steps.length).toBe(3); // visa NSF cap
+    expect(steps.every((s) => s.action === 'retry')).toBe(true);
+    // Cadence deltas are fixed regardless of wall clock: +1d to first, +3d, +7d.
+    const t = steps.map((s) => Date.parse(s.at));
+    expect(t[1]! - t[0]!).toBe(3 * DAY);
+    expect(t[2]! - t[1]!).toBe(7 * DAY);
+  });
+
+  it('plans a single terminal card_update step for an expired card', () => {
+    const svc = new RecoveryCaseService(new OnboardingService());
+    const expired = { code: DeclineCode.ExpiredCard, family: DeclineFamily.Gray };
+    const steps = svc.planSequence({ invoice, method, decline: expired, attemptNumber: 1 });
+    expect(steps).toHaveLength(1);
+    expect(steps[0]!.action).toBe('card_update');
+  });
+});
+
 describe('feature enrichment flywheel', () => {
   it('a recurring customer\'s learned priorRecoveryRate rises across cases and lands in the ledger', async () => {
     const svc = new RecoveryCaseService(new OnboardingService());
