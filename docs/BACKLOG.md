@@ -95,6 +95,12 @@ drives sequencing.
 - Certification-window → thin-audit-holdout taper as an enforced policy.
 
 ## Depth (later)
-- Cross-merchant issuer/BIN model beyond the per-BIN Beta-shrunk prior.
+- Cross-merchant issuer/BIN model beyond the per-issuer Beta-shrunk prior.
 - Retention-value (LTV) billing mode alongside recovered-dollars.
-- Licensed BIN→region database to replace the illustrative seed table.
+- ~~Real customer/issuer/BIN signals joined into the feature pipeline.~~ **DONE** — the
+  BIN lookup now yields issuer identity / region / country / brand / card type (approval
+  rates aggregate by REAL issuer identity across an issuer's BINs, not a raw prefix), a real
+  BIN table loads from `AX10M_BIN_TABLE_PATH` (illustrative seed as fallback), and the REAL
+  customer signup date flows from the webhook `Customer` into tenure (via `observe()` +
+  `featuresFor`). *Remaining: ship an actual licensed BIN DB file; richer card metadata
+  (debit/prepaid) into the model's feature vector.*

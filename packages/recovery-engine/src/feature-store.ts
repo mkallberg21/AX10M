@@ -39,56 +39,85 @@ export function shrinkRate(successes: number, total: number, prior: BetaPrior): 
   return (successes + prior.alpha) / (total + prior.alpha + prior.beta);
 }
 
-// ── issuer region from BIN ─────────────────────────────────────────────────────
+// ── issuer / region / card metadata from BIN ───────────────────────────────────
 
-/** Maps a card BIN/IIN to a coarse issuer region. */
+/** What a BIN lookup yields — the joined issuer/BIN signals. */
+export interface BinInfo {
+  region: IssuerRegion;
+  /** Stable issuer identity — approval rates aggregate by THIS (real signal), not a raw
+   *  BIN prefix, so every BIN an issuer owns shares one learned rate. */
+  issuerId?: string;
+  /** Issuer country (ISO 3166-1 alpha-2), when the table provides it. */
+  country?: string;
+  /** Card brand (visa / mastercard / amex / …). */
+  brand?: string;
+  /** Product type — debit/prepaid recover differently than credit. */
+  cardType?: 'credit' | 'debit' | 'prepaid';
+}
+
+/** Maps a card BIN/IIN to issuer/region/card metadata. */
 export interface IssuerRegionIndex {
   region(bin: string | undefined): IssuerRegion;
+  lookup(bin: string | undefined): BinInfo;
 }
 
-/** One BIN-prefix → region rule. */
-export interface BinRange {
+/** One BIN-prefix → issuer/region/card rule. */
+export interface BinRange extends BinInfo {
   prefix: string;
-  region: IssuerRegion;
 }
+
+const UNKNOWN_BIN: BinInfo = { region: 'unknown' };
 
 /**
- * Longest-prefix BIN→region lookup over a rules table. The default table is a small
- * ILLUSTRATIVE seed — replace `BinRegionIndex.from(...)` with a licensed BIN database
- * for production coverage. The mechanism (longest-prefix match, unknown fallback) is
- * what's real; the specific ranges are placeholders.
+ * Longest-prefix BIN → issuer/region/card lookup over a rules table. The default table is
+ * a small ILLUSTRATIVE seed — load a licensed BIN database (`BinRegionIndex.from(...)`,
+ * e.g. from `AX10M_BIN_TABLE_PATH`) for production coverage. The mechanism (longest-prefix
+ * match, issuer identity, unknown fallback) is what's real; the specific ranges are
+ * placeholders until a real table is joined.
  */
 export class BinRegionIndex implements IssuerRegionIndex {
   private readonly ranges: BinRange[];
   constructor(ranges: BinRange[]) {
-    // Longest prefixes first so `region()` returns the most specific match.
+    // Longest prefixes first so `lookup()` returns the most specific match.
     this.ranges = ranges.slice().sort((a, b) => b.prefix.length - a.prefix.length);
   }
   static from(ranges: BinRange[]): BinRegionIndex {
     return new BinRegionIndex(ranges);
   }
-  region(bin: string | undefined): IssuerRegion {
-    if (!bin) return 'unknown';
+  lookup(bin: string | undefined): BinInfo {
+    if (!bin) return UNKNOWN_BIN;
     const digits = bin.replace(/\D/g, '');
-    for (const r of this.ranges) if (digits.startsWith(r.prefix)) return r.region;
-    return 'unknown';
+    for (const r of this.ranges) {
+      if (digits.startsWith(r.prefix)) {
+        const { prefix: _p, ...info } = r;
+        return info;
+      }
+    }
+    return UNKNOWN_BIN;
+  }
+  region(bin: string | undefined): IssuerRegion {
+    return this.lookup(bin).region;
   }
 }
 
-/** Illustrative seed table — NOT authoritative; swap for a real BIN DB. */
+/**
+ * Illustrative seed table — NOT authoritative; swap for a real BIN DB. Includes a couple
+ * of issuerId/country examples to exercise the joined-signal path.
+ */
 export const DEFAULT_BIN_REGION_INDEX = BinRegionIndex.from([
-  { prefix: '4', region: 'na' }, // placeholder default for Visa ranges
-  { prefix: '41', region: 'na' },
-  { prefix: '42', region: 'emea' },
-  { prefix: '49', region: 'emea' },
-  { prefix: '51', region: 'na' },
-  { prefix: '52', region: 'latam' },
-  { prefix: '53', region: 'emea' },
-  { prefix: '55', region: 'na' },
-  { prefix: '35', region: 'apac' }, // JCB — APAC
-  { prefix: '62', region: 'apac' }, // UnionPay — APAC
-  { prefix: '34', region: 'na' }, // Amex
-  { prefix: '37', region: 'na' },
+  { prefix: '4', region: 'na', brand: 'visa' }, // placeholder default for Visa ranges
+  { prefix: '41', region: 'na', brand: 'visa', country: 'US' },
+  { prefix: '42', region: 'emea', brand: 'visa', country: 'GB' },
+  { prefix: '49', region: 'emea', brand: 'visa' },
+  { prefix: '414720', region: 'na', brand: 'visa', country: 'US', issuerId: 'example_bank_na', cardType: 'credit' }, // issuerId/country example
+  { prefix: '51', region: 'na', brand: 'mastercard' },
+  { prefix: '52', region: 'latam', brand: 'mastercard' },
+  { prefix: '53', region: 'emea', brand: 'mastercard' },
+  { prefix: '55', region: 'na', brand: 'mastercard' },
+  { prefix: '35', region: 'apac', brand: 'jcb' }, // JCB — APAC
+  { prefix: '62', region: 'apac', brand: 'unionpay' }, // UnionPay — APAC
+  { prefix: '34', region: 'na', brand: 'amex' }, // Amex
+  { prefix: '37', region: 'na', brand: 'amex' },
 ]);
 
 // ── the store ──────────────────────────────────────────────────────────────────
@@ -152,8 +181,15 @@ export class RecoveryFeatureStore {
   private static customerKey(merchantId: string, customerId: string): string {
     return `${merchantId}:${customerId}`;
   }
-  private static issuerKey(bin: string): string {
-    return bin.replace(/\D/g, '').slice(0, 8);
+  /**
+   * Aggregate approval rates by the REAL issuer identity when the BIN table provides it
+   * (all of an issuer's BINs share one learned rate — more signal); otherwise fall back to
+   * the raw 8-digit BIN prefix.
+   */
+  private issuerKeyFor(bin: string | undefined): string | undefined {
+    if (!bin) return undefined;
+    const info = this.config.regionIndex.lookup(bin);
+    return info.issuerId ?? bin.replace(/\D/g, '').slice(0, 8);
   }
 
   /**
@@ -183,8 +219,8 @@ export class RecoveryFeatureStore {
     if (params.recovered) c.recovered += 1;
     this.customers.set(key, c);
 
-    if (params.bin) {
-      const ik = RecoveryFeatureStore.issuerKey(params.bin);
+    const ik = this.issuerKeyFor(params.bin);
+    if (ik) {
       const a = this.issuers.get(ik) ?? { total: 0, recovered: 0 };
       a.total += 1;
       if (params.recovered) a.recovered += 1;
@@ -198,7 +234,8 @@ export class RecoveryFeatureStore {
     const c = this.customers.get(cKey);
     const priorRecoveryRate = shrinkRate(c?.recovered ?? 0, c?.total ?? 0, this.config.customerPrior);
 
-    const issuer = ctx.bin ? this.issuers.get(RecoveryFeatureStore.issuerKey(ctx.bin)) : undefined;
+    const ik = this.issuerKeyFor(ctx.bin);
+    const issuer = ik ? this.issuers.get(ik) : undefined;
     const issuerApprovalPrior = shrinkRate(issuer?.recovered ?? 0, issuer?.total ?? 0, this.config.issuerPrior);
 
     const tenureSource = ctx.customerCreatedAt ?? c?.createdAt ?? c?.firstSeen ?? ctx.now;
@@ -207,7 +244,7 @@ export class RecoveryFeatureStore {
       declineCode: ctx.declineCode ?? DeclineCode.Unknown,
       amountMinor: ctx.amountMinor,
       currency: ctx.currency,
-      issuerRegion: this.config.regionIndex.region(ctx.bin),
+      issuerRegion: this.config.regionIndex.lookup(ctx.bin).region,
       customerTenureDays: daysBetween(tenureSource, ctx.now),
       priorRecoveryRate,
       attemptNumber: ctx.attemptNumber,
@@ -225,7 +262,8 @@ export class RecoveryFeatureStore {
 
   /** Observability: an issuer/BIN's accumulated approval stats (or undefined if unseen). */
   issuerStats(bin: string): { total: number; recovered: number; rate: number } | undefined {
-    const a = this.issuers.get(RecoveryFeatureStore.issuerKey(bin));
+    const ik = this.issuerKeyFor(bin);
+    const a = ik ? this.issuers.get(ik) : undefined;
     if (!a) return undefined;
     return { total: a.total, recovered: a.recovered, rate: shrinkRate(a.recovered, a.total, this.config.issuerPrior) };
   }

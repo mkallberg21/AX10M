@@ -21,6 +21,7 @@ import { RecoveryCaseService } from '../recovery/recovery-case.service.js';
 import { ServiceRecoveryCasePort, type AdapterResolver } from '../recovery/recovery-case.port.js';
 import { buildLedgerPort } from '../recovery/ledger-port.js';
 import { buildCredentialAttemptStore } from '../recovery/credential-attempt-store.js';
+import { buildFeatureStore } from '../recovery/feature-store-builder.js';
 import { loadActiveChampion } from '../recovery/retrain-job.js';
 import { buildConnectionStore } from '../webhooks/merchant-connections.js';
 
@@ -52,6 +53,8 @@ export async function buildRecoveryWorkerRuntime(env: NodeJS.ProcessEnv = proces
   // Share the per-credential network-cap counter across API + worker (same Postgres).
   const credentialAttempts = await buildCredentialAttemptStore(env);
   if (credentialAttempts) service.useCredentialAttempts(credentialAttempts);
+  const featureStore = buildFeatureStore(env);
+  if (featureStore) service.useFeatureStore(featureStore);
   // Load the active retrained champion (if any) so the worker charges with the latest model.
   const champion = await loadActiveChampion({ env });
   if (champion) service.useChampion(champion);

@@ -96,8 +96,14 @@ export class RecoveryCaseService {
   // Enrichment layer + data flywheel: turns a raw failure into the high-signal feature
   // vector (customer recovery rate, issuer/BIN approval prior + region, tenure) from
   // accumulated outcomes. Fed by observe()/recordOutcome() below; read (leakage-free)
-  // by featuresFor(). TODO(ax10m): back with the persistent feature store in production.
-  private readonly featureStore = new RecoveryFeatureStore();
+  // by featuresFor(). useFeatureStore() swaps in a store built with a real (licensed) BIN
+  // table so issuer region / issuer identity are joined from real data, not the seed.
+  private featureStore = new RecoveryFeatureStore();
+
+  /** Swap the feature store (e.g. one built with a real BIN table). Call before ingest. */
+  useFeatureStore(store: RecoveryFeatureStore): void {
+    this.featureStore = store;
+  }
 
   // Invoices whose holdout assignment has already been recorded — webhooks are
   // at-least-once, so we must not double-append to the tamper-evident ledger.
@@ -171,10 +177,12 @@ export class RecoveryCaseService {
       if (payload.invoice) {
         const stratum = deriveStratum(payload.invoice, payload.decline);
         const { bucket } = await this.openCase({ invoice: payload.invoice, stratum, occurredAt: event.occurredAt });
-        // Stamp first-contact time so the feature store can compute customer tenure.
+        // Stamp first-contact time so the feature store can compute customer tenure — and
+        // the REAL signup date when the event carries the customer (best tenure source).
         this.featureStore.observe({
           merchantId: payload.invoice.merchantId,
           customerId: payload.invoice.customerId,
+          customerCreatedAt: payload.customer?.createdAt,
           now: event.occurredAt,
         });
         // Feed the shadow-mode baseline measurement (no-op unless the merchant is onboarding).
@@ -445,7 +453,7 @@ export class RecoveryCaseService {
   }): Promise<{ action: RecoveryActionOutcome; outcome?: ChargeOutcome; decision: RecoveryDecision }> {
     const { adapter, invoice, method, attemptNumber, shadow } = params;
     const attemptsSoFar = attemptNumber - 1;
-    const features = this.featuresFor({ invoice, method, decline: params.decline, attemptNumber });
+    const features = this.featuresFor({ invoice, method, decline: params.decline, attemptNumber, customer: params.customer });
     const methods: AvailableMethod[] = [
       { ref: method.processorRef, isDefault: true, autoUpdated: method.autoUpdated },
     ];
@@ -623,11 +631,13 @@ export class RecoveryCaseService {
    * region + approval prior) comes from the payment method when available; the shadow
    * plan path has no method, so BIN-derived signals fall back to their priors.
    */
-  private featuresFor(p: { invoice: Invoice; method?: PaymentMethod; decline?: DeclineEvent; attemptNumber: number }): RecoveryFeatures {
+  private featuresFor(p: { invoice: Invoice; method?: PaymentMethod; decline?: DeclineEvent; attemptNumber: number; customer?: Customer }): RecoveryFeatures {
     return this.featureStore.enrich({
       merchantId: p.invoice.merchantId,
       customerId: p.invoice.customerId,
       bin: p.method?.bin,
+      // Real signup date → accurate tenure (falls back to the store's stamped first-contact).
+      customerCreatedAt: p.customer?.createdAt,
       firstFailedAt: p.invoice.firstFailedAt,
       declineCode: p.decline?.code ?? DeclineCode.Unknown,
       amountMinor: p.invoice.amount.amount,

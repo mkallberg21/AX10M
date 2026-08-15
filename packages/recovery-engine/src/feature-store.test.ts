@@ -35,6 +35,48 @@ describe('BIN → region', () => {
     expect(idx.region('9999')).toBe('unknown');
     expect(idx.region(undefined)).toBe('unknown');
   });
+
+  it('lookup returns the joined issuer/country/brand/card signals', () => {
+    const idx = BinRegionIndex.from([
+      { prefix: '5', region: 'na', brand: 'mastercard' },
+      { prefix: '5310', region: 'emea', brand: 'mastercard', country: 'DE', issuerId: 'db', cardType: 'debit' },
+    ]);
+    expect(idx.lookup('531055')).toEqual({ region: 'emea', brand: 'mastercard', country: 'DE', issuerId: 'db', cardType: 'debit' });
+    expect(idx.lookup('511111')).toEqual({ region: 'na', brand: 'mastercard' });
+    expect(idx.lookup('9')).toEqual({ region: 'unknown' });
+  });
+});
+
+describe('joined issuer/customer signals', () => {
+  // Two different BINs owned by the SAME issuer → one shared approval rate.
+  const twoBinIssuer = BinRegionIndex.from([
+    { prefix: '4111', region: 'na', issuerId: 'acme' },
+    { prefix: '4222', region: 'emea', issuerId: 'acme' },
+  ]);
+
+  it('aggregates the issuer approval prior by real issuer identity across its BINs', () => {
+    const store = new RecoveryFeatureStore({ ...DEFAULT_FEATURE_STORE_CONFIG, regionIndex: twoBinIssuer });
+    // Failures recorded on BIN #1 of the issuer…
+    for (let i = 0; i < 20; i++) store.recordOutcome({ merchantId: 'm', customerId: `c${i}`, bin: '411100', recovered: false });
+    // …lower the approval prior seen for a DIFFERENT BIN of the same issuer.
+    const f = store.enrich(ctx({ customerId: 'new', bin: '422200' }));
+    expect(f.issuerApprovalPrior).toBeLessThan(0.4); // learned the issuer declines retries
+    expect(store.issuerStats('422200')?.total).toBe(20); // same aggregate via either BIN
+  });
+
+  it('uses the REAL customer signup date for tenure when provided', () => {
+    const store = new RecoveryFeatureStore();
+    const f = store.enrich(ctx({ customerCreatedAt: '2025-08-14T12:00:00.000Z' })); // ~1 year before now
+    expect(f.customerTenureDays).toBeGreaterThan(360);
+    expect(f.customerTenureDays).toBeLessThan(370);
+  });
+
+  it('observe() stamps the signup date so later decisions get real tenure without re-passing it', () => {
+    const store = new RecoveryFeatureStore();
+    store.observe({ merchantId: 'mrc_1', customerId: 'cus_1', now: '2026-08-14T12:00:00.000Z', customerCreatedAt: '2024-08-14T12:00:00.000Z' });
+    const f = store.enrich(ctx()); // no customerCreatedAt on this call → uses the stamped one
+    expect(f.customerTenureDays).toBeGreaterThan(720); // ~2 years
+  });
 });
 
 const ctx = (over: Partial<Parameters<RecoveryFeatureStore['enrich']>[0]> = {}) => ({
