@@ -29,8 +29,9 @@ import { OnboardingService } from '../onboarding/onboarding.service.js';
         if (featureStore) service.useFeatureStore(featureStore);
         const champion = await loadActiveChampion({ env: process.env });
         if (champion) service.useChampion(champion);
-        const { agent, config } = buildDunningComms(process.env);
+        const { agent, config, sender, live } = buildDunningComms(process.env);
         service.useDunningAgent(agent, config);
+        if (sender) service.useDunningSender(sender, { live });
         return service;
       },
       inject: [OnboardingService],

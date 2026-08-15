@@ -61,8 +61,9 @@ export async function buildRecoveryWorkerRuntime(env: NodeJS.ProcessEnv = proces
   if (champion) service.useChampion(champion);
   // Dunning comms: LLM personalization (real Anthropic client) when ANTHROPIC_API_KEY is set,
   // else the deterministic template; composition is opt-in via AX10M_CARD_UPDATE_URL + opt-out.
-  const { agent: dunningAgent, config: dunningConfig } = buildDunningComms(env);
+  const { agent: dunningAgent, config: dunningConfig, sender: dunningSender, live: liveComms } = buildDunningComms(env);
   service.useDunningAgent(dunningAgent, dunningConfig);
+  if (dunningSender) service.useDunningSender(dunningSender, { live: liveComms });
 
   // Preload the configured processor connections into a merchant→adapter map. The saga's
   // resolver is synchronous, so we resolve credentials up front (the worker starts with a

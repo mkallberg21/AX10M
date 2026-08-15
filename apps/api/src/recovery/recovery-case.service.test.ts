@@ -10,7 +10,16 @@ import {
   type Subscription,
 } from '@ax10m/canonical';
 import type { Cursor, OpenFailuresPage, ProcessorAdapter, RawWebhook } from '@ax10m/poal';
-import { TemplateDunningAgent } from '@ax10m/comms';
+import { TemplateDunningAgent, type DunningSender, type DunningMessage, type DunningRecipient, type SendResult } from '@ax10m/comms';
+
+/** Shape of the delivery record the service writes into the comms.sent ledger detail. */
+interface DeliveryDetail {
+  status: 'suppressed' | 'skipped' | 'dry_run' | 'sent' | 'failed';
+  channel: 'email' | 'sms';
+  provider?: string;
+  providerMessageId?: string;
+  reason?: string;
+}
 import { RecoveryCaseService } from './recovery-case.service.js';
 import { OnboardingService } from '../onboarding/onboarding.service.js';
 import type { DurableRecoveryRequest, RecoveryDispatcher } from './recovery-dispatcher.js';
@@ -296,6 +305,70 @@ describe('credential recovery in the live charge path (card_refresh + alternate_
     const comms = (await svc.ledgerEntries()).find((e) => e.type === 'comms.sent');
     expect(comms).toBeDefined();
     expect((comms!.detail as { message?: unknown }).message).toBeUndefined();
+  });
+
+  // ── Send transport (DunningSender), guardrail-gated + safe-by-default ──
+  const dunningConfig = {
+    updateCardUrl: ({ invoice: inv }: { invoice: Invoice; customerId: string }) => `https://pay.test/update/${inv.id}`,
+    optOutInstruction: 'Unsubscribe: https://pay.test/unsub',
+  };
+  const customerWithEmail: Customer = { ...customer, email: 'dana@example.test', consent: { email: true, sms: false, whatsapp: false, push: false, globallyOptedOut: false } };
+
+  class FakeSender implements DunningSender {
+    calls: Array<{ message: DunningMessage; recipient: DunningRecipient }> = [];
+    constructor(private readonly result: SendResult) {}
+    async send(message: DunningMessage, recipient: DunningRecipient): Promise<SendResult> {
+      this.calls.push({ message, recipient });
+      return this.result;
+    }
+  }
+
+  async function runDunning(svc: RecoveryCaseService, cust: Customer | undefined): Promise<DeliveryDetail | undefined> {
+    const adapter = new CredentialAdapter(null, []); // dead card, no fresh credential → dunning
+    await svc.executeRecovery({ adapter, invoice, method, decline: expired, attemptNumber: 1, customer: cust, localHour: 14, shadow: false });
+    const comms = (await svc.ledgerEntries()).find((e) => e.type === 'comms.sent');
+    return (comms!.detail as { delivery?: DeliveryDetail }).delivery;
+  }
+
+  it('DRY-RUN by default: records dry_run and never calls the real provider when live is false', async () => {
+    const svc = new RecoveryCaseService(new OnboardingService());
+    svc.useDunningAgent(new TemplateDunningAgent(), dunningConfig);
+    const provider = new FakeSender({ status: 'sent', channel: 'email', provider: 'postmark', providerMessageId: 'should-not-be-used' });
+    svc.useDunningSender(provider, { live: false });
+    const delivery = await runDunning(svc, customerWithEmail);
+    expect(delivery).toMatchObject({ status: 'dry_run', channel: 'email', provider: 'dry-run' });
+    expect(provider.calls).toHaveLength(0); // the real provider was never touched
+  });
+
+  it('LIVE: routes to the provider and records the sent result', async () => {
+    const svc = new RecoveryCaseService(new OnboardingService());
+    svc.useDunningAgent(new TemplateDunningAgent(), dunningConfig);
+    const provider = new FakeSender({ status: 'sent', channel: 'email', provider: 'postmark', providerMessageId: 'pm-42' });
+    svc.useDunningSender(provider, { live: true });
+    const delivery = await runDunning(svc, customerWithEmail);
+    expect(delivery).toMatchObject({ status: 'sent', provider: 'postmark', providerMessageId: 'pm-42' });
+    expect(provider.calls).toHaveLength(1);
+    expect(provider.calls[0]!.recipient).toEqual({ channel: 'email', email: 'dana@example.test' });
+  });
+
+  it('guardrail SUPPRESSES the send with no consent — provider never called', async () => {
+    const svc = new RecoveryCaseService(new OnboardingService());
+    svc.useDunningAgent(new TemplateDunningAgent(), dunningConfig);
+    const provider = new FakeSender({ status: 'sent', channel: 'email', provider: 'postmark' });
+    svc.useDunningSender(provider, { live: true });
+    const noConsent: Customer = { ...customerWithEmail, consent: { ...customerWithEmail.consent, email: false } };
+    const delivery = await runDunning(svc, noConsent);
+    expect(delivery?.status).toBe('suppressed');
+    expect(provider.calls).toHaveLength(0);
+  });
+
+  it('SKIPS the send when the customer has no address for the channel', async () => {
+    const svc = new RecoveryCaseService(new OnboardingService());
+    svc.useDunningAgent(new TemplateDunningAgent(), dunningConfig);
+    svc.useDunningSender(new FakeSender({ status: 'sent', channel: 'email', provider: 'postmark' }), { live: true });
+    const delivery = await runDunning(svc, customer); // `customer` has no email
+    expect(delivery?.status).toBe('skipped');
+    expect(delivery?.reason).toMatch(/no recipient address/);
   });
 
   it('SHADOW mode records the intent but performs no credential-recovery charge', async () => {

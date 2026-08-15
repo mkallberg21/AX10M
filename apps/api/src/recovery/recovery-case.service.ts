@@ -28,7 +28,16 @@ import {
   type RetryStep,
 } from '@ax10m/recovery-engine';
 import type { RecoveryWorkflowInput } from '@ax10m/scheduler/temporal';
-import { TemplateDunningAgent, type DunningAgent, type DunningChannel, type DunningMessage } from '@ax10m/comms';
+import {
+  TemplateDunningAgent,
+  DryRunDunningSender,
+  type DunningAgent,
+  type DunningChannel,
+  type DunningMessage,
+  type DunningSender,
+  type DunningRecipient,
+  type SendResult,
+} from '@ax10m/comms';
 import { OnboardingService } from '../onboarding/onboarding.service.js';
 import { NoopRecoveryDispatcher, type RecoveryDispatcher } from './recovery-dispatcher.js';
 import { InMemoryLedgerPort, type LedgerPort } from './ledger-port.js';
@@ -168,6 +177,64 @@ export class RecoveryCaseService {
       optOutInstruction: cfg.optOutInstruction,
       cardLast4: p.method.last4, // display-only, never the PAN
     });
+  }
+
+  // Send transport for composed dunning messages. SENDING is outward-facing, so it is fenced:
+  // (1) no sender wired → messages are composed + recorded but never sent (default);
+  // (2) even with a real provider wired, `liveComms` must be explicitly true to move traffic —
+  //     otherwise every send is a dry-run (mirrors the liveCharging gate on the money path);
+  // (3) the guardrail's comms check (consent + quiet hours + opt-out) runs BEFORE the sender.
+  private dunningSender?: DunningSender;
+  private liveComms = false;
+
+  /**
+   * Wire a send transport for dunning messages. Safe by default: with `live: false` every send
+   * is a dry-run (nothing leaves the system). Requires a wired dunning config (composer) to have
+   * anything to send. Unset → messages are recorded but not sent.
+   */
+  useDunningSender(sender: DunningSender, opts: { live: boolean }): void {
+    this.dunningSender = sender;
+    this.liveComms = opts.live;
+    this.logger.log(`Dunning send transport wired (liveComms=${opts.live}).`);
+  }
+
+  /**
+   * Deliver a composed dunning message, gated by the guardrail's comms check. Returns the
+   * delivery outcome (or null if no sender is wired). Never throws — a delivery problem must
+   * not break a recovery. In shadow / non-live mode the send is a dry-run.
+   */
+  private async deliverDunning(p: {
+    message: DunningMessage;
+    invoice: Invoice;
+    declineCode: DeclineCode;
+    customer?: Customer;
+    localHour?: number;
+  }): Promise<DunningDeliveryRecord | null> {
+    if (!this.dunningSender) return null;
+    const channel = p.message.channel;
+    const consent = p.customer?.consent;
+    const hasConsent = channel === 'sms' ? (consent?.sms ?? false) : (consent?.email ?? false);
+    // Guardrail: consent + quiet hours + global opt-out. The sender is the transport, not the gate.
+    const gate = evaluateGuardrail({
+      kind: 'comms',
+      channel,
+      declineCode: p.declineCode,
+      declineFamily: familyOf(p.declineCode),
+      attemptsSoFar: 0,
+      localHour: p.localHour ?? new Date().getUTCHours(),
+      hasConsent,
+      globallyOptedOut: consent?.globallyOptedOut ?? false,
+    });
+    if (!gate.allow) return { status: 'suppressed', channel, reason: gate.reason };
+    const recipient: DunningRecipient = { channel, email: p.customer?.email };
+    // No destination address for the channel → can't send (honest skip, not a failure).
+    if ((channel === 'email' && !recipient.email) || (channel === 'sms' && !recipient.phone)) {
+      return { status: 'skipped', channel, reason: 'no recipient address for channel' };
+    }
+    // Safe-by-default: a real send only when live comms is explicitly enabled; else dry-run.
+    const sender = this.liveComms ? this.dunningSender : new DryRunDunningSender();
+    const result: SendResult = await sender.send(p.message, recipient);
+    return { status: result.status, channel, provider: result.provider, providerMessageId: result.providerMessageId, reason: result.error };
   }
 
   /**
@@ -530,6 +597,13 @@ export class RecoveryCaseService {
       const message = isComms && !shadow
         ? await this.composeDunning({ invoice, method, declineCode: features.declineCode, customer: params.customer })
         : null;
+      // Attempt delivery ONLY when a message was composed and a sender is wired. Gated by the
+      // guardrail's comms check (consent + quiet hours + opt-out); safe-by-default (dry-run
+      // unless live comms is explicitly enabled). Absent a sender, the message is recorded but
+      // not sent (unchanged behavior).
+      const delivery = message
+        ? await this.deliverDunning({ message, invoice, declineCode: features.declineCode, customer: params.customer, localHour: params.localHour })
+        : null;
       await this.ledger.append({
         merchantId: invoice.merchantId,
         type: isComms ? 'comms.sent' : 'action.suppressed',
@@ -538,9 +612,12 @@ export class RecoveryCaseService {
           invoiceId: invoice.id,
           reason: decision.action,
           rationale: decision.rationale,
-          // Composed card-update copy (audit trail only — NOT sent here). Present only when a
-          // dunning-comms config is wired; carries the update link + opt-out, never a PAN.
+          // Composed card-update copy. Carries the update link + opt-out, never a PAN. Present
+          // only when a dunning-comms config is wired.
           ...(message ? { message } : {}),
+          // What actually happened to it (suppressed / dry_run / sent / failed). Present only
+          // when a sender is wired.
+          ...(delivery ? { delivery } : {}),
         },
       });
       return { action: decision.action, decision };
@@ -730,6 +807,16 @@ export interface DunningCommsConfig {
   channel?: DunningChannel;
   /** Optional display-name lookup; falls back to the merchant id. */
   merchantName?: (merchantId: string) => string;
+}
+
+/** What actually happened to a composed dunning message, recorded in the comms.sent ledger detail. */
+interface DunningDeliveryRecord {
+  /** suppressed = guardrail blocked; skipped = no address; dry_run/sent/failed = sender outcome. */
+  status: 'suppressed' | 'skipped' | 'dry_run' | 'sent' | 'failed';
+  channel: DunningChannel;
+  provider?: string;
+  providerMessageId?: string;
+  reason?: string;
 }
 
 /** Outcome of an end-to-end recovery decision — engine verdict OR guardrail/execution result. */

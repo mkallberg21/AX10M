@@ -17,8 +17,12 @@ import {
   AnthropicLlmClient,
   LlmDunningAgent,
   TemplateDunningAgent,
+  PostmarkEmailSender,
+  TwilioSmsSender,
+  CompositeDunningSender,
   type DunningAgent,
   type DunningChannel,
+  type DunningSender,
 } from '@ax10m/comms';
 import type { DunningCommsConfig } from './recovery-case.service.js';
 
@@ -53,7 +57,35 @@ export function buildDunningConfig(env: NodeJS.ProcessEnv = process.env): Dunnin
   };
 }
 
-/** Convenience: the agent + optional config, as consumed by RecoveryCaseService.useDunningAgent. */
-export function buildDunningComms(env: NodeJS.ProcessEnv = process.env): { agent: DunningAgent; config?: DunningCommsConfig } {
-  return { agent: buildDunningAgent(env), config: buildDunningConfig(env) };
+/**
+ * Build a send transport from env, per channel. Email → Postmark (`POSTMARK_SERVER_TOKEN` +
+ * `AX10M_COMMS_FROM_EMAIL`); SMS → Twilio (`TWILIO_ACCOUNT_SID` + `TWILIO_AUTH_TOKEN` +
+ * `AX10M_COMMS_FROM_SMS`). Credentials are read here (app layer) and injected. Returns the
+ * sender (undefined if no provider configured) + the `live` flag: SENDING is off unless
+ * `AX10M_LIVE_COMMS=true` — otherwise every send is a dry-run, even with a provider wired.
+ */
+export function buildDunningSender(env: NodeJS.ProcessEnv = process.env): { sender?: DunningSender; live: boolean } {
+  const live = env.AX10M_LIVE_COMMS === 'true';
+  let email: DunningSender | undefined;
+  let sms: DunningSender | undefined;
+  if (env.POSTMARK_SERVER_TOKEN && env.AX10M_COMMS_FROM_EMAIL) {
+    email = new PostmarkEmailSender({ serverToken: env.POSTMARK_SERVER_TOKEN, fromEmail: env.AX10M_COMMS_FROM_EMAIL, messageStream: env.POSTMARK_MESSAGE_STREAM || undefined });
+  }
+  if (env.TWILIO_ACCOUNT_SID && env.TWILIO_AUTH_TOKEN && env.AX10M_COMMS_FROM_SMS) {
+    sms = new TwilioSmsSender({ accountSid: env.TWILIO_ACCOUNT_SID, authToken: env.TWILIO_AUTH_TOKEN, fromNumber: env.AX10M_COMMS_FROM_SMS });
+  }
+  if (!email && !sms) return { sender: undefined, live };
+  logger.log(`Dunning send transport configured (email=${!!email}, sms=${!!sms}, live=${live}${live ? '' : ' → dry-run only'}).`);
+  return { sender: new CompositeDunningSender({ email, sms }), live };
+}
+
+/** Convenience: the agent + optional config + optional send transport, as consumed by the service. */
+export function buildDunningComms(env: NodeJS.ProcessEnv = process.env): {
+  agent: DunningAgent;
+  config?: DunningCommsConfig;
+  sender?: DunningSender;
+  live: boolean;
+} {
+  const { sender, live } = buildDunningSender(env);
+  return { agent: buildDunningAgent(env), config: buildDunningConfig(env), sender, live };
 }
