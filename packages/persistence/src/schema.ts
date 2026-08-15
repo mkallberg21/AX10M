@@ -59,4 +59,16 @@ export const recoveryModels = pgTable('recovery_models', {
   active: boolean('active').notNull().default(false),
 });
 
-export const schema = { merchants, merchantConnections, ledgerEntries, recoveryModels };
+/**
+ * Per-credential (card) attempt counter for card-network retry-cap accounting. Keyed by
+ * `${invoiceId}:${cardToken}` so a refreshed / backup card starts a fresh window,
+ * independent of the dead card. Persisted so the count survives restarts and is shared
+ * across the API + worker (matching the shared ledger).
+ */
+export const credentialAttempts = pgTable('credential_attempts', {
+  key: text('key').primaryKey(),
+  count: integer('count').notNull().default(0),
+  lastAt: text('last_at').notNull(),
+});
+
+export const schema = { merchants, merchantConnections, ledgerEntries, recoveryModels, credentialAttempts };

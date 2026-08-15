@@ -284,8 +284,8 @@ describe('credential recovery in the live charge path (card_refresh + alternate_
     const otherCard: PaymentMethod = { ...method, id: 'ax10m_pm_other', token: 'tok_other' };
     await svc.executeRecovery({ adapter, invoice, method, decline: softDecline, attemptNumber: 1, shadow: false });
     await svc.executeRecovery({ adapter, invoice, method, decline: softDecline, attemptNumber: 2, shadow: false });
-    expect(svc.credentialAttemptCount(invoice.id, method)).toBe(2); // the charged card: 2 attempts
-    expect(svc.credentialAttemptCount(invoice.id, otherCard)).toBe(0); // a different card: independent window
+    expect(await svc.credentialAttemptCount(invoice.id, method)).toBe(2); // the charged card: 2 attempts
+    expect(await svc.credentialAttemptCount(invoice.id, otherCard)).toBe(0); // a different card: independent window
   });
 
   it('a fresh credential starts a separate count — refresh + backup are tracked apart from the dead card', async () => {
@@ -297,9 +297,9 @@ describe('credential recovery in the live charge path (card_refresh + alternate_
     await svc.executeRecovery({ adapter, invoice, method, decline: expired, attemptNumber: 1, customer, shadow: false });
     // Three distinct cards → three independent counts; the dead card was never charged, so
     // the fresh cards' network-cap windows are not polluted by (nor pollute) it.
-    expect(svc.credentialAttemptCount(invoice.id, method)).toBe(0); // dead card: never charged
-    expect(svc.credentialAttemptCount(invoice.id, refreshed)).toBe(1); // refreshed card: 1 (failed) attempt
-    expect(svc.credentialAttemptCount(invoice.id, backup)).toBe(1); // backup card: 1 (succeeded) attempt
+    expect(await svc.credentialAttemptCount(invoice.id, method)).toBe(0); // dead card: never charged
+    expect(await svc.credentialAttemptCount(invoice.id, refreshed)).toBe(1); // refreshed card: 1 (failed) attempt
+    expect(await svc.credentialAttemptCount(invoice.id, backup)).toBe(1); // backup card: 1 (succeeded) attempt
   });
 });
 

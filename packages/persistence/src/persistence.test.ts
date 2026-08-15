@@ -8,6 +8,7 @@ import { applyMigrations } from './migrate.js';
 import { decryptCredentials, encryptCredentials, generateKeyHex, loadKeyFromEnv } from './crypto.js';
 import { LedgerRepository } from './ledger-repo.js';
 import { ConnectionRepository } from './connection-repo.js';
+import { CredentialAttemptRepository } from './credential-attempt-repo.js';
 import { loadDemoSeed } from './seed.js';
 
 const KEY = Buffer.from(generateKeyHex(), 'hex');
@@ -80,6 +81,32 @@ describe('ledger — restart safety (§Phase 4 acceptance)', () => {
     const verification = await new LedgerRepository(handle.db).verify();
     expect(verification.valid).toBe(false);
     expect(verification.brokenAt).toBe(0);
+    await handle.close();
+  });
+});
+
+describe('per-credential attempt counter — persisted + atomic + restart-safe', () => {
+  it('counts per credential, atomically under concurrency, and survives a restart', async () => {
+    const dir = newTmpDir();
+    let handle: DbHandle = await createPglite(dir);
+    await applyMigrations(handle.db);
+
+    // Two repos over the same db (API + worker) bump the SAME card concurrently.
+    const a = new CredentialAttemptRepository(handle.db);
+    const b = new CredentialAttemptRepository(handle.db);
+    await Promise.all(Array.from({ length: 10 }, (_, i) => (i % 2 ? a : b).increment('inv_1:tok_A', '2026-08-15T00:00:00.000Z')));
+    await a.increment('inv_1:tok_B', '2026-08-15T00:00:00.000Z'); // a different card
+
+    expect(await a.count('inv_1:tok_A')).toBe(10); // no lost increments (atomic upsert)
+    expect(await a.count('inv_1:tok_B')).toBe(1); // independent per-credential window
+    await handle.close();
+
+    // Restart: reopen the SAME dir — the counts persist.
+    handle = await createPglite(dir);
+    const c = new CredentialAttemptRepository(handle.db);
+    expect(await c.count('inv_1:tok_A')).toBe(10);
+    expect(await c.count('inv_1:tok_B')).toBe(1);
+    expect(await c.count('inv_1:tok_missing')).toBe(0);
     await handle.close();
   });
 });

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { RecoveryCaseService } from './recovery-case.service.js';
 import { buildLedgerPort } from './ledger-port.js';
+import { buildCredentialAttemptStore } from './credential-attempt-store.js';
 import { loadActiveChampion } from './retrain-job.js';
 import { OnboardingModule } from '../onboarding/onboarding.module.js';
 import { OnboardingService } from '../onboarding/onboarding.service.js';
@@ -20,6 +21,8 @@ import { OnboardingService } from '../onboarding/onboarding.service.js';
         const service = new RecoveryCaseService(onboarding);
         const ledger = await buildLedgerPort(process.env);
         if (ledger) service.useLedger(ledger);
+        const credentialAttempts = await buildCredentialAttemptStore(process.env);
+        if (credentialAttempts) service.useCredentialAttempts(credentialAttempts);
         const champion = await loadActiveChampion({ env: process.env });
         if (champion) service.useChampion(champion);
         return service;

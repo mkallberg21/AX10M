@@ -55,6 +55,16 @@ const MIGRATIONS: Migration[] = [
       `CREATE INDEX IF NOT EXISTS idx_recovery_models_active ON recovery_models (active)`,
     ],
   },
+  {
+    name: '0003_credential_attempts',
+    statements: [
+      `CREATE TABLE IF NOT EXISTS credential_attempts (
+        key text PRIMARY KEY,
+        count integer NOT NULL DEFAULT 0,
+        last_at text NOT NULL
+      )`,
+    ],
+  },
 ];
 
 /** Apply all pending migrations. Returns the names actually run. Idempotent. */

@@ -31,6 +31,7 @@ import type { RecoveryWorkflowInput } from '@ax10m/scheduler/temporal';
 import { OnboardingService } from '../onboarding/onboarding.service.js';
 import { NoopRecoveryDispatcher, type RecoveryDispatcher } from './recovery-dispatcher.js';
 import { InMemoryLedgerPort, type LedgerPort } from './ledger-port.js';
+import { InMemoryCredentialAttemptStore, type CredentialAttemptStore } from './credential-attempt-store.js';
 
 /**
  * RecoveryCaseService — the integration seam of the Phase-0 proof engine.
@@ -105,11 +106,17 @@ export class RecoveryCaseService {
   // Highest attempt number executed per invoice (the per-CASE count → global attempt cap).
   private readonly attempts = new Map<string, number>();
 
-  // Per-CREDENTIAL (card) attempt accounting for the card-network retry-cap + min-interval.
-  // Network caps are per-card, so a refreshed / backup card starts fresh — its charges must
-  // NOT count against the dead card's exhausted window (and vice versa). Keyed by
-  // (invoice, method token). In-memory like `attempts`; persistence is a follow-up.
-  private readonly credentialAttempts = new Map<string, { count: number; lastAtMs: number }>();
+  // Per-CREDENTIAL (card) attempt accounting for the card-network retry-cap. Network caps
+  // are per-card, so a refreshed / backup card starts fresh — its charges must NOT count
+  // against the dead card's exhausted window (and vice versa). Keyed by (invoice, method
+  // token). Default in-memory; useCredentialAttempts() swaps in the shared persisted store
+  // so the count survives restarts and is shared across the API + worker.
+  private credentialAttempts: CredentialAttemptStore = new InMemoryCredentialAttemptStore();
+
+  /** Point the per-credential counter at a shared, persisted store (call before ingest). */
+  useCredentialAttempts(store: CredentialAttemptStore): void {
+    this.credentialAttempts = store;
+  }
 
   private credentialKey(invoiceId: string, method: PaymentMethod): string {
     return `${invoiceId}:${method.token}`;
@@ -121,8 +128,8 @@ export class RecoveryCaseService {
    * card's count. (Min-interval spacing is the saga's job via its durable sleeps, so it is
    * driven by the caller's `minutesSinceLastAttempt`, not the service's wall clock.)
    */
-  credentialAttemptCount(invoiceId: string, method: PaymentMethod): number {
-    return this.credentialAttempts.get(this.credentialKey(invoiceId, method))?.count ?? 0;
+  credentialAttemptCount(invoiceId: string, method: PaymentMethod): Promise<number> {
+    return this.credentialAttempts.count(this.credentialKey(invoiceId, method));
   }
 
   // Durable charge path. Default = Noop (inline shadow-plan only, unchanged behavior).
@@ -307,8 +314,7 @@ export class RecoveryCaseService {
     this.attempts.set(params.invoice.id, Math.max(this.attempts.get(params.invoice.id) ?? 0, params.attemptNumber));
     const result = await params.adapter.attemptCharge(params.invoice, params.method, key);
     // Count this attempt against THIS credential's network-cap window (not the case's).
-    const ck = this.credentialKey(params.invoice.id, params.method);
-    this.credentialAttempts.set(ck, { count: (this.credentialAttempts.get(ck)?.count ?? 0) + 1, lastAtMs: Date.now() });
+    await this.credentialAttempts.increment(this.credentialKey(params.invoice.id, params.method), new Date().toISOString());
     await this.ledger.append({
       merchantId: params.invoice.merchantId,
       type: result.outcome === 'succeeded' ? 'charge.succeeded' : 'charge.failed',
@@ -481,7 +487,7 @@ export class RecoveryCaseService {
       declineFamily: familyOf(features.declineCode),
       attemptsSoFar, // per-CASE → global attempt cap
       cardNetwork: mapCardNetwork(method.brand),
-      attemptsInWindow: this.credentialAttemptCount(invoice.id, method), // per-CREDENTIAL → network retry cap
+      attemptsInWindow: await this.credentialAttemptCount(invoice.id, method), // per-CREDENTIAL → network retry cap
       minutesSinceLastAttempt: params.minutesSinceLastAttempt, // saga-provided timing
       localHour: params.localHour ?? new Date().getUTCHours(),
       hasConsent: true,
@@ -512,7 +518,7 @@ export class RecoveryCaseService {
     attemptsSoFar: number;
     customer?: Customer;
   }): Promise<{ outcome: ChargeOutcome } | null> {
-    const freshProposed = (m: PaymentMethod): ProposedAction => ({
+    const freshProposed = async (m: PaymentMethod): Promise<ProposedAction> => ({
       // Per-credential window: a refreshed / backup card starts fresh (count 0), so its
       // charges are NOT blocked by the dead card's exhausted network cap. Global cap
       // (attemptsSoFar, per-case) still bounds total attempts to prevent infinite hopping.
@@ -521,7 +527,7 @@ export class RecoveryCaseService {
       declineFamily: familyOf(p.features.declineCode),
       attemptsSoFar: p.attemptsSoFar,
       cardNetwork: mapCardNetwork(m.brand),
-      attemptsInWindow: this.credentialAttemptCount(p.invoice.id, m),
+      attemptsInWindow: await this.credentialAttemptCount(p.invoice.id, m),
       localHour: new Date().getUTCHours(),
       hasConsent: true,
       globallyOptedOut: false,
@@ -533,7 +539,7 @@ export class RecoveryCaseService {
         occurredAt: new Date().toISOString(),
         detail: { invoiceId: p.invoice.id, action: via, methodRef: m.processorRef },
       });
-      const exec = await this.attemptRecovery({ adapter: p.adapter, invoice: p.invoice, method: m, proposed: freshProposed(m), attemptNumber: p.attemptNumber, shadow: false });
+      const exec = await this.attemptRecovery({ adapter: p.adapter, invoice: p.invoice, method: m, proposed: await freshProposed(m), attemptNumber: p.attemptNumber, shadow: false });
       return exec.outcome;
     };
 

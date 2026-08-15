@@ -46,11 +46,16 @@ drives sequencing.
   with a fresh window while the global attempt cap stays per-case (prevents infinite
   credential-hopping). Min-interval spacing stays the saga's job (its durable sleeps), driven
   by the caller's `minutesSinceLastAttempt` — the service does NOT enforce it from its own wall
-  clock (that would misfire under the saga's virtual/durable clock). *Remaining: advisory
-  adapters (BigCommerce/Kajabi/SamCart/ThriveCart) can't charge so they skip customer; the
-  adapter-provided customer is minimal (no email/issuer region) — richer fields would need a
-  customer-details fetch; the per-credential counter is in-memory (persistence a follow-up);
-  a saga-timeline per-credential min-interval is a further refinement.*
+  clock (that would misfire under the saga's virtual/durable clock). The per-credential
+  counter is now **persisted + shared** (a `CredentialAttemptStore` seam like the ledger:
+  in-memory default, `PersistedCredentialAttemptStore` over a `credential_attempts` table
+  when `DATABASE_URL` is set; `increment` is an atomic `ON CONFLICT DO UPDATE count+1`),
+  so the network-cap count survives restarts and is shared across the API + worker — proven
+  in `persistence.test.ts` (concurrent bumps lose no increments, independent per card,
+  survives a restart). *Remaining: advisory adapters (BigCommerce/Kajabi/SamCart/ThriveCart)
+  can't charge so they skip customer; the adapter-provided customer is minimal (no email/
+  issuer region) — richer fields would need a customer-details fetch; a saga-timeline
+  per-credential min-interval is a further refinement.*
 
 ## Hygiene / correctness
 - **`@ax10m/canonical` has no tests**, which breaks `pnpm -r test`. Add a trivial test
