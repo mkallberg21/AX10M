@@ -34,7 +34,8 @@ keep the bill honest.
 roadmap) · [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) ·
 [`docs/ATTRIBUTION.md`](docs/ATTRIBUTION.md) (the mSPRT + CUPED math) ·
 [`docs/PROCESSORS.md`](docs/PROCESSORS.md) (per-processor capability matrix) ·
-[`docs/COMPETITIVE.md`](docs/COMPETITIVE.md) (teardown) · `docs/pitch.html`.
+[`docs/COMPLIANCE.md`](docs/COMPLIANCE.md) (network retry caps + third-party charge authority) ·
+[`docs/COMPETITIVE.md`](docs/COMPETITIVE.md) (teardown) · [`docs/DEPLOY.md`](docs/DEPLOY.md) · `docs/pitch.html`.
 
 ## Monorepo layout
 

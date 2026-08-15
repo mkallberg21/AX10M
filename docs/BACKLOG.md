@@ -25,6 +25,21 @@ drives sequencing.
   (the engine is still unproven vs the incumbent); only the stale implementation facts
   need refreshing. Partially addressed in Phase 0; finish as docs settle.
 
+## Compliance hardening (from docs/COMPLIANCE.md)
+- **Honor the raw network advice/response code, not the inferred canonical family.**
+  Adapters map the issuer response → canonical `DeclineCode` and discard the raw
+  Mastercard Merchant Advice Code (MAC) / Visa reattempt category. The guardrail then
+  infers retriability from the family. The authoritative signal is the raw code. Add a
+  `networkRetryAdvice` ('do_not_retry' | 'retry_after' | 'ok') + `retryAfterDays` to the
+  adapter output + `ProposedAction`, and enforce it as a hard suppression overriding
+  inference. (COMPLIANCE.md §1.4 — a real gap.)
+- **Source retry caps from a maintained per-network/region/MCC table**, not one
+  default; confirm the exact current numbers against Visa Core Rules + Mastercard TPR +
+  the acquirer. The shipped caps are conservative placeholders (COMPLIANCE.md §1.3).
+- **Third-party charge authority on Stripe** — confirm the permitted integration model
+  + scopes with Stripe partnerships + legal counsel before live drive; default to
+  advisory mode where unconfirmed (COMPLIANCE.md §2). Not a code task.
+
 ## Holdout economics (from STRATEGY §2, roadmap)
 - `holdoutLossCredit` in the billing worksheet — credit the control arm's forgone
   recovery against the fee during the certification window.
