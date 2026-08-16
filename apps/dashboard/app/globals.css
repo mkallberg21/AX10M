@@ -485,3 +485,7 @@ td.num.accent {
 .empty code {
   font-size: 12px;
 }
+
+.reversed {
+  color: #f87171;
+}

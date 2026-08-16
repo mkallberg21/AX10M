@@ -186,8 +186,25 @@ export type CanonicalEventType =
   | 'charge.attempted'
   | 'charge.succeeded'
   | 'charge.failed'
+  | 'payment.reversed'
   | 'payment_method.updated'
   | 'subscription.updated';
+
+/** How a previously-collected payment was reversed — drives fee clawback on net recovery. */
+export type ReversalKind = 'refund' | 'chargeback';
+
+/**
+ * Payload for `payment.reversed`: a payment we may have recovered was later refunded or charged
+ * back. `invoiceId` is the canonical invoice id (`ax10m_inv_*`) linking it to the recovery;
+ * `amount` is the reversed amount in minor units. Net recovery = recovered − reversed.
+ */
+export interface ReversalPayload {
+  invoiceId: string;
+  amount: MinorUnits;
+  currency: CurrencyCode;
+  kind: ReversalKind;
+  reason?: string;
+}
 
 export interface CanonicalEvent<T = unknown> {
   id: string;

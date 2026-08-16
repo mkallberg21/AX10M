@@ -104,6 +104,24 @@ describe('ingestWebhook', () => {
     const paid = await adapter.ingestWebhook({ body: paidBody, headers: signed(paidBody) });
     expect(paid[0]!.type).toBe('invoice.paid');
   });
+
+  it('maps charge.refunded on an invoice-linked charge to payment.reversed (net-recovery clawback)', async () => {
+    const { fetch } = makeFetch(() => res(200, {}));
+    const adapter = new StripeAdapter({ ...baseCfg, fetch });
+    const body = JSON.stringify({ id: 'evt_r', type: 'charge.refunded', created: T, data: { object: { id: 'ch_9', invoice: 'in_9', currency: 'usd', amount_refunded: 5000, refunds: { data: [{ amount: 3000, reason: 'requested_by_customer' }] } } } });
+    const events = await adapter.ingestWebhook({ body, headers: signed(body) });
+    expect(events).toHaveLength(1);
+    expect(events[0]!.type).toBe('payment.reversed');
+    const p = events[0]!.payload as { invoiceId: string; amount: number; currency: string; kind: string; reason?: string };
+    expect(p).toMatchObject({ invoiceId: 'ax10m_inv_in_9', amount: 3000, currency: 'USD', kind: 'refund', reason: 'requested_by_customer' });
+  });
+
+  it('ignores a refund on a charge not linked to an invoice', async () => {
+    const { fetch } = makeFetch(() => res(200, {}));
+    const adapter = new StripeAdapter({ ...baseCfg, fetch });
+    const body = JSON.stringify({ id: 'evt_r2', type: 'charge.refunded', created: T, data: { object: { id: 'ch_x', currency: 'usd', amount_refunded: 1000 } } });
+    expect(await adapter.ingestWebhook({ body, headers: signed(body) })).toHaveLength(0);
+  });
 });
 
 describe('attemptCharge', () => {

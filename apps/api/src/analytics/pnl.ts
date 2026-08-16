@@ -6,13 +6,15 @@
  * deterministic (time is injected via `nowIso`), so it unit-tests without a DB or clock.
  *
  * MONEY SEMANTICS (honest):
- *  - `recoveredMinor` = SUM of `case.recovered` amounts (minor units) — GROSS dollars recovered.
- *  - `feeMinor` = round(recoveredMinor × feeRate) — an ACCRUAL estimate of AX10M's cut. The
- *    ACTUAL billed fee is `feeRate` × statistically-PROVEN uplift (mSPRT lower bound in
- *    @ax10m/attribution), which is ≤ this. So headline fee here is an upper-bound accrual, not
- *    the invoice. Surfaced clearly in the UI.
- *  - Single reporting currency: `recoveredMinor` sums only `case.recovered` entries whose
- *    currency matches the report currency (mixed-currency needs FX normalization — not done).
+ *  - `grossRecoveredMinor` = SUM of `case.recovered` amounts (minor units).
+ *  - `reversedMinor` = SUM of `case.reversed` (refunds + chargebacks of payments we recovered).
+ *  - `recoveredMinor` = gross − reversed — NET dollars recovered (the number that matters).
+ *  - `feeMinor` = round(recoveredMinor × feeRate) — accrued on NET, so a reversal automatically
+ *    CLAWS BACK the fee. `clawbackMinor` = round(reversedMinor × feeRate) surfaces how much fee
+ *    the reversals removed. This is an ACCRUAL estimate; the ACTUAL billed fee is `feeRate` ×
+ *    statistically-PROVEN uplift (mSPRT lower bound in @ax10m/attribution), which is ≤ this.
+ *  - Single reporting currency: money sums only entries whose currency matches the report
+ *    currency (mixed-currency needs FX normalization — not done).
  */
 
 const DAY_MS = 86_400_000;
@@ -25,9 +27,13 @@ export interface PnlLedgerEntry {
 }
 
 export interface PnlTotals {
-  recoveredMinor: number; // gross recovered (report currency)
-  feeMinor: number; // accrued fee = round(recovered × feeRate)
+  recoveredMinor: number; // NET recovered = gross − reversed (report currency)
+  grossRecoveredMinor: number; // Σ case.recovered
+  reversedMinor: number; // Σ case.reversed (refunds + chargebacks)
+  feeMinor: number; // accrued fee on NET = round(recoveredMinor × feeRate)
+  clawbackMinor: number; // fee removed by reversals = round(reversedMinor × feeRate)
   recoveries: number; // count of case.recovered
+  reversals: number; // count of case.reversed
   attempts: number; // charge.succeeded + charge.failed
   comms: number; // comms.sent
 }
@@ -75,7 +81,7 @@ export interface PnlOptions {
 }
 
 function emptyTotals(): PnlTotals {
-  return { recoveredMinor: 0, feeMinor: 0, recoveries: 0, attempts: 0, comms: 0 };
+  return { recoveredMinor: 0, grossRecoveredMinor: 0, reversedMinor: 0, feeMinor: 0, clawbackMinor: 0, recoveries: 0, reversals: 0, attempts: 0, comms: 0 };
 }
 
 function num(v: unknown): number {
@@ -86,9 +92,15 @@ function str(v: unknown): string | undefined {
   return typeof v === 'string' && v.length > 0 ? v : undefined;
 }
 
-/** Apply feeRate to recovered, in place, for a totals bucket. */
+/** Finalize a totals bucket: net = gross − reversed; fee accrues on NET (reversals claw it back). */
 function withFee(t: PnlTotals, feeRate: number): PnlTotals {
-  return { ...t, feeMinor: Math.round(t.recoveredMinor * feeRate) };
+  const recoveredMinor = t.grossRecoveredMinor - t.reversedMinor;
+  return {
+    ...t,
+    recoveredMinor,
+    feeMinor: Math.round(recoveredMinor * feeRate),
+    clawbackMinor: Math.round(t.reversedMinor * feeRate),
+  };
 }
 
 function pctChange(current: number, previous: number): number | null {
@@ -100,8 +112,14 @@ function accumulate(target: PnlTotals, e: PnlLedgerEntry, reportCurrency: string
   switch (e.type) {
     case 'case.recovered':
       if ((str(e.detail.currency) ?? reportCurrency) === reportCurrency) {
-        target.recoveredMinor += num(e.detail.amount);
+        target.grossRecoveredMinor += num(e.detail.amount);
         target.recoveries += 1;
+      }
+      break;
+    case 'case.reversed':
+      if ((str(e.detail.currency) ?? reportCurrency) === reportCurrency) {
+        target.reversedMinor += num(e.detail.amount);
+        target.reversals += 1;
       }
       break;
     case 'charge.succeeded':
@@ -184,7 +202,7 @@ export function computePnl(entries: readonly PnlLedgerEntry[], opts: PnlOptions)
   const dayKey = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
   const perDay = new Map<string, PnlTotals>();
   for (const e of entries) {
-    if (e.type !== 'case.recovered') continue;
+    if (e.type !== 'case.recovered' && e.type !== 'case.reversed') continue;
     const t = Date.parse(e.occurredAt);
     if (Number.isNaN(t)) continue;
     const key = dayKey(t);
@@ -195,8 +213,8 @@ export function computePnl(entries: readonly PnlLedgerEntry[], opts: PnlOptions)
   const todayStart = Math.floor(nowMs / DAY_MS) * DAY_MS;
   for (let i = seriesDays - 1; i >= 0; i--) {
     const key = dayKey(todayStart - i * DAY_MS);
-    const t = perDay.get(key) ?? emptyTotals();
-    dailySeries.push({ date: key, recoveredMinor: t.recoveredMinor, feeMinor: Math.round(t.recoveredMinor * feeRate) });
+    const t = withFee(perDay.get(key) ?? emptyTotals(), feeRate); // net per day
+    dailySeries.push({ date: key, recoveredMinor: t.recoveredMinor, feeMinor: t.feeMinor });
   }
 
   return {

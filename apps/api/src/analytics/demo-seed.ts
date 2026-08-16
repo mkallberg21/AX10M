@@ -81,6 +81,19 @@ export function buildDemoLedgerEvents(opts: DemoSeedOptions): LedgerAppendInput[
         }
         events.push({ merchantId, type: 'charge.succeeded', occurredAt, detail: { invoiceId, processor: proc.id, demo: true, outcome: 'succeeded' } });
         events.push({ merchantId, type: 'case.recovered', occurredAt, detail: { invoiceId, processor: proc.id, demo: true, amount, currency, attemptNumber } });
+
+        // ~5% of recovered payments later reverse (refund or chargeback) → net-recovery clawback.
+        if (rand() < 0.05) {
+          const reversedAt = Math.min(nowMs, at + Math.floor((1 + rand() * 5) * DAY_MS)); // days later, never future
+          const full = rand() < 0.6;
+          const revAmount = full ? amount : Math.max(100, Math.floor(amount * (0.3 + rand() * 0.4)));
+          events.push({
+            merchantId,
+            type: 'case.reversed',
+            occurredAt: new Date(reversedAt).toISOString(),
+            detail: { invoiceId, processor: proc.id, demo: true, amount: revAmount, currency, kind: rand() < 0.5 ? 'chargeback' : 'refund' },
+          });
+        }
       }
     }
   }

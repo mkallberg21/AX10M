@@ -28,6 +28,7 @@ export type LedgerEventType =
   | 'comms.sent'
   | 'action.suppressed'
   | 'case.recovered'
+  | 'case.reversed'
   | 'case.abandoned'
   | 'model.promoted'
   | 'uplift.statement';

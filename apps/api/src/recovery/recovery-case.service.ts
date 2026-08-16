@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import type { CanonicalEvent, Customer, DeclineEvent, Invoice, MrrTier, PaymentMethod } from '@ax10m/canonical';
+import type { CanonicalEvent, Customer, DeclineEvent, Invoice, MrrTier, PaymentMethod, ReversalPayload } from '@ax10m/canonical';
 import { DeclineCode, DeclineFamily, familyOf } from '@ax10m/canonical';
 import type { ProcessorAdapter, RawWebhook } from '@ax10m/poal';
 import { idempotencyKey } from '@ax10m/poal';
@@ -301,11 +301,17 @@ export class RecoveryCaseService {
     const events = await adapter.ingestWebhook(raw);
     this.logger.debug(`${adapter.id}: normalized ${events.length} canonical event(s)`);
     for (const event of events) {
-      await this.handleEvent(event);
+      await this.handleEvent(event, adapter.id);
     }
   }
 
-  private async handleEvent(event: CanonicalEvent): Promise<void> {
+  private async handleEvent(event: CanonicalEvent, processorId?: string): Promise<void> {
+    // A previously-collected payment was refunded or charged back → net-recovery accounting.
+    // Only reversals of invoices WE recovered claw back fee (capped to the net still recovered).
+    if (event.type === 'payment.reversed') {
+      await this.recordReversal(event.payload as ReversalPayload, event.merchantId, event.occurredAt, processorId);
+      return;
+    }
     if (event.type === 'invoice.failed') {
       const payload = event.payload as { invoice?: Invoice; decline?: DeclineEvent; method?: PaymentMethod; customer?: Customer };
       if (payload.invoice) {
@@ -818,6 +824,42 @@ export class RecoveryCaseService {
    */
   async ledgerEntries(): Promise<readonly LedgerEntry[]> {
     return this.ledger.all();
+  }
+
+  /**
+   * Net recovered so far for an invoice = Σ case.recovered − Σ case.reversed (that invoice).
+   * Drives the clawback cap: we never reverse more than we actually (still) recovered.
+   */
+  private async netRecoveredForInvoice(invoiceId: string): Promise<number> {
+    let net = 0;
+    for (const e of await this.ledger.all()) {
+      if ((e.detail as { invoiceId?: string }).invoiceId !== invoiceId) continue;
+      if (e.type === 'case.recovered') net += Number((e.detail as { amount?: number }).amount ?? 0);
+      else if (e.type === 'case.reversed') net -= Number((e.detail as { amount?: number }).amount ?? 0);
+    }
+    return net;
+  }
+
+  /**
+   * Record a reversal (refund / chargeback) of a payment we recovered. Appends `case.reversed`
+   * with the amount CAPPED to the net still recovered for that invoice, so a reversal of a
+   * payment we didn't recover (net 0) is a no-op and we never claw back more fee than we earned.
+   * The P&L nets these against recovered and reduces the accrued fee accordingly (clawback).
+   */
+  private async recordReversal(p: ReversalPayload, merchantId: string, occurredAt: string, processorId?: string): Promise<void> {
+    const net = await this.netRecoveredForInvoice(p.invoiceId);
+    if (net <= 0) {
+      this.logger.debug(`Reversal for ${p.invoiceId} ignored — not a payment we recovered (net ${net}).`);
+      return;
+    }
+    const amount = Math.min(p.amount, net); // never reverse more than we still hold as recovered
+    await this.ledger.append({
+      merchantId,
+      type: 'case.reversed',
+      occurredAt,
+      detail: { invoiceId: p.invoiceId, processor: processorId, amount, currency: p.currency, kind: p.kind, reason: p.reason },
+    });
+    this.logger.log(`Recovery reversed (${p.kind}) for ${p.invoiceId}: ${amount} ${p.currency} — fee clawed back.`);
   }
 
   /**

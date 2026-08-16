@@ -9,6 +9,10 @@ function recovered(processor: string, amount: number, offsetDays: number, curren
   return { type: 'case.recovered', occurredAt: iso(offsetDays), detail: { processor, amount, currency } };
 }
 
+function reversed(processor: string, amount: number, offsetDays: number, currency = 'USD'): PnlLedgerEntry {
+  return { type: 'case.reversed', occurredAt: iso(offsetDays), detail: { processor, amount, currency, kind: 'chargeback' } };
+}
+
 describe('computePnl', () => {
   it('sums gross recovered and accrues fee at the fee rate, per processor + cumulative', () => {
     const entries: PnlLedgerEntry[] = [
@@ -77,6 +81,39 @@ describe('computePnl', () => {
     const entries: PnlLedgerEntry[] = [{ type: 'case.recovered', occurredAt: iso(0.1), detail: { amount: 1_000, currency: 'USD' } }];
     const r = computePnl(entries, { nowIso: NOW });
     expect(r.processors[0]!.processor).toBe('unknown');
+  });
+
+  it('nets reversals off recovered and claws back the fee', () => {
+    const entries: PnlLedgerEntry[] = [
+      recovered('stripe', 10_000, 0.1),
+      recovered('adyen', 20_000, 0.2),
+      reversed('stripe', 3_000, 0.05), // a chargeback on the stripe recovery
+    ];
+    const r = computePnl(entries, { nowIso: NOW, feeRate: 0.12 });
+    const c = r.cumulative.totals;
+    expect(c.grossRecoveredMinor).toBe(30_000);
+    expect(c.reversedMinor).toBe(3_000);
+    expect(c.recoveredMinor).toBe(27_000); // NET
+    expect(c.feeMinor).toBe(Math.round(27_000 * 0.12)); // 3240 — fee on NET
+    expect(c.clawbackMinor).toBe(Math.round(3_000 * 0.12)); // 360 — fee removed by the reversal
+    expect(c.reversals).toBe(1);
+    // per-MoR: stripe net = 7000 (10000 - 3000), adyen net = 20000 → adyen now leads by fee
+    const stripe = r.processors.find((p) => p.processor === 'stripe')!;
+    expect(stripe.totals.recoveredMinor).toBe(7_000);
+    expect(stripe.totals.feeMinor).toBe(Math.round(7_000 * 0.12));
+    expect(r.processors[0]!.processor).toBe('adyen');
+  });
+
+  it('nets reversals within the rolling window and the daily series', () => {
+    const entries: PnlLedgerEntry[] = [
+      recovered('stripe', 10_000, 0.1), // in last 24h
+      reversed('stripe', 4_000, 0.2), // also in last 24h
+    ];
+    const r = computePnl(entries, { nowIso: NOW, feeRate: 0.1 });
+    expect(r.cumulative.day.current.recoveredMinor).toBe(6_000); // 10000 - 4000
+    expect(r.cumulative.day.current.feeMinor).toBe(600);
+    expect(r.cumulative.day.current.clawbackMinor).toBe(400);
+    expect(r.dailySeries[29]!.recoveredMinor).toBe(6_000); // today, net
   });
 
   it('handles an empty ledger without throwing', () => {

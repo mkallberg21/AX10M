@@ -13,7 +13,7 @@ import { useEffect, useMemo, useState } from 'react';
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
 const POLL_MS = 20_000;
 
-type Totals = { recoveredMinor: number; feeMinor: number; recoveries: number; attempts: number; comms: number };
+type Totals = { recoveredMinor: number; grossRecoveredMinor: number; reversedMinor: number; feeMinor: number; clawbackMinor: number; recoveries: number; reversals: number; attempts: number; comms: number };
 type PeriodDelta = { current: Totals; previous: Totals; feeDeltaPct: number | null; recoveredDeltaPct: number | null };
 type ProcessorPnl = { processor: string; totals: Totals; day: PeriodDelta; week: PeriodDelta; month: PeriodDelta; year: PeriodDelta };
 type SeriesPoint = { date: string; recoveredMinor: number; feeMinor: number };
@@ -190,9 +190,17 @@ export default function PnlPage(): JSX.Element {
           </section>
 
           <div className="method-strip">
-            All-time fee <strong>{money(data.cumulative.totals.feeMinor, currency)}</strong> · recovered{' '}
-            <strong>{money(data.cumulative.totals.recoveredMinor, currency)}</strong> · {data.cumulative.totals.recoveries.toLocaleString()} recoveries ·
-            fee = {data.feeRatePct}% of recovered <span className="tag" title="Actual billing is 12% of statistically-proven uplift (holdout-verified), which is ≤ this accrual.">accrual</span>
+            All-time fee <strong>{money(data.cumulative.totals.feeMinor, currency)}</strong> · net recovered{' '}
+            <strong>{money(data.cumulative.totals.recoveredMinor, currency)}</strong> · gross{' '}
+            {money(data.cumulative.totals.grossRecoveredMinor, currency)}
+            {data.cumulative.totals.reversedMinor > 0 && (
+              <>
+                {' '}· reversed <strong className="reversed">−{money(data.cumulative.totals.reversedMinor, currency)}</strong> ({data.cumulative.totals.reversals.toLocaleString()}) · clawback{' '}
+                <strong className="reversed">−{money(data.cumulative.totals.clawbackMinor, currency)}</strong>
+              </>
+            )}{' '}
+            · {data.cumulative.totals.recoveries.toLocaleString()} recoveries · fee = {data.feeRatePct}% of net{' '}
+            <span className="tag" title="Fee accrues on NET recovered (gross − refunds/chargebacks), so a reversal claws back the fee. Actual billing is 12% of holdout-verified uplift, ≤ this accrual.">accrual</span>
           </div>
 
           <section className="panel">

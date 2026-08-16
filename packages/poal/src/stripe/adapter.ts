@@ -29,6 +29,7 @@ import {
   type Invoice,
   type Money,
   type PaymentMethod,
+  type ReversalPayload,
   type Subscription,
 } from '@ax10m/canonical';
 import type {
@@ -84,6 +85,9 @@ interface StripeCharge {
   // Per-charge contact info (charges carry billing_details, not customer_* fields).
   billing_details?: { email?: string; phone?: string };
   receipt_email?: string;
+  // Refund fields (charge.refunded): amount_refunded is cumulative; refunds.data[0] is the newest.
+  amount_refunded?: number;
+  refunds?: { data?: Array<{ amount?: number; reason?: string }> };
 }
 interface StripeEvent {
   id?: string;
@@ -174,6 +178,23 @@ export class StripeAdapter implements ProcessorAdapter {
         const ch = obj as unknown as StripeCharge;
         const invoice = this.mapChargeAsInvoice(ch, occurredAt, false);
         return [envelope('invoice.paid', { invoice })];
+      }
+      case 'charge.refunded': {
+        // A collected payment was refunded → net-recovery clawback. Only invoice-linked charges
+        // map to a recovery we drove; the delta is the newest refund (or the cumulative total).
+        const ch = obj as unknown as StripeCharge;
+        if (!ch.invoice) return []; // not linked to an invoice → not one of our recoveries
+        const newest = ch.refunds?.data?.[0];
+        const amount = newest?.amount ?? ch.amount_refunded ?? 0;
+        if (amount <= 0) return [];
+        const reversal: ReversalPayload = {
+          invoiceId: `ax10m_inv_${ch.invoice}`,
+          amount,
+          currency: (ch.currency ?? 'usd').toUpperCase(),
+          kind: 'refund',
+          reason: newest?.reason,
+        };
+        return [envelope('payment.reversed', reversal)];
       }
       default:
         return [];
