@@ -21,6 +21,7 @@ export interface BillingAccountStore {
   upsertInvoice(invoice: Invoice): Promise<void>;
   getInvoice(invoiceNumber: string): Promise<Invoice | undefined>;
   invoicesForMerchant(merchantId: string): Promise<Invoice[]>;
+  allInvoices(): Promise<Invoice[]>;
 }
 
 /** In-memory store for the no-DB path (dev / tests). Not shared across processes, not persisted. */
@@ -57,6 +58,9 @@ export class InMemoryBillingAccountStore implements BillingAccountStore {
   }
   async invoicesForMerchant(merchantId: string): Promise<Invoice[]> {
     return [...this.invoices.values()].filter((i) => i.merchantId === merchantId).sort((a, b) => b.issuedAt.localeCompare(a.issuedAt));
+  }
+  async allInvoices(): Promise<Invoice[]> {
+    return [...this.invoices.values()].sort((a, b) => b.issuedAt.localeCompare(a.issuedAt));
   }
 }
 

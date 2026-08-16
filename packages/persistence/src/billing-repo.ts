@@ -90,4 +90,10 @@ export class BillingRepository {
       .orderBy(desc(billingInvoices.issuedAt))) as DocRow<Invoice>[];
     return rows.map((r) => r.doc);
   }
+
+  /** All invoices (for the dunning sweep). Ordered newest-issued first. */
+  async allInvoices(): Promise<Invoice[]> {
+    const rows = (await this.db.select({ doc: billingInvoices.doc }).from(billingInvoices).orderBy(desc(billingInvoices.issuedAt))) as DocRow<Invoice>[];
+    return rows.map((r) => r.doc);
+  }
 }

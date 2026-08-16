@@ -10,6 +10,7 @@
     "worker": "node dist/worker/main.js",
     "retrain": "node dist/recovery/retrain-main.js",
     "bill": "node dist/billing/billing-main.js",
+    "dun": "node dist/billing/billing-dunning-main.js",
     "clean": "rimraf dist *.tsbuildinfo",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"

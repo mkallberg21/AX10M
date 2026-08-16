@@ -119,6 +119,11 @@ export class BillingPortalService {
     return invoiceAsOf(inv, nowIso);
   }
 
+  /** All stored invoices (raw, not advanced as-of) — for the dunning sweep. */
+  async allInvoices(): Promise<Invoice[]> {
+    return this.store.allInvoices();
+  }
+
   /**
    * Compose a forward of an invoice to the account's accounts-payable inbox. Composition only —
    * returns the ready-to-send message; no transport fires here. (Invoices are also auto-addressed

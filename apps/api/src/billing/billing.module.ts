@@ -3,6 +3,7 @@ import { BillingController } from './billing.controller.js';
 import { BillingPortalService } from './billing-portal.service.js';
 import { buildBillingAccountStore } from './billing-account-store.js';
 import { resolveBillingSigner, resolveRemitTo } from './billing-signer.js';
+import { InvoiceDeliveryService, buildInvoiceDeliveryService } from './invoice-delivery.service.js';
 
 /**
  * Billing portal module. Wires the BillingPortalService with the persisted account store (shared
@@ -18,8 +19,12 @@ import { resolveBillingSigner, resolveRemitTo } from './billing-signer.js';
         return new BillingPortalService(store, resolveBillingSigner(process.env), resolveRemitTo(process.env));
       },
     },
+    {
+      provide: InvoiceDeliveryService,
+      useFactory: (): Promise<InvoiceDeliveryService> => buildInvoiceDeliveryService(process.env),
+    },
   ],
   controllers: [BillingController],
-  exports: [BillingPortalService],
+  exports: [BillingPortalService, InvoiceDeliveryService],
 })
 export class BillingModule {}

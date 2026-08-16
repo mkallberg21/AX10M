@@ -20,6 +20,7 @@ import { getSharedDb } from '../persistence/database.js';
 import { runBilling, type BillingRunSummary } from './billing-run.js';
 import { NoopBillingCharger, type BillingCharger } from './charger.js';
 import { resolveBillingSigner, resolveRemitTo } from './billing-signer.js';
+import { buildInvoiceDeliveryService } from './invoice-delivery.service.js';
 
 const logger = new Logger('BillingJob');
 
@@ -62,7 +63,9 @@ export async function runBillingJob(opts: BillingJobOptions = {}): Promise<Billi
   // always equals the provable fee. Merchants without an account are billed only once they opt in.
   const billingRepo = new BillingRepository(db);
   const remitTo = resolveRemitTo(env);
+  const delivery = await buildInvoiceDeliveryService(env);
   let invoicesIssued = 0;
+  let noticesSent = 0;
   for (const signed of statements) {
     const r = signed.result;
     if (!r.billable || r.fee.amount <= 0) continue;
@@ -77,11 +80,15 @@ export async function runBillingJob(opts: BillingJobOptions = {}): Promise<Billi
       statementHash: signed.statementHash,
       billable: r.billable,
     };
-    await billingRepo.upsertInvoice(buildInvoice({ account, statement, issuedAt: nowIso, remitTo }));
+    const invoice = buildInvoice({ account, statement, issuedAt: nowIso, remitTo });
+    await billingRepo.upsertInvoice(invoice);
     invoicesIssued += 1;
+    // Deliver the initial "invoice ready" notice to the AP inbox (dry-run unless live).
+    const sent = await delivery.deliverStage(invoice, 'issued', nowIso);
+    if (sent.status === 'sent') noticesSent += 1;
   }
 
   const billable = summary.merchants.filter((m) => m.feeMinor > 0).length;
-  logger.log(`Billed ${summary.period}: ${summary.merchants.length} merchant(s), ${billable} with a positive fee, ${invoicesIssued} invoice(s) issued to opted-in merchants, total fee ${summary.totalFeeMinor} minor (live=${summary.live}, collected ${summary.totalChargedMinor}).`);
+  logger.log(`Billed ${summary.period}: ${summary.merchants.length} merchant(s), ${billable} with a positive fee, ${invoicesIssued} invoice(s) issued to opted-in merchants (${noticesSent} notice(s) sent), total fee ${summary.totalFeeMinor} minor (live=${summary.live}, collected ${summary.totalChargedMinor}).`);
   return summary;
 }
