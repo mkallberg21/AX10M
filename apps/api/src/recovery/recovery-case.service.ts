@@ -466,6 +466,7 @@ export class RecoveryCaseService {
       occurredAt: new Date().toISOString(),
       detail: {
         invoiceId: params.invoice.id,
+        processor: params.adapter.id, // per-MoR attribution for analytics/P&L
         idempotencyKey: key,
         outcome: result.outcome,
         idempotentReplay: result.idempotentReplay ?? false,
@@ -479,6 +480,7 @@ export class RecoveryCaseService {
         occurredAt: new Date().toISOString(),
         detail: {
           invoiceId: params.invoice.id,
+          processor: params.adapter.id, // per-MoR attribution: SUM(amount) by processor = recovered revenue
           amount: params.invoice.amount.amount,
           currency: params.invoice.amount.currency,
           attemptNumber: params.attemptNumber,
@@ -635,6 +637,7 @@ export class RecoveryCaseService {
         occurredAt: new Date().toISOString(),
         detail: {
           invoiceId: invoice.id,
+          processor: adapter.id, // per-MoR attribution for analytics/P&L
           reason: decision.action,
           rationale: decision.rationale,
           // Composed card-update copy. Carries the update link + opt-out, never a PAN. Present
