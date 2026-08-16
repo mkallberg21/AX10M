@@ -1,12 +1,14 @@
-import { Body, Controller, Get, Headers, HttpCode, Ip, Param, Post } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Headers, HttpCode, Ip, Param, Post } from '@nestjs/common';
 import type { Invoice, OptInInput } from '@ax10m/billing';
 import { BillingPortalService, type AccountView, type ForwardToApComposition, type OptInResult } from './billing-portal.service.js';
 import { InvoiceDeliveryService, type InvoiceDeliveryResult, type InvoiceDunningSummary } from './invoice-delivery.service.js';
+import { StripeEnrollmentService, type SetupIntentRequest, type SetupIntentResult } from './stripe-enrollment.service.js';
 
 /**
  * Billing portal API — the merchant-facing opt-in + invoice surface for AX10M's 12% fee.
  *
  *   GET  /billing/terms                       current terms (version, hash, fee schedule, body) to show pre-accept
+ *   POST /billing/setup-intent                start auto-pay enrollment: create a Stripe customer + SetupIntent (SAQ-A)
  *   POST /billing/opt-in                      accept terms + enroll (auto-pay or invoice); signs a clickwrap record
  *   GET  /billing/account/:merchantId         the merchant's billing account (payment token never echoed)
  *   GET  /billing/invoices/:merchantId        issued invoices (finance charge computed as-of now)
@@ -24,11 +26,24 @@ export class BillingController {
   constructor(
     private readonly portal: BillingPortalService,
     private readonly delivery: InvoiceDeliveryService,
+    private readonly enrollment: StripeEnrollmentService,
   ) {}
 
   @Get('terms')
   terms(): ReturnType<BillingPortalService['terms']> {
     return this.portal.terms();
+  }
+
+  /**
+   * Start auto-pay enrollment: create a Stripe customer + SetupIntent so the browser can collect a
+   * card via Stripe Elements (the PAN never touches AX10M). Returns the customer id + client
+   * secret; after the browser confirms, submit customerRef + paymentMethodRef to /billing/opt-in.
+   */
+  @Post('setup-intent')
+  @HttpCode(200)
+  async setupIntent(@Body() body: SetupIntentRequest): Promise<SetupIntentResult> {
+    if (!body?.merchantId?.trim() || !body?.email?.trim()) throw new BadRequestException('merchantId and email are required');
+    return this.enrollment.createSetupIntent({ merchantId: body.merchantId.trim(), email: body.email.trim(), legalEntityName: body.legalEntityName?.trim() });
   }
 
   @Post('opt-in')

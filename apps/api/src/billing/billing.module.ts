@@ -4,6 +4,7 @@ import { BillingPortalService } from './billing-portal.service.js';
 import { buildBillingAccountStore } from './billing-account-store.js';
 import { resolveBillingSigner, resolveRemitTo } from './billing-signer.js';
 import { InvoiceDeliveryService, buildInvoiceDeliveryService } from './invoice-delivery.service.js';
+import { StripeEnrollmentService, buildStripeEnrollmentService } from './stripe-enrollment.service.js';
 
 /**
  * Billing portal module. Wires the BillingPortalService with the persisted account store (shared
@@ -23,8 +24,12 @@ import { InvoiceDeliveryService, buildInvoiceDeliveryService } from './invoice-d
       provide: InvoiceDeliveryService,
       useFactory: (): Promise<InvoiceDeliveryService> => buildInvoiceDeliveryService(process.env),
     },
+    {
+      provide: StripeEnrollmentService,
+      useFactory: (): StripeEnrollmentService => buildStripeEnrollmentService(process.env),
+    },
   ],
   controllers: [BillingController],
-  exports: [BillingPortalService, InvoiceDeliveryService],
+  exports: [BillingPortalService, InvoiceDeliveryService, StripeEnrollmentService],
 })
 export class BillingModule {}
