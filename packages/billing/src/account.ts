@@ -70,6 +70,12 @@ export interface BillingAccount {
   payerTrack: PayerTrack;
   /** Opaque processor token for auto-pay (Stripe `pm_...`). NEVER a PAN. Absent on the invoice track. */
   paymentMethodRef?: string;
+  /**
+   * The processor customer the payment method is attached to (Stripe `cus_...`, on AX10M's own
+   * platform account). Required alongside paymentMethodRef to charge off-session; captured by the
+   * SetupIntent enrollment flow. NEVER a PAN.
+   */
+  customerRef?: string;
   feeSchedule: FeeSchedule;
   status: BillingAccountStatus;
   createdAt: string;
@@ -86,6 +92,7 @@ export interface OptInInput {
   poNumber?: string;
   payerTrack: PayerTrack;
   paymentMethodRef?: string;
+  customerRef?: string;
   signer: AuthorizedSigner;
   /** Did the signer explicitly authorize recurring auto-charges? Required on the auto_pay track. */
   autoPayAuthorized?: boolean;
@@ -149,6 +156,7 @@ export function validateOptIn(input: OptInInput): string[] {
 
   // No card number may ever land in a stored field.
   if (looksLikePan(input.paymentMethodRef)) errors.push('paymentMethodRef looks like a card number — pass an opaque processor token, never a PAN');
+  if (looksLikePan(input.customerRef)) errors.push('customerRef looks like a card number — pass an opaque processor customer id, never a PAN');
   if (looksLikePan(input.taxId)) errors.push('taxId looks like a card number');
   if (looksLikePan(input.poNumber)) errors.push('poNumber looks like a card number');
 
@@ -173,6 +181,7 @@ export function buildBillingAccount(input: OptInInput, accountId: string, create
     poNumber: input.poNumber,
     payerTrack: input.payerTrack,
     paymentMethodRef: input.payerTrack === 'auto_pay' ? input.paymentMethodRef : undefined,
+    customerRef: input.payerTrack === 'auto_pay' ? input.customerRef : undefined,
     feeSchedule: input.feeSchedule ?? DEFAULT_FEE_SCHEDULE,
     status: 'active',
     createdAt,

@@ -18,9 +18,10 @@ import { buildInvoice, type StatementForInvoice } from '@ax10m/billing';
 import { BillingRepository, LedgerRepository, type Db } from '@ax10m/persistence';
 import { getSharedDb } from '../persistence/database.js';
 import { runBilling, type BillingRunSummary } from './billing-run.js';
-import { NoopBillingCharger, type BillingCharger } from './charger.js';
+import type { BillingCharger } from './charger.js';
 import { resolveBillingSigner, resolveRemitTo } from './billing-signer.js';
 import { buildInvoiceDeliveryService } from './invoice-delivery.service.js';
+import { buildBillingCharger } from './stripe-billing-charger.js';
 
 const logger = new Logger('BillingJob');
 
@@ -41,9 +42,14 @@ export async function runBillingJob(opts: BillingJobOptions = {}): Promise<Billi
     return null;
   }
   const repo = new LedgerRepository(db);
+  const billingRepo = new BillingRepository(db);
   const entries = await repo.all();
   const ledgerHead = await repo.head();
   const nowIso = opts.nowIso ?? new Date().toISOString();
+
+  // The charger collects the fee off-session on auto-pay (Stripe) when live; Noop otherwise. It
+  // resolves the payment method + customer from the merchant's billing account.
+  const charger = opts.charger ?? buildBillingCharger(env, (merchantId) => billingRepo.accountForMerchant(merchantId));
 
   const { summary, statements } = await runBilling({
     entries,
@@ -55,13 +61,12 @@ export async function runBillingJob(opts: BillingJobOptions = {}): Promise<Billi
     signer: resolveBillingSigner(env),
     nowIso,
     live: env.AX10M_LIVE_BILLING === 'true',
-    charger: opts.charger ?? new NoopBillingCharger(),
+    charger,
   });
 
   // Generate a human-facing invoice for each billable statement whose merchant has opted in
   // (has a BillingAccount). The invoice amount is taken verbatim from the signed statement, so it
   // always equals the provable fee. Merchants without an account are billed only once they opt in.
-  const billingRepo = new BillingRepository(db);
   const remitTo = resolveRemitTo(env);
   const delivery = await buildInvoiceDeliveryService(env);
   let invoicesIssued = 0;
