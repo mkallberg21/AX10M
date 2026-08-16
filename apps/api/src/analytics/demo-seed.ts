@@ -71,6 +71,10 @@ export function buildDemoLedgerEvents(opts: DemoSeedOptions): LedgerAppendInput[
         const amount = 1_500 + Math.floor(rand() * 23_500); // $15–$250 in minor units
         const invoiceId = `demo_inv_${n++}`;
         const attemptNumber = 1 + Math.floor(rand() * 3);
+        // Holdout: this recovered invoice is a TREATMENT-arm case (assigned at failure time). The
+        // billing preview reads these to compute the proven-uplift fee. (A CONTROL arm is added
+        // below.) stratumKey 'default' keeps the demo single-stratum.
+        events.push({ merchantId, type: 'holdout.assigned', occurredAt, detail: { invoiceId, customerId: `demo_cus_${n}`, bucket: 'treatment', stratumKey: 'default', amount, currency, processor: proc.id, demo: true } });
 
         // A minority of recoveries had a failed attempt / dunning comm first — adds MoR activity.
         if (rand() < 0.35) {
@@ -104,6 +108,23 @@ export function buildDemoLedgerEvents(opts: DemoSeedOptions): LedgerAppendInput[
               detail: { invoiceId, processor: proc.id, demo: true, amount: revAmount, currency, kind: 'chargeback', reason: 'dispute_won' },
             });
           }
+        }
+      }
+
+      // CONTROL arm: ~11% as many held-out (untreated) invoices this day, recovering at a LOWER
+      // baseline rate/amount than treatment → a positive lift the billing preview measures. These
+      // are legitimate baseline recoveries (count toward gross recovered too).
+      const controlCount = Math.round(count * 0.11);
+      for (let c = 0; c < controlCount; c++) {
+        const at = Math.min(nowMs, dayStart + Math.floor(rand() * DAY_MS));
+        const occurredAt = new Date(at).toISOString();
+        const invoiceId = `demo_inv_${n++}`;
+        const face = 1_500 + Math.floor(rand() * 23_500);
+        events.push({ merchantId, type: 'holdout.assigned', occurredAt, detail: { invoiceId, customerId: `demo_cus_${n}`, bucket: 'control', stratumKey: 'default', amount: face, currency, processor: proc.id, demo: true } });
+        // Baseline recovers ~40% of the time at a partial amount (vs treatment's near-full recovery).
+        if (rand() < 0.4) {
+          const recAmount = Math.max(100, Math.floor(face * (0.3 + rand() * 0.3)));
+          events.push({ merchantId, type: 'case.recovered', occurredAt, detail: { invoiceId, processor: proc.id, demo: true, amount: recAmount, currency, attemptNumber: 1 } });
         }
       }
     }

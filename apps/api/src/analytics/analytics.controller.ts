@@ -1,7 +1,9 @@
 import { Controller, ForbiddenException, Get, HttpCode, Post, Query } from '@nestjs/common';
+import { createEd25519Signer } from '@ax10m/attribution';
 import { RecoveryCaseService } from '../recovery/recovery-case.service.js';
 import { computePnl, type PnlReport } from './pnl.js';
 import { buildDemoLedgerEvents } from './demo-seed.js';
+import { runBilling, type BillingRunSummary } from '../billing/billing-run.js';
 
 /**
  * Analytics API — the live P&L / revenue view over the shared ledger.
@@ -43,5 +45,19 @@ export class AnalyticsController {
     const events = buildDemoLedgerEvents({ nowIso: new Date().toISOString(), days: windowDays });
     const seeded = await this.recovery.appendDemoEvents(events);
     return { seeded, note: 'Synthetic demo recoveries appended (marked demo:true). Append-only — restart with a fresh ledger to clear.' };
+  }
+
+  /**
+   * Preview the PREVIOUS month's Uplift Statements (the 12%-of-proven-uplift bill) for every
+   * merchant — READ-ONLY: no ledger record, no charge. The autonomous monthly job (`pnpm bill`)
+   * is what records + (when live) collects. Uses an ephemeral signer since a preview isn't billed.
+   */
+  @Get('billing/preview')
+  async billingPreview(): Promise<BillingRunSummary> {
+    const entries = await this.recovery.ledgerEntries();
+    const ledgerHead = await this.recovery.ledgerHead();
+    const signer = createEd25519Signer('ax10m-billing-preview').signer;
+    const { summary } = await runBilling({ entries, ledger: entries, ledgerHead, signer, nowIso: new Date().toISOString(), live: false });
+    return summary;
   }
 }
