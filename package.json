@@ -8,6 +8,13 @@
     "node": ">=20.0.0",
     "pnpm": ">=9.0.0"
   },
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "9.12.0",
+      "onFail": "warn"
+    }
+  },
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
