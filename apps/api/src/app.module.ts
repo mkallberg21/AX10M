@@ -5,6 +5,7 @@ import { ReconcilerModule } from './reconciler/reconciler.module.js';
 import { RecoveryModule } from './recovery/recovery.module.js';
 import { OnboardingModule } from './onboarding/onboarding.module.js';
 import { AnalyticsModule } from './analytics/analytics.module.js';
+import { BillingModule } from './billing/billing.module.js';
 
 /**
  * Root module wiring the Phase-0 proof engine:
@@ -15,6 +16,6 @@ import { AnalyticsModule } from './analytics/analytics.module.js';
  *  - Health: liveness/readiness.
  */
 @Module({
-  imports: [HealthModule, WebhooksModule, ReconcilerModule, RecoveryModule, OnboardingModule, AnalyticsModule],
+  imports: [HealthModule, WebhooksModule, ReconcilerModule, RecoveryModule, OnboardingModule, AnalyticsModule, BillingModule],
 })
 export class AppModule {}

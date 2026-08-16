@@ -29,6 +29,9 @@ importers:
       '@ax10m/attribution':
         specifier: workspace:*
         version: link:../../packages/attribution
+      '@ax10m/billing':
+        specifier: workspace:*
+        version: link:../../packages/billing
       '@ax10m/canonical':
         specifier: workspace:*
         version: link:../../packages/canonical

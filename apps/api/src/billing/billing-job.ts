@@ -14,20 +14,14 @@
  */
 
 import { Logger } from '@nestjs/common';
-import { createEd25519Signer, type Signer } from '@ax10m/attribution';
-import { LedgerRepository, type Db } from '@ax10m/persistence';
+import { buildInvoice, type StatementForInvoice } from '@ax10m/billing';
+import { BillingRepository, LedgerRepository, type Db } from '@ax10m/persistence';
 import { getSharedDb } from '../persistence/database.js';
 import { runBilling, type BillingRunSummary } from './billing-run.js';
 import { NoopBillingCharger, type BillingCharger } from './charger.js';
+import { resolveBillingSigner, resolveRemitTo } from './billing-signer.js';
 
 const logger = new Logger('BillingJob');
-
-function resolveSigner(env: NodeJS.ProcessEnv): Signer {
-  const pem = env.AX10M_BILLING_SIGNING_KEY;
-  if (pem) return createEd25519Signer('ax10m-billing', pem).signer;
-  logger.warn('AX10M_BILLING_SIGNING_KEY not set — signing statements with an EPHEMERAL key (not verifiable across runs). Set it in production.');
-  return createEd25519Signer('ax10m-billing-ephemeral').signer;
-}
 
 export interface BillingJobOptions {
   db?: Db;
@@ -48,21 +42,46 @@ export async function runBillingJob(opts: BillingJobOptions = {}): Promise<Billi
   const repo = new LedgerRepository(db);
   const entries = await repo.all();
   const ledgerHead = await repo.head();
+  const nowIso = opts.nowIso ?? new Date().toISOString();
 
-  const { summary } = await runBilling({
+  const { summary, statements } = await runBilling({
     entries,
     ledger: entries,
     ledgerHead,
     append: async (e) => {
       await repo.append(e);
     },
-    signer: resolveSigner(env),
-    nowIso: opts.nowIso ?? new Date().toISOString(),
+    signer: resolveBillingSigner(env),
+    nowIso,
     live: env.AX10M_LIVE_BILLING === 'true',
     charger: opts.charger ?? new NoopBillingCharger(),
   });
 
+  // Generate a human-facing invoice for each billable statement whose merchant has opted in
+  // (has a BillingAccount). The invoice amount is taken verbatim from the signed statement, so it
+  // always equals the provable fee. Merchants without an account are billed only once they opt in.
+  const billingRepo = new BillingRepository(db);
+  const remitTo = resolveRemitTo(env);
+  let invoicesIssued = 0;
+  for (const signed of statements) {
+    const r = signed.result;
+    if (!r.billable || r.fee.amount <= 0) continue;
+    const account = await billingRepo.accountForMerchant(signed.merchantId);
+    if (!account) continue; // not opted in yet → statement recorded, no invoice
+    const statement: StatementForInvoice = {
+      merchantId: signed.merchantId,
+      period: signed.period,
+      currency: signed.currency,
+      feeMinor: r.fee.amount,
+      upliftLowerMinor: r.billableIncrement.amount,
+      statementHash: signed.statementHash,
+      billable: r.billable,
+    };
+    await billingRepo.upsertInvoice(buildInvoice({ account, statement, issuedAt: nowIso, remitTo }));
+    invoicesIssued += 1;
+  }
+
   const billable = summary.merchants.filter((m) => m.feeMinor > 0).length;
-  logger.log(`Billed ${summary.period}: ${summary.merchants.length} merchant(s), ${billable} with a positive fee, total fee ${summary.totalFeeMinor} minor (live=${summary.live}, collected ${summary.totalChargedMinor}).`);
+  logger.log(`Billed ${summary.period}: ${summary.merchants.length} merchant(s), ${billable} with a positive fee, ${invoicesIssued} invoice(s) issued to opted-in merchants, total fee ${summary.totalFeeMinor} minor (live=${summary.live}, collected ${summary.totalChargedMinor}).`);
   return summary;
 }
