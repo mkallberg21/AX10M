@@ -89,6 +89,14 @@ interface StripeCharge {
   amount_refunded?: number;
   refunds?: { data?: Array<{ amount?: number; reason?: string }> };
 }
+/** Stripe Dispute (charge.dispute.created) — references the charge, not the invoice. */
+interface StripeDispute {
+  id?: string;
+  charge?: string;
+  amount?: number;
+  currency?: string;
+  reason?: string;
+}
 interface StripeEvent {
   id?: string;
   type?: string;
@@ -196,8 +204,41 @@ export class StripeAdapter implements ProcessorAdapter {
         };
         return [envelope('payment.reversed', reversal)];
       }
+      case 'charge.dispute.created': {
+        // A chargeback → net-recovery clawback. The dispute references the CHARGE, not the
+        // invoice, so resolve charge → invoice via the API (best-effort; a failed/uninvoiced
+        // lookup skips — never throws). Reverses on dispute CREATION (funds withdrawn); a later
+        // won dispute re-crediting the funds is a follow-up (charge.dispute.closed status=won).
+        const d = obj as unknown as StripeDispute;
+        const amount = d.amount ?? 0;
+        if (!d.charge || amount <= 0) return [];
+        const invoiceRef = await this.resolveInvoiceRef(d.charge);
+        if (!invoiceRef) return []; // not an invoice-linked payment → not one of our recoveries
+        const reversal: ReversalPayload = {
+          invoiceId: `ax10m_inv_${invoiceRef}`,
+          amount,
+          currency: (d.currency ?? 'usd').toUpperCase(),
+          kind: 'chargeback',
+          reason: d.reason,
+        };
+        return [envelope('payment.reversed', reversal)];
+      }
       default:
         return [];
+    }
+  }
+
+  /**
+   * Resolve a charge id → its invoice id (for chargeback→recovery mapping). Best-effort: a
+   * failed lookup or a charge with no invoice returns undefined, so a dispute we can't map is
+   * skipped rather than throwing (an enrichment failure must never break ingestion).
+   */
+  private async resolveInvoiceRef(chargeId: string): Promise<string | undefined> {
+    try {
+      const ch = (await this.client.get(`/charges/${encodeURIComponent(chargeId)}`)) as { invoice?: string };
+      return ch.invoice ? String(ch.invoice) : undefined;
+    } catch {
+      return undefined;
     }
   }
 

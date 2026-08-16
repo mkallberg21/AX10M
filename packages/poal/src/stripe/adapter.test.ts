@@ -122,6 +122,35 @@ describe('ingestWebhook', () => {
     const body = JSON.stringify({ id: 'evt_r2', type: 'charge.refunded', created: T, data: { object: { id: 'ch_x', currency: 'usd', amount_refunded: 1000 } } });
     expect(await adapter.ingestWebhook({ body, headers: signed(body) })).toHaveLength(0);
   });
+
+  it('maps charge.dispute.created to a chargeback reversal, resolving charge → invoice via the API', async () => {
+    const { fetch, calls } = makeFetch((url) => {
+      if (url.includes('/charges/ch_9')) return res(200, { id: 'ch_9', invoice: 'in_9' });
+      return res(200, {});
+    });
+    const adapter = new StripeAdapter({ ...baseCfg, fetch });
+    const body = JSON.stringify({ id: 'evt_d', type: 'charge.dispute.created', created: T, data: { object: { id: 'dp_1', charge: 'ch_9', amount: 4200, currency: 'usd', reason: 'fraudulent' } } });
+    const events = await adapter.ingestWebhook({ body, headers: signed(body) });
+    expect(events).toHaveLength(1);
+    expect(events[0]!.type).toBe('payment.reversed');
+    const p = events[0]!.payload as { invoiceId: string; amount: number; currency: string; kind: string; reason?: string };
+    expect(p).toMatchObject({ invoiceId: 'ax10m_inv_in_9', amount: 4200, currency: 'USD', kind: 'chargeback', reason: 'fraudulent' });
+    expect(calls.some((c) => c.url.includes('/charges/ch_9'))).toBe(true); // resolved via the API
+  });
+
+  it('skips a dispute whose charge has no invoice (not one of our recoveries)', async () => {
+    const { fetch } = makeFetch((url) => (url.includes('/charges/ch_x') ? res(200, { id: 'ch_x' }) : res(200, {})));
+    const adapter = new StripeAdapter({ ...baseCfg, fetch });
+    const body = JSON.stringify({ id: 'evt_d2', type: 'charge.dispute.created', created: T, data: { object: { id: 'dp_2', charge: 'ch_x', amount: 1000, currency: 'usd' } } });
+    expect(await adapter.ingestWebhook({ body, headers: signed(body) })).toHaveLength(0);
+  });
+
+  it('still ingests when the dispute charge-lookup fails (best-effort, no throw)', async () => {
+    const { fetch } = makeFetch((url) => (url.includes('/charges/') ? res(500, { error: { message: 'boom' } }) : res(200, {})));
+    const adapter = new StripeAdapter({ ...baseCfg, fetch });
+    const body = JSON.stringify({ id: 'evt_d3', type: 'charge.dispute.created', created: T, data: { object: { id: 'dp_3', charge: 'ch_z', amount: 1000, currency: 'usd' } } });
+    expect(await adapter.ingestWebhook({ body, headers: signed(body) })).toHaveLength(0); // lookup failed → skipped, not thrown
+  });
 });
 
 describe('attemptCharge', () => {
