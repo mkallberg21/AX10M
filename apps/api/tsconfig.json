@@ -4,6 +4,10 @@
     "rootDir": "./src",
     "outDir": "./dist",
     "composite": false,
+    // Leaf app: disable incremental so a full emit always runs. With incremental on (inherited
+    // from the base), tsc/nest-build skip emit when the .tsbuildinfo says inputs are unchanged —
+    // even though nest's deleteOutDir already wiped dist — leaving dist empty (no dist/main.js).
+    "incremental": false,
     "declaration": false,
     "declarationMap": false,
     "experimentalDecorators": true,
