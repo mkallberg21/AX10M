@@ -265,6 +265,9 @@ importers:
       '@ax10m/backtest':
         specifier: workspace:*
         version: link:../backtest
+      '@ax10m/billing':
+        specifier: workspace:*
+        version: link:../billing
       '@ax10m/canonical':
         specifier: workspace:*
         version: link:../canonical

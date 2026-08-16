@@ -7,7 +7,8 @@
   "references": [
     { "path": "../canonical" },
     { "path": "../attribution" },
-    { "path": "../backtest" }
+    { "path": "../backtest" },
+    { "path": "../billing" }
   ],
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "**/*.test.ts"]

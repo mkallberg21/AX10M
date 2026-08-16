@@ -16,4 +16,5 @@ export * from './connection-repo.js';
 export * from './model-repo.js';
 export * from './credential-attempt-repo.js';
 export * from './dunning-send-repo.js';
+export * from './billing-repo.js';
 export * from './seed.js';

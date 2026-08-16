@@ -21,6 +21,7 @@
   "dependencies": {
     "@ax10m/attribution": "workspace:*",
     "@ax10m/backtest": "workspace:*",
+    "@ax10m/billing": "workspace:*",
     "@ax10m/canonical": "workspace:*",
     "@electric-sql/pglite": "^0.2.0",
     "drizzle-orm": "^0.36.0",

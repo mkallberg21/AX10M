@@ -10,6 +10,9 @@ import { LedgerRepository } from './ledger-repo.js';
 import { ConnectionRepository } from './connection-repo.js';
 import { CredentialAttemptRepository } from './credential-attempt-repo.js';
 import { DunningSendRepository } from './dunning-send-repo.js';
+import { BillingRepository } from './billing-repo.js';
+import { buildBillingAccount, buildAcceptance, buildInvoice, acceptanceHashMatches, type OptInInput } from '@ax10m/billing';
+import { createEd25519Signer } from '@ax10m/attribution';
 import { loadDemoSeed } from './seed.js';
 
 const KEY = Buffer.from(generateKeyHex(), 'hex');
@@ -152,6 +155,52 @@ describe('connection repository — credentials encrypted at rest', () => {
     expect(conn?.config.secretKey).toBe('PLAINTEXT_do_not_leak'); // decrypted for the caller
     expect((await repo.defaultFor('stripe'))?.connectionId).toBe('stripe-A');
     expect(await repo.get('nope')).toBeUndefined();
+    await handle.close();
+  });
+});
+
+describe('billing repository — accounts, signed acceptances, invoices; restart-safe', () => {
+  it('persists an account, its signed acceptance, and an invoice across a restart', async () => {
+    const dir = newTmpDir();
+    let handle: DbHandle = await createPglite(dir);
+    await applyMigrations(handle.db);
+
+    const input: OptInInput = {
+      merchantId: 'mrc_1',
+      legalEntityName: 'Merchant Inc.',
+      billingAddress: { line1: '1 Market St', city: 'San Francisco', region: 'CA', postalCode: '94105', country: 'US' },
+      apContactEmail: 'ap@merchant.com',
+      poRequired: false,
+      payerTrack: 'auto_pay',
+      paymentMethodRef: 'pm_abc123',
+      signer: { name: 'Dana Lee', title: 'CFO', email: 'dana@merchant.com' },
+      autoPayAuthorized: true,
+    };
+    const account = buildBillingAccount(input, 'acct_1', '2026-08-16T00:00:00.000Z');
+    const { signer } = createEd25519Signer('test');
+    const acceptance = buildAcceptance({ account, acceptedBy: input.signer, acceptedAt: '2026-08-16T12:00:00.000Z', autoPayAuthorized: true, signer });
+    const statement = { merchantId: 'mrc_1', period: '2026-07', currency: 'USD', feeMinor: 12_000, upliftLowerMinor: 100_000, statementHash: 'deadbeef', billable: true };
+    const invoice = buildInvoice({ account, statement, issuedAt: '2026-08-01T00:00:00.000Z', remitTo: 'ACH x' });
+
+    const repo1 = new BillingRepository(handle.db);
+    await repo1.upsertAccount(account);
+    await repo1.recordAcceptance(acceptance);
+    await repo1.recordAcceptance(acceptance); // idempotent on record hash
+    await repo1.upsertInvoice(invoice);
+    await handle.close();
+
+    // Restart: reopen the SAME dir — everything persists.
+    handle = await createPglite(dir);
+    const repo2 = new BillingRepository(handle.db);
+    expect((await repo2.getAccount('acct_1'))?.legalEntityName).toBe('Merchant Inc.');
+    expect((await repo2.accountForMerchant('mrc_1'))?.accountId).toBe('acct_1');
+    const accs = await repo2.acceptancesForAccount('acct_1');
+    expect(accs).toHaveLength(1); // the duplicate record was ignored
+    expect(accs[0]!.termsHash).toBe(acceptance.termsHash);
+    expect(acceptanceHashMatches(accs[0]!)).toBe(true); // signature record survived the round-trip intact
+    const inv = await repo2.getInvoice(invoice.invoiceNumber);
+    expect(inv?.totalDueMinor).toBe(12_000);
+    expect((await repo2.invoicesForMerchant('mrc_1'))).toHaveLength(1);
     await handle.close();
   });
 });

@@ -74,6 +74,37 @@ const MIGRATIONS: Migration[] = [
       )`,
     ],
   },
+  {
+    name: '0005_billing',
+    statements: [
+      `CREATE TABLE IF NOT EXISTS billing_accounts (
+        account_id text PRIMARY KEY,
+        merchant_id text NOT NULL,
+        status text NOT NULL,
+        doc jsonb NOT NULL,
+        created_at text NOT NULL
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_billing_accounts_merchant ON billing_accounts (merchant_id)`,
+      `CREATE TABLE IF NOT EXISTS billing_acceptances (
+        record_hash text PRIMARY KEY,
+        account_id text NOT NULL,
+        merchant_id text NOT NULL,
+        doc jsonb NOT NULL,
+        accepted_at text NOT NULL
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_billing_acceptances_account ON billing_acceptances (account_id)`,
+      `CREATE TABLE IF NOT EXISTS billing_invoices (
+        invoice_number text PRIMARY KEY,
+        account_id text NOT NULL,
+        merchant_id text NOT NULL,
+        period text NOT NULL,
+        status text NOT NULL,
+        doc jsonb NOT NULL,
+        issued_at text NOT NULL
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_billing_invoices_merchant ON billing_invoices (merchant_id)`,
+    ],
+  },
 ];
 
 /** Apply all pending migrations. Returns the names actually run. Idempotent. */

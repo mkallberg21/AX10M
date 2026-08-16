@@ -81,4 +81,45 @@ export const dunningSends = pgTable('dunning_sends', {
   sentAt: text('sent_at').notNull(),
 });
 
-export const schema = { merchants, merchantConnections, ledgerEntries, recoveryModels, credentialAttempts, dunningSends };
+/**
+ * Merchant billing accounts (the opt-in identity for AX10M's fee). One row per account; the full
+ * `BillingAccount` (@ax10m/billing) lives in `doc`, with the queryable fields promoted to columns.
+ * `doc.paymentMethodRef` is an opaque processor token (pm_...), never a PAN.
+ */
+export const billingAccounts = pgTable('billing_accounts', {
+  accountId: text('account_id').primaryKey(),
+  merchantId: text('merchant_id').notNull(),
+  status: text('status').notNull(),
+  doc: jsonb('doc').notNull(),
+  createdAt: text('created_at').notNull(),
+});
+
+/**
+ * Signed clickwrap acceptance records — the tamper-evident "who agreed to which terms, at what
+ * fee, when". Keyed by the record hash (unique per acceptance); the full `SignedAcceptanceRecord`
+ * lives in `doc`. Append-only in spirit (a new acceptance = a new row; we never rewrite one).
+ */
+export const billingAcceptances = pgTable('billing_acceptances', {
+  recordHash: text('record_hash').primaryKey(),
+  accountId: text('account_id').notNull(),
+  merchantId: text('merchant_id').notNull(),
+  doc: jsonb('doc').notNull(),
+  acceptedAt: text('accepted_at').notNull(),
+});
+
+/**
+ * Issued invoices for AX10M's fee. Keyed by the deterministic invoice number (one per merchant per
+ * period); the full `Invoice` (@ax10m/billing) lives in `doc`. The amount is taken verbatim from
+ * the signed Uplift Statement, so `doc.statementHash` ties the invoice back to its proof.
+ */
+export const billingInvoices = pgTable('billing_invoices', {
+  invoiceNumber: text('invoice_number').primaryKey(),
+  accountId: text('account_id').notNull(),
+  merchantId: text('merchant_id').notNull(),
+  period: text('period').notNull(),
+  status: text('status').notNull(),
+  doc: jsonb('doc').notNull(),
+  issuedAt: text('issued_at').notNull(),
+});
+
+export const schema = { merchants, merchantConnections, ledgerEntries, recoveryModels, credentialAttempts, dunningSends, billingAccounts, billingAcceptances, billingInvoices };
