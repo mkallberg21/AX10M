@@ -16,6 +16,14 @@ import { TemporalRecoveryDispatcher } from './recovery/recovery-dispatcher.js';
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, { rawBody: true });
 
+  // CORS for the dashboard (reads GET /analytics/pnl cross-origin). Restrict to the configured
+  // dashboard origin(s) via AX10M_CORS_ORIGIN (comma-separated); defaults to localhost dev ports.
+  const corsOrigins = (process.env.AX10M_CORS_ORIGIN ?? 'http://localhost:3000,http://localhost:3001')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+  app.enableCors({ origin: corsOrigins, methods: ['GET', 'POST'] });
+
   // Opt-in durable dispatch: when AX10M_DURABLE_RECOVERY=true, treatment webhooks start a
   // Temporal workflow (hosted by the recovery worker) instead of only planning inline.
   // Non-fatal — if the cluster is unreachable the API still boots and falls back to inline.

@@ -318,3 +318,151 @@ tr:last-child td {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   word-break: break-all;
 }
+
+/* ── P&L dashboard (/pnl) ─────────────────────────────────────────────────── */
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 20px;
+  overflow: hidden;
+}
+.pnl-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.pnl-title {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0 0 4px;
+}
+.live {
+  flex: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.live::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.5);
+  animation: pulse 2s infinite;
+}
+.live.stale {
+  color: var(--warn);
+}
+.live.stale::before {
+  background: var(--warn);
+  animation: none;
+}
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.5); }
+  70% { box-shadow: 0 0 0 6px rgba(74, 222, 128, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .live::before { animation: none; }
+}
+.empty {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px 20px;
+  color: var(--muted);
+  line-height: 1.6;
+  margin-bottom: 24px;
+}
+.empty code {
+  background: var(--panel-2);
+  padding: 1px 6px;
+  border-radius: 4px;
+  margin: 0 3px;
+  color: var(--text);
+  font-size: 12px;
+}
+.pnl-kpis {
+  margin-bottom: 16px;
+}
+.kpi.as-btn {
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  transition: border-color 0.15s, background 0.15s;
+}
+.kpi.as-btn:hover {
+  border-color: var(--accent-dim);
+}
+.kpi.as-btn.focused {
+  border-color: var(--accent);
+  background: linear-gradient(180deg, rgba(74, 222, 128, 0.07), transparent), var(--panel);
+}
+.tag {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  vertical-align: middle;
+}
+.delta {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.delta.up { color: var(--accent); }
+.delta.down { color: #f87171; }
+.delta.muted { color: var(--muted); font-weight: 500; }
+.panel-title {
+  font-size: 14px;
+  font-weight: 600;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+}
+.spark {
+  display: block;
+  width: 100%;
+  height: 140px;
+  padding: 14px 16px;
+  box-sizing: border-box;
+}
+.spark-bar {
+  fill: var(--accent-dim);
+}
+.spark-bar:hover {
+  fill: var(--accent);
+}
+.table-scroll {
+  overflow-x: auto;
+}
+th.num, td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+td.num.accent {
+  color: var(--accent);
+  font-weight: 600;
+}
+.mor {
+  font-weight: 600;
+  text-transform: capitalize;
+}
+.muted {
+  color: var(--muted);
+}
