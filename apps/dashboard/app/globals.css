@@ -466,3 +466,22 @@ td.num.accent {
 .muted {
   color: var(--muted);
 }
+.seed-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+.seed-row .activate {
+  cursor: pointer;
+  border: none;
+  font: inherit;
+}
+.seed-row .activate:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.empty code {
+  font-size: 12px;
+}

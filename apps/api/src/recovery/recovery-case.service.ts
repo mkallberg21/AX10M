@@ -42,7 +42,7 @@ import {
 } from '@ax10m/comms';
 import { OnboardingService } from '../onboarding/onboarding.service.js';
 import { NoopRecoveryDispatcher, type RecoveryDispatcher } from './recovery-dispatcher.js';
-import { InMemoryLedgerPort, type LedgerPort } from './ledger-port.js';
+import { InMemoryLedgerPort, type LedgerPort, type LedgerAppendInput } from './ledger-port.js';
 import { InMemoryCredentialAttemptStore, type CredentialAttemptStore } from './credential-attempt-store.js';
 
 /**
@@ -818,6 +818,17 @@ export class RecoveryCaseService {
    */
   async ledgerEntries(): Promise<readonly LedgerEntry[]> {
     return this.ledger.all();
+  }
+
+  /**
+   * Append pre-built events to the ledger. DEMO/OPERATIONS ONLY — the sole non-recovery writer,
+   * used to seed synthetic demo data (events marked `demo: true`). The caller (a flag-gated
+   * endpoint) is responsible for authorizing this; the ledger is append-only, so seeded events
+   * cannot be removed. Returns the number appended.
+   */
+  async appendDemoEvents(events: readonly LedgerAppendInput[]): Promise<number> {
+    for (const e of events) await this.ledger.append(e);
+    return events.length;
   }
 }
 

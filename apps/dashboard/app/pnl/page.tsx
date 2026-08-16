@@ -76,6 +76,31 @@ export default function PnlPage(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [focus, setFocus] = useState<Period>('month');
+  const [seeding, setSeeding] = useState(false);
+  const [seedMsg, setSeedMsg] = useState<string | null>(null);
+
+  const seedDemo = async (): Promise<void> => {
+    setSeeding(true);
+    setSeedMsg(null);
+    try {
+      const res = await fetch(`${API_BASE}/analytics/seed-demo`, { method: 'POST' });
+      const body = (await res.json().catch(() => ({}))) as { seeded?: number; message?: string };
+      if (!res.ok) {
+        setSeedMsg(body.message ?? `Seeding failed (${res.status})`);
+        return;
+      }
+      const refreshed = await fetch(`${API_BASE}/analytics/pnl`, { cache: 'no-store' });
+      if (refreshed.ok) {
+        setData((await refreshed.json()) as PnlReport);
+        setError(null);
+      }
+      setSeedMsg(`Seeded ${body.seeded ?? 0} synthetic demo events.`);
+    } catch (err) {
+      setSeedMsg(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSeeding(false);
+    }
+  };
 
   useEffect(() => {
     let alive = true;
@@ -131,6 +156,16 @@ export default function PnlPage(): JSX.Element {
           <strong>No recoveries recorded yet.</strong> This dashboard reflects the real ledger, so
           it will populate as the recovery worker lands recovered payments. Everything below is
           wired and ready.
+          <div className="seed-row">
+            <button className="activate" onClick={seedDemo} disabled={seeding} type="button">
+              {seeding ? 'Seeding…' : 'Seed demo data'}
+            </button>
+            <span className="subtitle">
+              Appends deterministic synthetic recoveries (marked <code>demo</code>) so you can see it
+              populated. Requires <code>AX10M_ALLOW_DEMO_SEED=true</code> on the API.
+            </span>
+          </div>
+          {seedMsg && <p className="subtitle" style={{ marginTop: 10 }}>{seedMsg}</p>}
         </div>
       )}
 
