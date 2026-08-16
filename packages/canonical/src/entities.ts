@@ -187,6 +187,7 @@ export type CanonicalEventType =
   | 'charge.succeeded'
   | 'charge.failed'
   | 'payment.reversed'
+  | 'payment.reversal_reverted'
   | 'payment_method.updated'
   | 'subscription.updated';
 
@@ -205,6 +206,14 @@ export interface ReversalPayload {
   kind: ReversalKind;
   reason?: string;
 }
+
+/**
+ * Payload for `payment.reversal_reverted`: a prior reversal was undone and the funds reinstated
+ * (a WON dispute / chargeback reversed / reinstated funds). Nets BACK against the reversal — net
+ * recovery rises again and the clawed-back fee is re-accrued. Reuses ReversalPayload's shape;
+ * `kind` is the reversal being undone (usually 'chargeback').
+ */
+export type ReinstatementPayload = ReversalPayload;
 
 export interface CanonicalEvent<T = unknown> {
   id: string;

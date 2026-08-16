@@ -142,6 +142,10 @@ export class AdyenAdapter implements ProcessorAdapter {
     if (eventCode === 'REFUND' || ADYEN_CHARGEBACK_EVENT_CODES.has(eventCode)) {
       return this.mapReversal(item, eventCode === 'REFUND' ? 'refund' : 'chargeback');
     }
+    // CHARGEBACK_REVERSED: a prior chargeback was won/reversed → funds reinstated → re-credit.
+    if (eventCode === 'CHARGEBACK_REVERSED') {
+      return this.mapReversalReverted(item);
+    }
     if (eventCode !== 'AUTHORISATION') return null; // other event codes are not recovery-relevant
     const occurredAt = toIso(item.eventDate);
     const failed = item.success !== 'true';
@@ -186,6 +190,31 @@ export class AdyenAdapter implements ProcessorAdapter {
       processorEventId: item.pspReference ?? '',
       occurredAt: toIso(item.eventDate),
       payload: reversal,
+    };
+  }
+
+  /**
+   * Normalize a CHARGEBACK_REVERSED notification into `payment.reversal_reverted` — the prior
+   * chargeback was won/reversed and the funds reinstated, so net recovery rises and the clawed-back
+   * fee re-accrues. Same merchantReference → same invoiceId. Only emits when success === 'true'.
+   */
+  private mapReversalReverted(item: AdyenNotificationItem): CanonicalEvent | null {
+    if (item.success !== 'true') return null; // reversal did not complete → no funds reinstated
+    const ref = item.merchantReference ?? '';
+    const reinstatement: ReversalPayload = {
+      invoiceId: `ax10m_inv_${ref}`,
+      amount: CENTS(item.amount?.value),
+      currency: item.amount?.currency ?? 'USD',
+      kind: 'chargeback',
+      reason: item.reason ?? 'chargeback_reversed',
+    };
+    return {
+      id: `ax10m_evt_${item.pspReference ?? ref}`,
+      type: 'payment.reversal_reverted',
+      merchantId: this.config.merchantId,
+      processorEventId: item.pspReference ?? '',
+      occurredAt: toIso(item.eventDate),
+      payload: reinstatement,
     };
   }
 

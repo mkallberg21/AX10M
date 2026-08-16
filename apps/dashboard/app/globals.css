@@ -489,3 +489,7 @@ td.num.accent {
 .reversed {
   color: #f87171;
 }
+
+.reinstated {
+  color: var(--accent);
+}

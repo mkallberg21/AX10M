@@ -13,7 +13,7 @@ import { useEffect, useMemo, useState } from 'react';
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:4000';
 const POLL_MS = 20_000;
 
-type Totals = { recoveredMinor: number; grossRecoveredMinor: number; reversedMinor: number; feeMinor: number; clawbackMinor: number; recoveries: number; reversals: number; attempts: number; comms: number };
+type Totals = { recoveredMinor: number; grossRecoveredMinor: number; reversedMinor: number; reinstatedMinor: number; feeMinor: number; clawbackMinor: number; recoveries: number; reversals: number; reinstatements: number; attempts: number; comms: number };
 type PeriodDelta = { current: Totals; previous: Totals; feeDeltaPct: number | null; recoveredDeltaPct: number | null };
 type ProcessorPnl = { processor: string; totals: Totals; day: PeriodDelta; week: PeriodDelta; month: PeriodDelta; year: PeriodDelta };
 type SeriesPoint = { date: string; recoveredMinor: number; feeMinor: number };
@@ -195,8 +195,13 @@ export default function PnlPage(): JSX.Element {
             {money(data.cumulative.totals.grossRecoveredMinor, currency)}
             {data.cumulative.totals.reversedMinor > 0 && (
               <>
-                {' '}· reversed <strong className="reversed">−{money(data.cumulative.totals.reversedMinor, currency)}</strong> ({data.cumulative.totals.reversals.toLocaleString()}) · clawback{' '}
-                <strong className="reversed">−{money(data.cumulative.totals.clawbackMinor, currency)}</strong>
+                {' '}· reversed <strong className="reversed">−{money(data.cumulative.totals.reversedMinor, currency)}</strong> ({data.cumulative.totals.reversals.toLocaleString()})
+                {data.cumulative.totals.reinstatedMinor > 0 && (
+                  <>
+                    {' '}· reinstated <strong className="reinstated">+{money(data.cumulative.totals.reinstatedMinor, currency)}</strong> ({data.cumulative.totals.reinstatements.toLocaleString()} won)
+                  </>
+                )}
+                {' '}· net clawback <strong className="reversed">−{money(data.cumulative.totals.clawbackMinor, currency)}</strong>
               </>
             )}{' '}
             · {data.cumulative.totals.recoveries.toLocaleString()} recoveries · fee = {data.feeRatePct}% of net{' '}

@@ -5,12 +5,15 @@ import { RecoveryCaseService } from './recovery-case.service.js';
 import { OnboardingService } from '../onboarding/onboarding.service.js';
 import { computePnl, type PnlLedgerEntry } from '../analytics/pnl.js';
 
-/** A stub adapter (id 'stripe') that emits one pre-built payment.reversed event. */
+/** A stub adapter (id 'stripe') that emits one pre-built reversal/reinstatement event. */
 class ReversalAdapter implements ProcessorAdapter {
   readonly id = 'stripe';
-  constructor(private readonly reversal: ReversalPayload) {}
+  constructor(
+    private readonly reversal: ReversalPayload,
+    private readonly type: 'payment.reversed' | 'payment.reversal_reverted' = 'payment.reversed',
+  ) {}
   async ingestWebhook(_raw: RawWebhook): Promise<CanonicalEvent[]> {
-    return [{ id: 'evt_r', type: 'payment.reversed', merchantId: 'mrc_1', processorEventId: 'evt_r', occurredAt: '2026-08-16T00:00:00.000Z', payload: this.reversal }];
+    return [{ id: 'evt_r', type: this.type, merchantId: 'mrc_1', processorEventId: 'evt_r', occurredAt: '2026-08-16T00:00:00.000Z', payload: this.reversal }];
   }
   async listOpenFailures(_c: Cursor): Promise<OpenFailuresPage> { return { invoices: [], nextCursor: null }; }
   async attemptCharge(): Promise<ChargeResult> { throw new Error('n/a'); }
@@ -63,5 +66,32 @@ describe('net-recovery reversal + fee clawback', () => {
     await seedRecovery(svc, 'ax10m_inv_A', 5_000);
     await svc.ingestWithAdapter(new ReversalAdapter({ invoiceId: 'ax10m_inv_UNKNOWN', amount: 2_000, currency: 'USD', kind: 'chargeback' }), raw);
     expect((await svc.ledgerEntries()).filter((e) => e.type === 'case.reversed')).toHaveLength(0);
+  });
+
+  it('re-credits a won dispute (reversal reverted) and the P&L nets it back', async () => {
+    const svc = new RecoveryCaseService(new OnboardingService());
+    await seedRecovery(svc, 'ax10m_inv_A', 10_000);
+    await svc.ingestWithAdapter(new ReversalAdapter({ invoiceId: 'ax10m_inv_A', amount: 10_000, currency: 'USD', kind: 'chargeback' }), raw);
+    await svc.ingestWithAdapter(new ReversalAdapter({ invoiceId: 'ax10m_inv_A', amount: 10_000, currency: 'USD', kind: 'chargeback' }, 'payment.reversal_reverted'), raw);
+
+    const entries = await svc.ledgerEntries();
+    expect(entries.filter((e) => e.type === 'case.reversal_reverted')).toHaveLength(1);
+    const r = computePnl(entries as unknown as PnlLedgerEntry[], { nowIso: '2026-08-16T12:00:00.000Z', feeRate: 0.12 });
+    expect(r.cumulative.totals.recoveredMinor).toBe(10_000); // net back to full
+    expect(r.cumulative.totals.reinstatedMinor).toBe(10_000);
+    expect(r.cumulative.totals.clawbackMinor).toBe(0); // fee re-accrued
+  });
+
+  it('caps a reinstatement to what is currently reversed, and ignores one with nothing reversed', async () => {
+    const svc = new RecoveryCaseService(new OnboardingService());
+    await seedRecovery(svc, 'ax10m_inv_A', 10_000);
+    await svc.ingestWithAdapter(new ReversalAdapter({ invoiceId: 'ax10m_inv_A', amount: 4_000, currency: 'USD', kind: 'chargeback' }), raw);
+    // reinstate more than was reversed → capped to 4000
+    await svc.ingestWithAdapter(new ReversalAdapter({ invoiceId: 'ax10m_inv_A', amount: 9_999, currency: 'USD', kind: 'chargeback' }, 'payment.reversal_reverted'), raw);
+    const reverted = (await svc.ledgerEntries()).filter((e) => e.type === 'case.reversal_reverted');
+    expect((reverted[0]!.detail as { amount: number }).amount).toBe(4_000);
+    // a second reinstatement now has nothing left reversed → no-op
+    await svc.ingestWithAdapter(new ReversalAdapter({ invoiceId: 'ax10m_inv_A', amount: 1_000, currency: 'USD', kind: 'chargeback' }, 'payment.reversal_reverted'), raw);
+    expect((await svc.ledgerEntries()).filter((e) => e.type === 'case.reversal_reverted')).toHaveLength(1);
   });
 });

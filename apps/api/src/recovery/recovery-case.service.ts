@@ -312,6 +312,12 @@ export class RecoveryCaseService {
       await this.recordReversal(event.payload as ReversalPayload, event.merchantId, event.occurredAt, processorId);
       return;
     }
+    // A prior reversal was UNDONE (won dispute / funds reinstated) → re-credit: net recovery rises
+    // again and the clawed-back fee is re-accrued. Capped to what is currently reversed.
+    if (event.type === 'payment.reversal_reverted') {
+      await this.recordReversalReverted(event.payload as ReversalPayload, event.merchantId, event.occurredAt, processorId);
+      return;
+    }
     if (event.type === 'invoice.failed') {
       const payload = event.payload as { invoice?: Invoice; decline?: DeclineEvent; method?: PaymentMethod; customer?: Customer };
       if (payload.invoice) {
@@ -860,6 +866,41 @@ export class RecoveryCaseService {
       detail: { invoiceId: p.invoiceId, processor: processorId, amount, currency: p.currency, kind: p.kind, reason: p.reason },
     });
     this.logger.log(`Recovery reversed (${p.kind}) for ${p.invoiceId}: ${amount} ${p.currency} — fee clawed back.`);
+  }
+
+  /**
+   * Net amount currently reversed for an invoice = Σ case.reversed − Σ case.reversal_reverted.
+   * Bounds a reinstatement so we never re-credit more than was actually reversed.
+   */
+  private async netReversedForInvoice(invoiceId: string): Promise<number> {
+    let reversed = 0;
+    for (const e of await this.ledger.all()) {
+      if ((e.detail as { invoiceId?: string }).invoiceId !== invoiceId) continue;
+      if (e.type === 'case.reversed') reversed += Number((e.detail as { amount?: number }).amount ?? 0);
+      else if (e.type === 'case.reversal_reverted') reversed -= Number((e.detail as { amount?: number }).amount ?? 0);
+    }
+    return reversed;
+  }
+
+  /**
+   * Record a reinstatement (won dispute / funds reinstated) — undoes a prior reversal. Appends
+   * `case.reversal_reverted` CAPPED to the amount currently reversed for the invoice, so we never
+   * re-credit more than was clawed back. The P&L nets it back: net recovery rises, fee re-accrues.
+   */
+  private async recordReversalReverted(p: ReversalPayload, merchantId: string, occurredAt: string, processorId?: string): Promise<void> {
+    const reversed = await this.netReversedForInvoice(p.invoiceId);
+    if (reversed <= 0) {
+      this.logger.debug(`Reinstatement for ${p.invoiceId} ignored — nothing currently reversed (${reversed}).`);
+      return;
+    }
+    const amount = Math.min(p.amount, reversed); // never re-credit more than is currently reversed
+    await this.ledger.append({
+      merchantId,
+      type: 'case.reversal_reverted',
+      occurredAt,
+      detail: { invoiceId: p.invoiceId, processor: processorId, amount, currency: p.currency, kind: p.kind, reason: p.reason },
+    });
+    this.logger.log(`Reversal reverted (${p.kind} won) for ${p.invoiceId}: ${amount} ${p.currency} — fee re-accrued.`);
   }
 
   /**

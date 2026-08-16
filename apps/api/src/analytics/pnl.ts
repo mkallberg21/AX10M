@@ -27,13 +27,15 @@ export interface PnlLedgerEntry {
 }
 
 export interface PnlTotals {
-  recoveredMinor: number; // NET recovered = gross − reversed (report currency)
+  recoveredMinor: number; // NET recovered = gross − reversed + reinstated (report currency)
   grossRecoveredMinor: number; // Σ case.recovered
   reversedMinor: number; // Σ case.reversed (refunds + chargebacks)
+  reinstatedMinor: number; // Σ case.reversal_reverted (won disputes / funds reinstated)
   feeMinor: number; // accrued fee on NET = round(recoveredMinor × feeRate)
-  clawbackMinor: number; // fee removed by reversals = round(reversedMinor × feeRate)
+  clawbackMinor: number; // net fee removed by reversals = round((reversed − reinstated) × feeRate)
   recoveries: number; // count of case.recovered
   reversals: number; // count of case.reversed
+  reinstatements: number; // count of case.reversal_reverted
   attempts: number; // charge.succeeded + charge.failed
   comms: number; // comms.sent
 }
@@ -81,7 +83,7 @@ export interface PnlOptions {
 }
 
 function emptyTotals(): PnlTotals {
-  return { recoveredMinor: 0, grossRecoveredMinor: 0, reversedMinor: 0, feeMinor: 0, clawbackMinor: 0, recoveries: 0, reversals: 0, attempts: 0, comms: 0 };
+  return { recoveredMinor: 0, grossRecoveredMinor: 0, reversedMinor: 0, reinstatedMinor: 0, feeMinor: 0, clawbackMinor: 0, recoveries: 0, reversals: 0, reinstatements: 0, attempts: 0, comms: 0 };
 }
 
 function num(v: unknown): number {
@@ -92,14 +94,15 @@ function str(v: unknown): string | undefined {
   return typeof v === 'string' && v.length > 0 ? v : undefined;
 }
 
-/** Finalize a totals bucket: net = gross − reversed; fee accrues on NET (reversals claw it back). */
+/** Finalize a totals bucket: net = gross − reversed + reinstated (won disputes re-credit); fee
+ *  accrues on NET, so a reversal claws the fee back and a later reinstatement re-accrues it. */
 function withFee(t: PnlTotals, feeRate: number): PnlTotals {
-  const recoveredMinor = t.grossRecoveredMinor - t.reversedMinor;
+  const recoveredMinor = t.grossRecoveredMinor - t.reversedMinor + t.reinstatedMinor;
   return {
     ...t,
     recoveredMinor,
     feeMinor: Math.round(recoveredMinor * feeRate),
-    clawbackMinor: Math.round(t.reversedMinor * feeRate),
+    clawbackMinor: Math.round((t.reversedMinor - t.reinstatedMinor) * feeRate),
   };
 }
 
@@ -120,6 +123,12 @@ function accumulate(target: PnlTotals, e: PnlLedgerEntry, reportCurrency: string
       if ((str(e.detail.currency) ?? reportCurrency) === reportCurrency) {
         target.reversedMinor += num(e.detail.amount);
         target.reversals += 1;
+      }
+      break;
+    case 'case.reversal_reverted':
+      if ((str(e.detail.currency) ?? reportCurrency) === reportCurrency) {
+        target.reinstatedMinor += num(e.detail.amount);
+        target.reinstatements += 1;
       }
       break;
     case 'charge.succeeded':
@@ -202,7 +211,7 @@ export function computePnl(entries: readonly PnlLedgerEntry[], opts: PnlOptions)
   const dayKey = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
   const perDay = new Map<string, PnlTotals>();
   for (const e of entries) {
-    if (e.type !== 'case.recovered' && e.type !== 'case.reversed') continue;
+    if (e.type !== 'case.recovered' && e.type !== 'case.reversed' && e.type !== 'case.reversal_reverted') continue;
     const t = Date.parse(e.occurredAt);
     if (Number.isNaN(t)) continue;
     const key = dayKey(t);

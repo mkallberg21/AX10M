@@ -151,6 +151,24 @@ describe('ingestWebhook', () => {
     const body = JSON.stringify({ id: 'evt_d3', type: 'charge.dispute.created', created: T, data: { object: { id: 'dp_3', charge: 'ch_z', amount: 1000, currency: 'usd' } } });
     expect(await adapter.ingestWebhook({ body, headers: signed(body) })).toHaveLength(0); // lookup failed → skipped, not thrown
   });
+
+  it('maps a WON charge.dispute.closed to payment.reversal_reverted (funds reinstated)', async () => {
+    const { fetch } = makeFetch((url) => (url.includes('/charges/ch_9') ? res(200, { id: 'ch_9', invoice: 'in_9' }) : res(200, {})));
+    const adapter = new StripeAdapter({ ...baseCfg, fetch });
+    const body = JSON.stringify({ id: 'evt_dc', type: 'charge.dispute.closed', created: T, data: { object: { id: 'dp_1', charge: 'ch_9', amount: 4200, currency: 'usd', status: 'won' } } });
+    const events = await adapter.ingestWebhook({ body, headers: signed(body) });
+    expect(events).toHaveLength(1);
+    expect(events[0]!.type).toBe('payment.reversal_reverted');
+    const p = events[0]!.payload as { invoiceId: string; amount: number; kind: string };
+    expect(p).toMatchObject({ invoiceId: 'ax10m_inv_in_9', amount: 4200, kind: 'chargeback' });
+  });
+
+  it('ignores a LOST charge.dispute.closed (funds already withdrawn on created)', async () => {
+    const { fetch } = makeFetch(() => res(200, {}));
+    const adapter = new StripeAdapter({ ...baseCfg, fetch });
+    const body = JSON.stringify({ id: 'evt_dl', type: 'charge.dispute.closed', created: T, data: { object: { id: 'dp_2', charge: 'ch_9', amount: 4200, currency: 'usd', status: 'lost' } } });
+    expect(await adapter.ingestWebhook({ body, headers: signed(body) })).toHaveLength(0);
+  });
 });
 
 describe('attemptCharge', () => {

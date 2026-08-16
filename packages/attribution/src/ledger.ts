@@ -29,6 +29,7 @@ export type LedgerEventType =
   | 'action.suppressed'
   | 'case.recovered'
   | 'case.reversed'
+  | 'case.reversal_reverted'
   | 'case.abandoned'
   | 'model.promoted'
   | 'uplift.statement';

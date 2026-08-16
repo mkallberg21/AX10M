@@ -87,12 +87,23 @@ export function buildDemoLedgerEvents(opts: DemoSeedOptions): LedgerAppendInput[
           const reversedAt = Math.min(nowMs, at + Math.floor((1 + rand() * 5) * DAY_MS)); // days later, never future
           const full = rand() < 0.6;
           const revAmount = full ? amount : Math.max(100, Math.floor(amount * (0.3 + rand() * 0.4)));
+          const kind = rand() < 0.5 ? 'chargeback' : 'refund';
           events.push({
             merchantId,
             type: 'case.reversed',
             occurredAt: new Date(reversedAt).toISOString(),
-            detail: { invoiceId, processor: proc.id, demo: true, amount: revAmount, currency, kind: rand() < 0.5 ? 'chargeback' : 'refund' },
+            detail: { invoiceId, processor: proc.id, demo: true, amount: revAmount, currency, kind },
           });
+          // ~30% of chargebacks are later WON (funds reinstated) → re-credit the clawed-back fee.
+          if (kind === 'chargeback' && rand() < 0.3) {
+            const wonAt = Math.min(nowMs, reversedAt + Math.floor((5 + rand() * 20) * DAY_MS));
+            events.push({
+              merchantId,
+              type: 'case.reversal_reverted',
+              occurredAt: new Date(wonAt).toISOString(),
+              detail: { invoiceId, processor: proc.id, demo: true, amount: revAmount, currency, kind: 'chargeback', reason: 'dispute_won' },
+            });
+          }
         }
       }
     }

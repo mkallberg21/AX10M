@@ -152,6 +152,17 @@ describe('ingestWebhook', () => {
     expect(r.reason).toBe('Fraudulent transaction');
   });
 
+  it('normalizes a CHARGEBACK_REVERSED notification to payment.reversal_reverted (won → funds reinstated)', async () => {
+    const { fetch } = makeFetch(() => res(200, {}));
+    const adapter = new AdyenAdapter({ ...baseCfg, fetch, hmacKey: KEY });
+    const won = signedItem({ eventCode: 'CHARGEBACK_REVERSED', success: 'true', reason: 'Chargeback reversed', amount: { value: 14900, currency: 'USD' } });
+    const events = await adapter.ingestWebhook({ body: notification(won), headers: {} });
+    expect(events).toHaveLength(1);
+    expect(events[0]!.type).toBe('payment.reversal_reverted');
+    const r = events[0]!.payload as { invoiceId: string; amount: number; kind: string };
+    expect(r).toMatchObject({ invoiceId: 'ax10m_inv_inv_1', amount: 14900, kind: 'chargeback' });
+  });
+
   it('does not emit a reversal for a failed (defended) chargeback notification', async () => {
     const { fetch } = makeFetch(() => res(200, {}));
     const adapter = new AdyenAdapter({ ...baseCfg, fetch, hmacKey: KEY });

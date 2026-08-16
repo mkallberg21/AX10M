@@ -96,6 +96,7 @@ interface StripeDispute {
   amount?: number;
   currency?: string;
   reason?: string;
+  status?: string; // warning_needs_response | won | lost | … (on charge.dispute.closed)
 }
 interface StripeEvent {
   id?: string;
@@ -222,6 +223,24 @@ export class StripeAdapter implements ProcessorAdapter {
           reason: d.reason,
         };
         return [envelope('payment.reversed', reversal)];
+      }
+      case 'charge.dispute.closed': {
+        // A dispute resolved. WON → funds reinstated → re-credit (payment.reversal_reverted);
+        // LOST → funds already withdrawn on dispute.created, nothing more to do.
+        const d = obj as unknown as StripeDispute;
+        if (d.status !== 'won') return [];
+        const amount = d.amount ?? 0;
+        if (!d.charge || amount <= 0) return [];
+        const invoiceRef = await this.resolveInvoiceRef(d.charge);
+        if (!invoiceRef) return [];
+        const reinstatement: ReversalPayload = {
+          invoiceId: `ax10m_inv_${invoiceRef}`,
+          amount,
+          currency: (d.currency ?? 'usd').toUpperCase(),
+          kind: 'chargeback',
+          reason: 'dispute_won',
+        };
+        return [envelope('payment.reversal_reverted', reinstatement)];
       }
       default:
         return [];

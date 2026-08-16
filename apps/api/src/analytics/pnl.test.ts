@@ -13,6 +13,10 @@ function reversed(processor: string, amount: number, offsetDays: number, currenc
   return { type: 'case.reversed', occurredAt: iso(offsetDays), detail: { processor, amount, currency, kind: 'chargeback' } };
 }
 
+function reinstated(processor: string, amount: number, offsetDays: number, currency = 'USD'): PnlLedgerEntry {
+  return { type: 'case.reversal_reverted', occurredAt: iso(offsetDays), detail: { processor, amount, currency, kind: 'chargeback' } };
+}
+
 describe('computePnl', () => {
   it('sums gross recovered and accrues fee at the fee rate, per processor + cumulative', () => {
     const entries: PnlLedgerEntry[] = [
@@ -114,6 +118,23 @@ describe('computePnl', () => {
     expect(r.cumulative.day.current.feeMinor).toBe(600);
     expect(r.cumulative.day.current.clawbackMinor).toBe(400);
     expect(r.dailySeries[29]!.recoveredMinor).toBe(6_000); // today, net
+  });
+
+  it('re-credits a won dispute: reinstatement nets back and re-accrues the fee', () => {
+    const entries: PnlLedgerEntry[] = [
+      recovered('stripe', 10_000, 0.3),
+      reversed('stripe', 10_000, 0.2), // full chargeback → net 0
+      reinstated('stripe', 10_000, 0.1), // dispute won → funds back → net 10000 again
+    ];
+    const r = computePnl(entries, { nowIso: NOW, feeRate: 0.12 });
+    const c = r.cumulative.totals;
+    expect(c.grossRecoveredMinor).toBe(10_000);
+    expect(c.reversedMinor).toBe(10_000);
+    expect(c.reinstatedMinor).toBe(10_000);
+    expect(c.recoveredMinor).toBe(10_000); // gross − reversed + reinstated
+    expect(c.feeMinor).toBe(1_200); // fee fully re-accrued
+    expect(c.clawbackMinor).toBe(0); // net clawback back to zero
+    expect(c.reinstatements).toBe(1);
   });
 
   it('handles an empty ledger without throwing', () => {
