@@ -36,6 +36,7 @@ import {
   type Invoice,
   type Money,
   type PaymentMethod,
+  type ReversalPayload,
   type Subscription,
 } from '@ax10m/canonical';
 import { contactOverrides, customerFromInvoice } from '../../customer.js';
@@ -152,8 +153,17 @@ export class MaxioAdapter implements ProcessorAdapter {
     const payload = parsed.payload;
     const subscription = (payload.subscription ?? {}) as ChSubscription;
     const transaction = (payload.transaction ?? {}) as Record<string, unknown>;
-    const eventId = headerLookup(raw.headers, 'x-chargify-webhook-id') ?? asString(transaction.id) ?? asString(subscription.id) ?? parsed.event;
-    const occurredAt = toIso(transaction.created_at ?? subscription.updated_at);
+    // The `refund_success` payload is FLAT (no nested transaction/subscription object): its ids
+    // and timestamp live at the top level (`event_id`, `refund_id`, `timestamp`). Fall back to
+    // them so a refund still gets a stable processorEventId + real occurredAt.
+    const eventId =
+      headerLookup(raw.headers, 'x-chargify-webhook-id') ??
+      asString(transaction.id) ??
+      asString(subscription.id) ??
+      asString(payload.event_id) ??
+      asString(payload.refund_id) ??
+      parsed.event;
+    const occurredAt = toIso(transaction.created_at ?? subscription.updated_at ?? payload.timestamp);
 
     const envelope = <T>(type: CanonicalEvent['type'], p: T): CanonicalEvent<T> => ({
       id: `ax10m_evt_${eventId}`,
@@ -197,6 +207,31 @@ export class MaxioAdapter implements ProcessorAdapter {
           attemptedAt: occurredAt,
         });
         return [envelope('invoice.paid', { invoice, attempt })];
+      }
+      case 'refund_success': {
+        // A collected payment was refunded → net-recovery / fee-clawback (`payment.reversed`).
+        // Chargify/Maxio's `refund_success` webhook payload is FLAT (unlike payment_failure it
+        // has NO nested subscription/transaction object): it carries `subscription_id`,
+        // `amount_in_cents` (MINOR units / cents — same convention as this adapter's other
+        // amounts), `currency`, and `memo` directly at the payload root.
+        // modeled on Maxio/Chargify webhook — CONFIRM
+        const subId = asString(payload.subscription_id);
+        if (!subId) return []; // not subscription-scoped → not one of our recoveries
+        const amount = CENTS(payload.amount_in_cents);
+        if (amount <= 0) return [];
+        const reversal: ReversalPayload = {
+          // MUST equal the id mapSubscriptionInvoice stamps for the original payment
+          // (`ax10m_inv_<subscriptionId>`) so the reversal links back to the recovery.
+          invoiceId: `ax10m_inv_${subId}`,
+          amount,
+          currency: asString(payload.currency) ?? 'USD',
+          kind: 'refund',
+          reason: asString(payload.memo),
+        };
+        // NOTE: Maxio/Chargify has NO chargeback/dispute webhook (a dispute is only an invoice
+        // STATUS, not a webhook event — confirmed against the WebhookSubscription enum), so we
+        // wire only refunds here. `refund_failure` moves no funds, so it is intentionally ignored.
+        return [envelope('payment.reversed', reversal)];
       }
       case 'subscription_state_change':
       case 'subscription_canceled': {

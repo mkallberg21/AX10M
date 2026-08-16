@@ -118,6 +118,49 @@ describe('ingestWebhook', () => {
     await expect(adapter.ingestWebhook({ body, headers: { 'X-WP-Signature': 'x' } })).rejects.toThrow(/not configured/);
   });
 
+  it('maps payment.refunded to payment.reversed (refund clawback) keyed to the original invoice id', async () => {
+    const { fetch } = makeFetch(() => res(200, {}));
+    const adapter = new WorldpayAdapter({ ...baseCfg, fetch });
+    // Access Worldpay refund event: transactionReference is the ref we supplied at auth, amount
+    // carries `currencyCode` (not `currency`).
+    const body = notification('payment.refunded', { amount: { value: 14900, currencyCode: 'USD' } });
+    const events = await adapter.ingestWebhook({ body, headers: { 'X-WP-Signature': computeWorldpaySignature(body, SECRET) } });
+    expect(events).toHaveLength(1);
+    const ev = events[0]!;
+    expect(ev.type).toBe('payment.reversed');
+    expect(ev.merchantId).toBe('mrc_1');
+    expect(ev.processorEventId).toBe('evt_1');
+    const p = ev.payload as { invoiceId: string; amount: number; currency: string; kind: string };
+    // The reversal invoiceId MUST equal the id the adapter stamps for the original recovery.
+    expect(p.invoiceId).toBe(invoice.id); // 'ax10m_inv_inv_1'
+    expect(p.amount).toBe(14900);
+    expect(p.currency).toBe('USD');
+    expect(p.kind).toBe('refund');
+  });
+
+  it('drops a payment.refunded with no transactionReference or zero amount (unmappable)', async () => {
+    const { fetch } = makeFetch(() => res(200, {}));
+    const adapter = new WorldpayAdapter({ ...baseCfg, fetch });
+    const noRef = JSON.stringify({
+      eventId: 'evt_2', eventTimestamp: '2026-08-14T10:00:00Z',
+      eventDetails: { type: 'payment.refunded', amount: { value: 14900, currencyCode: 'USD' } },
+    });
+    expect(await adapter.ingestWebhook({ body: noRef, headers: { 'X-WP-Signature': computeWorldpaySignature(noRef, SECRET) } })).toEqual([]);
+    const zero = notification('payment.refunded', { amount: { value: 0, currencyCode: 'USD' } });
+    expect(await adapter.ingestWebhook({ body: zero, headers: { 'X-WP-Signature': computeWorldpaySignature(zero, SECRET) } })).toEqual([]);
+  });
+
+  it('does NOT emit a reversal for a chargeback event (lifecycle stage is not reliably mappable)', async () => {
+    const { fetch } = makeFetch(() => res(200, {}));
+    const adapter = new WorldpayAdapter({ ...baseCfg, fetch });
+    // classification 'chargeback' events are intentionally left unwired.
+    const body = JSON.stringify({
+      eventId: 'evt_3', eventTimestamp: '2026-08-14T10:00:00Z',
+      eventDetails: { classification: 'chargeback', type: 'informationRequested', transactionReference: 'inv_1', amount: { value: 14900, currencyCode: 'USD' } },
+    });
+    expect(await adapter.ingestWebhook({ body, headers: { 'X-WP-Signature': computeWorldpaySignature(body, SECRET) } })).toEqual([]);
+  });
+
   it('maps payment.settled to invoice.paid and ignores unhandled events', async () => {
     const { fetch } = makeFetch(() => res(200, {}));
     const adapter = new WorldpayAdapter({ ...baseCfg, fetch });

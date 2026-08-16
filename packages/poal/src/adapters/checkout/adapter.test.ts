@@ -123,6 +123,104 @@ describe('ingestWebhook', () => {
   });
 });
 
+describe('reversals (refund / chargeback → payment.reversed)', () => {
+  it('maps payment_refunded to payment.reversed (kind refund) with the original invoice id', async () => {
+    const { fetch } = makeFetch(() => res(200, {}));
+    const adapter = new CheckoutAdapter({ ...baseCfg, fetch });
+    const body = webhook('payment_refunded', { amount: 14900, currency: 'USD', response_summary: 'Refunded' });
+    const events = await adapter.ingestWebhook({ body, headers: { 'Cko-Signature': computeCheckoutSignature(body, SECRET) } });
+    expect(events).toHaveLength(1);
+    const ev = events[0]!;
+    expect(ev.type).toBe('payment.reversed');
+    expect(ev.merchantId).toBe('mrc_1');
+    const r = ev.payload as { invoiceId: string; amount: number; currency: string; kind: string; reason?: string };
+    // invoiceId MUST equal the invoice.id the adapter emits for the original payment (reference 'inv_1')
+    expect(r.invoiceId).toBe('ax10m_inv_inv_1');
+    expect(r.invoiceId).toBe(invoice.id);
+    expect(r.amount).toBe(14900);
+    expect(r.currency).toBe('USD');
+    expect(r.kind).toBe('refund');
+    expect(r.reason).toBe('Refunded');
+  });
+
+  it('maps a partial payment_refunded amount, still keyed to the original invoice id', async () => {
+    const { fetch } = makeFetch(() => res(200, {}));
+    const adapter = new CheckoutAdapter({ ...baseCfg, fetch });
+    const body = webhook('payment_refunded', { amount: 5000 });
+    const events = await adapter.ingestWebhook({ body, headers: { 'Cko-Signature': computeCheckoutSignature(body, SECRET) } });
+    const r = events[0]!.payload as { invoiceId: string; amount: number; kind: string };
+    expect(r.invoiceId).toBe('ax10m_inv_inv_1');
+    expect(r.amount).toBe(5000); // MINOR units, the reversed delta
+    expect(r.kind).toBe('refund');
+  });
+
+  it('maps legacy payment_chargeback (payment-shaped data) to payment.reversed (kind chargeback)', async () => {
+    const { fetch } = makeFetch(() => res(200, {}));
+    const adapter = new CheckoutAdapter({ ...baseCfg, fetch });
+    const body = webhook('payment_chargeback', { amount: 14900, currency: 'USD' });
+    const events = await adapter.ingestWebhook({ body, headers: { 'Cko-Signature': computeCheckoutSignature(body, SECRET) } });
+    const ev = events[0]!;
+    expect(ev.type).toBe('payment.reversed');
+    const r = ev.payload as { invoiceId: string; amount: number; kind: string };
+    expect(r.invoiceId).toBe('ax10m_inv_inv_1');
+    expect(r.amount).toBe(14900);
+    expect(r.kind).toBe('chargeback');
+  });
+
+  it('maps dispute_received (dispute-shaped data: payment_reference) to payment.reversed (kind chargeback)', async () => {
+    const { fetch } = makeFetch(() => res(200, {}));
+    const adapter = new CheckoutAdapter({ ...baseCfg, fetch });
+    // Dispute webhooks carry a DISPUTE object, not the payment object: id is the dispute (dsp_...),
+    // the merchant reference is `payment_reference`, and amount/currency are the disputed values.
+    const body = JSON.stringify({
+      id: 'evt_9',
+      type: 'dispute_received',
+      created_on: '2026-08-14T10:00:00Z',
+      data: {
+        id: 'dsp_1',
+        payment_id: 'pay_1',
+        payment_reference: 'inv_1',
+        amount: 14900,
+        currency: 'USD',
+        reason_code: '10.4',
+        category: 'fraudulent',
+      },
+    });
+    const events = await adapter.ingestWebhook({ body, headers: { 'Cko-Signature': computeCheckoutSignature(body, SECRET) } });
+    expect(events).toHaveLength(1);
+    const ev = events[0]!;
+    expect(ev.type).toBe('payment.reversed');
+    const r = ev.payload as { invoiceId: string; amount: number; kind: string; reason?: string };
+    // Derived from payment_reference — still equals the original payment's invoice.id
+    expect(r.invoiceId).toBe('ax10m_inv_inv_1');
+    expect(r.invoiceId).toBe(invoice.id);
+    expect(r.amount).toBe(14900);
+    expect(r.kind).toBe('chargeback');
+    expect(r.reason).toBe('10.4');
+  });
+
+  it('falls back to payment_id when a dispute carries no payment_reference', async () => {
+    const { fetch } = makeFetch(() => res(200, {}));
+    const adapter = new CheckoutAdapter({ ...baseCfg, fetch });
+    const body = JSON.stringify({
+      id: 'evt_10',
+      type: 'dispute_received',
+      created_on: '2026-08-14T10:00:00Z',
+      data: { id: 'dsp_2', payment_id: 'pay_1', amount: 14900, currency: 'USD', reason_code: '10.4' },
+    });
+    const events = await adapter.ingestWebhook({ body, headers: { 'Cko-Signature': computeCheckoutSignature(body, SECRET) } });
+    const r = events[0]!.payload as { invoiceId: string };
+    expect(r.invoiceId).toBe('ax10m_inv_pay_1');
+  });
+
+  it('skips a reversal with no reference or non-positive amount', async () => {
+    const { fetch } = makeFetch(() => res(200, {}));
+    const adapter = new CheckoutAdapter({ ...baseCfg, fetch });
+    const zero = webhook('payment_refunded', { amount: 0 });
+    expect(await adapter.ingestWebhook({ body: zero, headers: { 'Cko-Signature': computeCheckoutSignature(zero, SECRET) } })).toEqual([]);
+  });
+});
+
 describe('attemptCharge', () => {
   it('posts the stored source token with the idempotency key and reports success', async () => {
     const { fetch, calls } = makeFetch((url) => {

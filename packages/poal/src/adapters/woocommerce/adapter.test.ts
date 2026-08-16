@@ -112,6 +112,30 @@ describe('ingestWebhook', () => {
     const none = await adapter.ingestWebhook({ body: pending, headers: headers('order.updated', pending) });
     expect(none).toEqual([]);
   });
+
+  it('maps a refunded order into payment.reversed (kind refund) with the matching invoiceId and minor-unit amount', async () => {
+    const { fetch } = makeFetch(() => res(200, {}));
+    const adapter = new WooCommerceAdapter({ ...baseCfg, fetch });
+
+    // A refunded order webhook: status "refunded" + a negative refund line total.
+    const refunded = JSON.stringify({
+      id: 500, status: 'refunded', currency: 'USD', total: '149.00', customer_id: 55,
+      refunds: [{ id: 88, reason: 'requested_by_customer', total: '-149.00' }],
+      date_modified_gmt: '2026-08-15T12:00:00.000Z',
+    });
+    const events = await adapter.ingestWebhook({ body: refunded, headers: headers('order.updated', refunded) });
+    expect(events).toHaveLength(1);
+    const ev = events[0]!;
+    expect(ev.type).toBe('payment.reversed');
+    expect(ev.merchantId).toBe('mrc_1');
+    const p = ev.payload as { invoiceId: string; amount: number; currency: string; kind: string; reason?: string };
+    // invoiceId MUST equal the id mapOrder sets for order 500 (ax10m_inv_500).
+    expect(p.invoiceId).toBe('ax10m_inv_500');
+    expect(p.amount).toBe(14900); // "-149.00" magnitude → 14900 minor units
+    expect(p.currency).toBe('USD');
+    expect(p.kind).toBe('refund');
+    expect(p.reason).toBe('requested_by_customer');
+  });
 });
 
 describe('attemptCharge (trigger a renewal retry)', () => {

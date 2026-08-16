@@ -100,6 +100,42 @@ describe('ingestWebhook', () => {
     await expect(adapter.ingestWebhook({ body: failedBody, headers: {} })).rejects.toThrow(/not configured/);
   });
 
+  it('normalizes payment_refunded into a payment.reversed clawback keyed to the original invoice', async () => {
+    const { fetch } = makeFetch(() => res(200, {}));
+    const adapter = new ChargebeeAdapter({ ...baseCfg, fetch });
+    const events = await adapter.ingestWebhook({
+      body: JSON.stringify({
+        id: 'ev_r1',
+        occurred_at: 1_700_000_500,
+        event_type: 'payment_refunded',
+        content: {
+          invoice: { id: 'inv_1', customer_id: 'c1', currency_code: 'USD', status: 'paid' },
+          transaction: { id: 'txn_ref_1', type: 'refund', status: 'success', amount: 14900, currency_code: 'USD', date: 1_700_000_500 },
+        },
+      }),
+      headers: AUTH,
+    });
+    expect(events).toHaveLength(1);
+    const ev = events[0]!;
+    expect(ev.type).toBe('payment.reversed');
+    const p = ev.payload as { invoiceId: string; amount: number; currency: string; kind: string };
+    // invoiceId MUST match the id mapInvoice stamps on the original payment (ax10m_inv_<invoice.id>)
+    expect(p.invoiceId).toBe('ax10m_inv_inv_1');
+    expect(p.amount).toBe(14900);
+    expect(p.currency).toBe('USD');
+    expect(p.kind).toBe('refund');
+  });
+
+  it('ignores a payment_refunded with a non-refund or zero-amount transaction', async () => {
+    const { fetch } = makeFetch(() => res(200, {}));
+    const adapter = new ChargebeeAdapter({ ...baseCfg, fetch });
+    const zero = await adapter.ingestWebhook({
+      body: JSON.stringify({ id: 'ev_r2', occurred_at: 1, event_type: 'payment_refunded', content: { invoice: { id: 'inv_1', currency_code: 'USD' }, transaction: { id: 't', type: 'refund', amount: 0 } } }),
+      headers: AUTH,
+    });
+    expect(zero).toEqual([]);
+  });
+
   it('maps payment_succeeded to invoice.paid and ignores unhandled events', async () => {
     const { fetch } = makeFetch(() => res(200, {}));
     const adapter = new ChargebeeAdapter({ ...baseCfg, fetch });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DeclineCode, DeclineFamily, type Customer, type Invoice, type PaymentMethod } from '@ax10m/canonical';
+import { DeclineCode, DeclineFamily, type Customer, type Invoice, type PaymentMethod, type ReversalPayload } from '@ax10m/canonical';
 import { RecurlyAdapter } from './adapter.js';
 import { mapRecurlyDeclineCode } from './decline-map.js';
 import type { FetchLike, FetchResponseLike } from './client.js';
@@ -109,6 +109,51 @@ describe('ingestWebhook', () => {
     expect(p.customer?.phone).toBeUndefined();
     expect(p.decline?.code).toBe(DeclineCode.InsufficientFunds);
     expect(p.decline?.family).toBe(DeclineFamily.Soft);
+  });
+
+  // Confirmed real Recurly successful_refund_notification shape (Payment notifications docs): a
+  // PaymentNotification whose <transaction> carries <invoice_id> (the invoice UUID), <invoice_number>,
+  // <amount_in_cents> (MINOR units) and <action>credit — no <invoice> block.
+  const refundXml = `<?xml version="1.0"?>
+    <successful_refund_notification>
+      <account><account_code>acct1</account_code><email>verena@example.com</email></account>
+      <transaction>
+        <id>txn_refund_1</id>
+        <invoice_id>inv_1</invoice_id>
+        <invoice_number type="integer">2059</invoice_number>
+        <action>credit</action>
+        <amount_in_cents type="integer">4900</amount_in_cents>
+        <status>success</status>
+        <source>subscription</source>
+      </transaction>
+    </successful_refund_notification>`;
+
+  it('normalizes successful_refund_notification into payment.reversed with the reversed amount and kind', async () => {
+    const { fetch } = makeFetch(() => res(200, {}));
+    const adapter = new RecurlyAdapter({ ...baseCfg, fetch });
+    const events = await adapter.ingestWebhook({ body: refundXml, headers: AUTH });
+    expect(events).toHaveLength(1);
+    const ev = events[0]!;
+    expect(ev.type).toBe('payment.reversed');
+    expect(ev.merchantId).toBe('mrc_1');
+    expect(ev.processorEventId).toBe('txn_refund_1');
+    const p = ev.payload as ReversalPayload;
+    expect(p.kind).toBe('refund');
+    expect(p.amount).toBe(4900); // MINOR units, from the transaction <amount_in_cents>
+    expect(p.currency).toBe('USD');
+    // CRITICAL: the reversal invoiceId equals the id the failed path stamps on the ORIGINAL invoice
+    // (mapNotificationInvoice → `ax10m_inv_${invoiceId}`), so net recovery = recovered − reversed.
+    expect(p.invoiceId).toBe('ax10m_inv_inv_1');
+    expect(p.invoiceId).toBe(invoice.id);
+  });
+
+  it('reverses to the exact invoiceId the failed_payment path produced (round-trip net-recovery match)', async () => {
+    const { fetch } = makeFetch(() => res(200, {}));
+    const adapter = new RecurlyAdapter({ ...baseCfg, fetch });
+    const failed = await adapter.ingestWebhook({ body: failedXml, headers: AUTH });
+    const failedInvoiceId = (failed[0]!.payload as { invoice: Invoice }).invoice.id;
+    const refunded = await adapter.ingestWebhook({ body: refundXml, headers: AUTH });
+    expect((refunded[0]!.payload as ReversalPayload).invoiceId).toBe(failedInvoiceId);
   });
 
   it('rejects a webhook whose Basic auth does not match', async () => {

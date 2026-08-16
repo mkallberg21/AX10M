@@ -30,6 +30,7 @@ import {
   type Invoice,
   type Money,
   type PaymentMethod,
+  type ReversalPayload,
   type Subscription,
 } from '@ax10m/canonical';
 import { customerFromInvoice, contactOverrides } from '../../customer.js';
@@ -71,6 +72,18 @@ function toIso(eventDate: string | undefined): string {
 function stripPrefix(value: string, prefix: string): string {
   return value.startsWith(prefix) ? value.slice(prefix.length) : value;
 }
+
+/**
+ * Adyen chargeback-family eventCodes. All represent funds being pulled back from the merchant on
+ * a previously-collected payment, so all map to a `chargeback` reversal (fee clawback on net
+ * recovery). `NOTIFICATION_OF_CHARGEBACK` is the pre-debit notice; `CHARGEBACK` is the actual
+ * debit; `SECOND_CHARGEBACK` is a re-presentment loss — each withdraws funds.
+ */
+const ADYEN_CHARGEBACK_EVENT_CODES: ReadonlySet<string> = new Set([
+  'CHARGEBACK',
+  'NOTIFICATION_OF_CHARGEBACK',
+  'SECOND_CHARGEBACK',
+]);
 
 export class AdyenAdapter implements ProcessorAdapter {
   readonly id = 'adyen';
@@ -121,7 +134,15 @@ export class AdyenAdapter implements ProcessorAdapter {
   }
 
   private mapItem(item: AdyenNotificationItem): CanonicalEvent | null {
-    if (item.eventCode !== 'AUTHORISATION') return null; // REFUND/CHARGEBACK/etc. handled elsewhere
+    const eventCode = item.eventCode ?? '';
+    // Reversals (refund / chargeback) net against the recovery for fee-clawback accounting. They
+    // arrive on the SAME merchantReference as the original AUTHORISATION, so the reversal invoiceId
+    // is constructed identically to mapInvoice's id (`ax10m_inv_${merchantReference}`) and nets
+    // cleanly. amount.value is already minor units; no API fetch needed.
+    if (eventCode === 'REFUND' || ADYEN_CHARGEBACK_EVENT_CODES.has(eventCode)) {
+      return this.mapReversal(item, eventCode === 'REFUND' ? 'refund' : 'chargeback');
+    }
+    if (eventCode !== 'AUTHORISATION') return null; // other event codes are not recovery-relevant
     const occurredAt = toIso(item.eventDate);
     const failed = item.success !== 'true';
     const invoice = this.mapInvoice(item, occurredAt, failed);
@@ -140,6 +161,32 @@ export class AdyenAdapter implements ProcessorAdapter {
       return { ...base, type: 'invoice.failed', payload: { invoice, attempt, decline, customer } };
     }
     return { ...base, type: 'invoice.paid', payload: { invoice, attempt } };
+  }
+
+  /**
+   * Normalize a REFUND / CHARGEBACK notification into a canonical `payment.reversed`. Only emits
+   * when `success === 'true'`: a failed refund or a defended/failed chargeback notification did not
+   * withdraw funds, so it is not a reversal. The invoiceId is derived from `merchantReference`
+   * exactly as mapInvoice derives the original invoice.id, so recovery and reversal net correctly.
+   */
+  private mapReversal(item: AdyenNotificationItem, kind: ReversalPayload['kind']): CanonicalEvent | null {
+    if (item.success !== 'true') return null; // no funds moved → not a reversal
+    const ref = item.merchantReference ?? '';
+    const reversal: ReversalPayload = {
+      invoiceId: `ax10m_inv_${ref}`,
+      amount: CENTS(item.amount?.value),
+      currency: item.amount?.currency ?? 'USD',
+      kind,
+      reason: item.reason,
+    };
+    return {
+      id: `ax10m_evt_${item.pspReference ?? ref}`,
+      type: 'payment.reversed',
+      merchantId: this.config.merchantId,
+      processorEventId: item.pspReference ?? '',
+      occurredAt: toIso(item.eventDate),
+      payload: reversal,
+    };
   }
 
   // ── reconciliation poll ──────────────────────────────────────────────────────

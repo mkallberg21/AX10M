@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DeclineCode, DeclineFamily, type Customer, type Invoice, type PaymentMethod } from '@ax10m/canonical';
+import { DeclineCode, DeclineFamily, type Customer, type Invoice, type PaymentMethod, type ReversalPayload } from '@ax10m/canonical';
 import { BraintreeAdapter } from './adapter.js';
 import { mapBraintreeDeclineCode, signBraintreePayload } from './response-map.js';
 import type { FetchLike, FetchResponseLike } from './client.js';
@@ -54,6 +54,31 @@ function notificationBody(kind: string, opts: { status: string; code?: string; e
     (customerInner ? `<customer>${customerInner}</customer>` : '') +
     (opts.code ? `<processor-response-code>${opts.code}</processor-response-code><processor-response-text>Reason</processor-response-text>` : '') +
     `</transaction></transactions></subscription></subject></notification>`;
+  const b64 = Buffer.from(xml).toString('base64');
+  const sig = signBraintreePayload(b64, PUB, PRIV);
+  return `bt_signature=${encodeURIComponent(sig)}&bt_payload=${encodeURIComponent(b64)}`;
+}
+
+// Braintree `dispute_opened` webhook — <subject><dispute>…<transaction>…</transaction></dispute>.
+// The disputed transaction's <order-id> is the invoice ref AX10M stamped at charge time
+// (attemptCharge sets order-id = invoice.processorRef = the subscription ref), so it maps back
+// to the recovery's invoice id. Currency is at the dispute level; there is NO <subscription-id>.
+function disputeBody(opts: { disputeKind?: string; orderId?: string | null; amount?: string; currency?: string; reason?: string; disputeId?: string } = {}): string {
+  const orderIdEl = opts.orderId === null ? '<order-id nil="true"/>' : `<order-id>${opts.orderId ?? 'sub_1'}</order-id>`;
+  const xml =
+    `<notification><kind>dispute_opened</kind>` +
+    `<timestamp type="datetime">2026-08-14T10:00:00Z</timestamp>` +
+    `<subject><dispute>` +
+    `<id>${opts.disputeId ?? 'dsp_1'}</id>` +
+    `<kind>${opts.disputeKind ?? 'chargeback'}</kind>` +
+    `<amount>${opts.amount ?? '49.99'}</amount>` +
+    `<currency-iso-code>${opts.currency ?? 'USD'}</currency-iso-code>` +
+    (opts.reason ? `<reason>${opts.reason}</reason>` : '') +
+    `<transaction><id>txn_1</id><amount>${opts.amount ?? '49.99'}</amount>` +
+    `<created-at>2026-08-14T10:00:00Z</created-at>${orderIdEl}` +
+    `<purchase-order-number nil="true"/><payment-instrument-subtype>Visa</payment-instrument-subtype>` +
+    `</transaction>` +
+    `</dispute></subject></notification>`;
   const b64 = Buffer.from(xml).toString('base64');
   const sig = signBraintreePayload(b64, PUB, PRIV);
   return `bt_signature=${encodeURIComponent(sig)}&bt_payload=${encodeURIComponent(b64)}`;
@@ -117,6 +142,39 @@ describe('ingestWebhook', () => {
       headers: {},
     });
     expect(events[0]!.type).toBe('invoice.paid');
+  });
+
+  it('normalizes a dispute_opened chargeback into a payment.reversed keyed on the recovery invoice id', async () => {
+    const { fetch } = makeFetch(() => res(200, ''));
+    const adapter = new BraintreeAdapter({ ...baseCfg, fetch });
+    const events = await adapter.ingestWebhook({
+      body: disputeBody({ orderId: 'sub_1', amount: '49.99', currency: 'USD', reason: 'fraud' }),
+      headers: {},
+    });
+    expect(events).toHaveLength(1);
+    const ev = events[0]!;
+    expect(ev.type).toBe('payment.reversed');
+    const r = ev.payload as ReversalPayload;
+    expect(r.kind).toBe('chargeback');
+    // order-id (sub_1) == the ref buildInvoice keyed the original invoice on → same invoice.id.
+    expect(r.invoiceId).toBe('ax10m_inv_sub_1');
+    expect(r.amount).toBe(4999); // decimal 49.99 → minor units
+    expect(r.currency).toBe('USD');
+    expect(r.reason).toBe('fraud');
+  });
+
+  it('skips a dispute whose transaction has no order-id (unmappable to a recovery)', async () => {
+    const { fetch } = makeFetch(() => res(200, ''));
+    const adapter = new BraintreeAdapter({ ...baseCfg, fetch });
+    const events = await adapter.ingestWebhook({ body: disputeBody({ orderId: null }), headers: {} });
+    expect(events).toHaveLength(0);
+  });
+
+  it('ignores a non-chargeback dispute (retrieval / pre_arbitration are not a funds clawback)', async () => {
+    const { fetch } = makeFetch(() => res(200, ''));
+    const adapter = new BraintreeAdapter({ ...baseCfg, fetch });
+    const events = await adapter.ingestWebhook({ body: disputeBody({ disputeKind: 'retrieval' }), headers: {} });
+    expect(events).toHaveLength(0);
   });
 });
 

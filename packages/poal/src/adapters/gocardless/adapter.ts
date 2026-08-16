@@ -32,6 +32,7 @@ import {
   type Invoice,
   type Money,
   type PaymentMethod,
+  type ReversalPayload,
   type Subscription,
 } from '@ax10m/canonical';
 import { customerFromInvoice, contactOverrides } from '../../customer.js';
@@ -150,7 +151,11 @@ export class GoCardlessAdapter implements ProcessorAdapter {
     const out: CanonicalEvent[] = [];
     for (const event of parsed.events ?? []) {
       if (event.resource_type !== 'payments') continue; // mandate events: TODO(ax10m) re-auth flow
-      if (event.action !== 'failed' && event.action !== 'confirmed') continue;
+      // failed/confirmed → invoice.failed/paid; charged_back/refunded → payment.reversed
+      // (net-recovery fee-clawback). GoCardless payment lifecycle actions per the API.
+      const action = event.action;
+      if (action !== 'failed' && action !== 'confirmed' && action !== 'charged_back' && action !== 'refunded')
+        continue;
       const paymentId = event.links?.payment;
       if (!paymentId) continue;
       // Isolate per-event fetch failures: a transient error on one payment must not
@@ -158,7 +163,12 @@ export class GoCardlessAdapter implements ProcessorAdapter {
       // re-delivers, so a skipped event is retried; aborting the batch loses all.
       try {
         const payment = await this.getPayment(paymentId);
-        if (payment) out.push(await this.mapPaymentEvent(event, payment));
+        if (!payment) continue;
+        if (action === 'charged_back' || action === 'refunded') {
+          out.push(this.mapReversalEvent(event, payment));
+        } else {
+          out.push(await this.mapPaymentEvent(event, payment));
+        }
       } catch {
         // swallow; the event will be re-delivered and reprocessed
       }
@@ -228,6 +238,31 @@ export class GoCardlessAdapter implements ProcessorAdapter {
       };
     }
     return { ...base, type: 'invoice.paid', payload: { invoice, attempt } };
+  }
+
+  /**
+   * A previously-collected payment was reversed → net-recovery fee-clawback. GoCardless emits a
+   * `payments` event with action `charged_back` (bank dispute) or `refunded`. The reversal
+   * `invoiceId` MUST equal the invoice id the original payment mapped to (`ax10m_inv_<paymentId>`,
+   * see mapInvoice) so the engine can net it against the recovery. Amount is the payment amount in
+   * MINOR units (GoCardless amounts are already minor units, used as-is elsewhere).
+   */
+  private mapReversalEvent(event: GcEvent, payment: GcPayment): CanonicalEvent {
+    const occurredAt = event.created_at ?? payment.created_at ?? new Date(0).toISOString();
+    const base = {
+      id: `ax10m_evt_${event.id ?? payment.id}`,
+      merchantId: this.config.merchantId,
+      processorEventId: event.id ?? '',
+      occurredAt,
+    };
+    const reversal: ReversalPayload = {
+      invoiceId: `ax10m_inv_${payment.id}`,
+      amount: CENTS(payment.amount),
+      currency: payment.currency ?? 'GBP',
+      kind: event.action === 'charged_back' ? 'chargeback' : 'refund',
+      reason: event.details?.cause ?? event.details?.description,
+    };
+    return { ...base, type: 'payment.reversed', payload: reversal };
   }
 
   // ── reconciliation poll (GoCardless is a payment ledger) ─────────────────────

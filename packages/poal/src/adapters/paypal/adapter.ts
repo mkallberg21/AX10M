@@ -37,6 +37,7 @@ import {
   type Invoice,
   type Money,
   type PaymentMethod,
+  type ReversalPayload,
   type Subscription,
 } from '@ax10m/canonical';
 import { customerFromInvoice, contactOverrides } from '../../customer.js';
@@ -108,6 +109,51 @@ interface PpResource {
   };
 }
 
+/** A HATEOAS link object (rel/href/method). */
+interface PpLink {
+  href?: string;
+  rel?: string;
+  method?: string;
+}
+/**
+ * A `PAYMENT.CAPTURE.REFUNDED` webhook `resource` — a Payments-v2 Refund object.
+ * modeled on PayPal webhook — CONFIRM (Payments v2 refund schema, developer.paypal.com / paypal-rest-api-specifications).
+ * CRITICAL: `id` here is the REFUND id, NOT the capture id — the capture id (the value
+ * `mapResourceInvoice` falls back to) is only reachable via the rel:"up" link.
+ */
+interface PpRefundResource {
+  id?: string; // the refund id — distinct from the capture id
+  status?: string;
+  amount?: PpAmount;
+  invoice_id?: string; // echoes the merchant invoice number, if the caller set one
+  custom_id?: string; // echoes the merchant custom id, if the caller set one
+  links?: PpLink[]; // includes rel:"up" → /v2/payments/captures/{captureId}
+}
+/**
+ * One entry in a dispute's `disputed_transactions[]` (Customer-Disputes v1).
+ * modeled on PayPal webhook — CONFIRM. Disputes v1 names the merchant refs
+ * `invoice_number`/`custom` (vs `invoice_id`/`custom_id` on the Orders/Payments capture);
+ * `seller_transaction_id` is the seller-side transaction id == the capture id.
+ */
+interface PpDisputedTransaction {
+  seller_transaction_id?: string;
+  buyer_transaction_id?: string;
+  invoice_number?: string;
+  custom?: string;
+  reference_id?: string;
+}
+/**
+ * A `CUSTOMER.DISPUTE.CREATED` webhook `resource` — a Customer-Disputes-v1 dispute object.
+ * modeled on PayPal webhook — CONFIRM.
+ */
+interface PpDisputeResource {
+  dispute_id?: string;
+  dispute_amount?: PpAmount;
+  reason?: string;
+  status?: string;
+  disputed_transactions?: PpDisputedTransaction[];
+}
+
 /** Parse a PayPal MAJOR-unit decimal string ("149.00") into integer minor units (14900). */
 function majorToMinor(value: string | undefined): number {
   if (!value) return 0;
@@ -128,6 +174,20 @@ function toIso(value: string | undefined): string {
   if (!value) return new Date(0).toISOString();
   const t = Date.parse(value);
   return Number.isNaN(t) ? new Date(0).toISOString() : new Date(t).toISOString();
+}
+
+/**
+ * Extract the parent CAPTURE id from a Refund object's HATEOAS links (rel:"up" →
+ * `/v2/payments/captures/{captureId}`). This is the value `mapResourceInvoice` uses as its
+ * final fallback for the ORIGINAL capture (a driven charge carries no invoice_id/custom_id),
+ * so it lets a refund round-trip to the SAME `ax10m_inv_…` id — the refund's own `id` (a
+ * distinct refund id) must NOT be used for that. modeled on PayPal webhook — CONFIRM.
+ */
+function captureIdFromRefundLinks(links: PpLink[] | undefined): string | undefined {
+  const up = (links ?? []).find((l) => (l.rel ?? '').toLowerCase() === 'up');
+  if (!up?.href) return undefined;
+  const m = up.href.match(/\/captures\/([^/?#]+)/);
+  return m?.[1];
 }
 
 export class PayPalAdapter implements ProcessorAdapter {
@@ -211,6 +271,49 @@ export class PayPalAdapter implements ProcessorAdapter {
         const invoice = this.mapResourceInvoice(resource, occurredAt, false);
         const attempt = this.mapResourceAttempt(resource, invoice.id, false);
         return [envelope('invoice.paid', { invoice, attempt })];
+      }
+      case 'PAYMENT.CAPTURE.REFUNDED': {
+        // A collected capture was (partially) refunded → net-recovery / fee clawback. The
+        // reversal MUST resolve to the SAME id `mapResourceInvoice` built for the original
+        // capture: `invoice_id ?? custom_id ?? <capture id>`. The Refund object echoes the
+        // merchant invoice_id/custom_id, but its own `id` is the REFUND id — so the fallback
+        // takes the CAPTURE id from the rel:"up" link, never resource.id.
+        // modeled on PayPal webhook — CONFIRM
+        const refund = resource as unknown as PpRefundResource;
+        const ref = refund.invoice_id ?? refund.custom_id ?? captureIdFromRefundLinks(refund.links);
+        const amount = majorToMinor(refund.amount?.value);
+        if (!ref || amount <= 0) return []; // can't map to a recovery invoice id → skip
+        const reversal: ReversalPayload = {
+          invoiceId: `ax10m_inv_${ref}`,
+          amount,
+          currency: refund.amount?.currency_code ?? 'USD',
+          kind: 'refund',
+        };
+        return [envelope('payment.reversed', reversal)];
+      }
+      case 'CUSTOMER.DISPUTE.CREATED': {
+        // A dispute/chargeback was opened → net-recovery clawback. The dispute references the
+        // seller-side transaction (the capture) via disputed_transactions[].seller_transaction_id,
+        // which equals the capture id `mapResourceInvoice` falls back to for a driven recovery.
+        // Disputes v1 names the merchant refs invoice_number/custom (vs invoice_id/custom_id on the
+        // capture); we mirror the SAME precedence. Reverses on dispute CREATION (funds held); a
+        // later resolution in the merchant's favour is a follow-up, not modeled here.
+        // modeled on PayPal webhook — CONFIRM
+        const dispute = resource as unknown as PpDisputeResource;
+        const tx = (dispute.disputed_transactions ?? []).find(
+          (t) => t.seller_transaction_id || t.invoice_number || t.custom,
+        );
+        const ref = tx?.invoice_number ?? tx?.custom ?? tx?.seller_transaction_id;
+        const amount = majorToMinor(dispute.dispute_amount?.value);
+        if (!ref || amount <= 0) return []; // can't map to a recovery invoice id → skip
+        const reversal: ReversalPayload = {
+          invoiceId: `ax10m_inv_${ref}`,
+          amount,
+          currency: dispute.dispute_amount?.currency_code ?? 'USD',
+          kind: 'chargeback',
+          reason: dispute.reason,
+        };
+        return [envelope('payment.reversed', reversal)];
       }
       case 'BILLING.SUBSCRIPTION.CANCELLED': {
         return [envelope('subscription.updated', {

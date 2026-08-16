@@ -124,6 +124,29 @@ describe('ingestWebhook', () => {
     await expect(adapter.ingestWebhook({ body: failedBody, headers: sign(failedBody) })).rejects.toThrow(/not configured/);
   });
 
+  it('maps a refund_success webhook to payment.reversed with the subscription-derived invoiceId', async () => {
+    const { fetch } = makeFetch(() => res(200, {}));
+    const adapter = new MaxioAdapter({ ...baseCfg, fetch });
+    // Real Chargify/Maxio refund_success payload is FLAT: subscription_id + amount_in_cents (cents)
+    // + currency + memo at the payload root.
+    const refundBody =
+      'event=refund_success&payload[refund_id]=173982961&payload[amount_in_cents]=16000' +
+      '&payload[subscription_id]=101&payload[currency]=USD&payload[memo]=Refund%20for%20services' +
+      '&payload[timestamp]=2026-08-10T12:00:00Z&payload[event_id]=377635077';
+    const events = await adapter.ingestWebhook({ body: refundBody, headers: sign(refundBody) });
+    expect(events).toHaveLength(1);
+    const ev = events[0]!;
+    expect(ev.type).toBe('payment.reversed');
+    expect(ev.merchantId).toBe('mrc_1');
+    const r = ev.payload as { invoiceId: string; amount: number; currency: string; kind: string; reason?: string };
+    // invoiceId MUST match what mapSubscriptionInvoice stamps for the original payment on sub 101.
+    expect(r.invoiceId).toBe('ax10m_inv_101');
+    expect(r.amount).toBe(16000); // minor units (cents), as sent
+    expect(r.currency).toBe('USD');
+    expect(r.kind).toBe('refund');
+    expect(r.reason).toBe('Refund for services');
+  });
+
   it('maps a JSON payment_success webhook to invoice.paid', async () => {
     const { fetch } = makeFetch(() => res(200, {}));
     const adapter = new MaxioAdapter({ ...baseCfg, fetch });

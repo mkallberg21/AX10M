@@ -35,6 +35,7 @@ import {
   type Invoice,
   type Money,
   type PaymentMethod,
+  type ReversalPayload,
   type Subscription,
 } from '@ax10m/canonical';
 import { customerFromInvoice, contactOverrides } from '../../customer.js';
@@ -80,11 +81,25 @@ interface WooOrder {
   failure_code?: string;
   failure_message?: string;
   customer_note?: string;
+  /**
+   * Refund summary lines carried on the order. Each entry's `total` is a NEGATIVE
+   * decimal string (e.g. "-149.00"). Present on both full refunds (status="refunded")
+   * and partial refunds (status stays processing/completed).
+   * modeled on WooCommerce webhook — CONFIRM (WC REST order "refunds" property: id/reason/total)
+   */
+  refunds?: WooRefund[];
   /** Billing contact block — feeds the dunning channels. modeled on WooCommerce order.billing — CONFIRM */
   billing?: {
     email?: string; // modeled on WooCommerce order.billing.email — CONFIRM
     phone?: string; // modeled on WooCommerce order.billing.phone — CONFIRM (often national, no country code)
   };
+}
+
+/** A single refund summary line on a WooCommerce order. modeled on WooCommerce webhook — CONFIRM */
+interface WooRefund {
+  id?: number | string;
+  reason?: string;
+  total?: string; // NEGATIVE MAJOR-unit decimal string, e.g. "-149.00"
 }
 
 /** Response of the retry-payment action (fields plugin-dependent — confirm on install). */
@@ -179,8 +194,18 @@ export class WooCommerceAdapter implements ProcessorAdapter {
     };
 
     switch (topic) {
+      case 'order.refunded': // some stores emit a custom refund resource hook; core fires order.updated
       case 'order.updated':
       case 'order.created': {
+        // Refund ingestion → payment.reversed (net-recovery / fee-clawback). A refund is signaled by
+        // a refunded order status OR a `refunds[]` line with a negative total (partial refunds keep
+        // the order's paid status). Chargebacks live in the gateway plugin, not the core order
+        // webhook, so we deliberately DON'T fabricate a chargeback here — refunds only.
+        // modeled on WooCommerce webhook — CONFIRM
+        const reversal = this.mapRefund(order);
+        if (reversal) {
+          return [{ ...base, type: 'payment.reversed', payload: reversal }];
+        }
         if (order.status === 'failed') {
           const invoice = this.mapOrder(order, occurredAt, /*failed*/ true);
           const rawReason = order.failure_message ?? order.failure_code ?? order.customer_note;
@@ -321,6 +346,32 @@ export class WooCommerceAdapter implements ProcessorAdapter {
       status: failed ? 'open' : 'paid',
       firstFailedAt: failed ? occurredAt : undefined,
       createdAt: order.date_created_gmt ?? occurredAt,
+    };
+  }
+
+  /**
+   * Map a refunded order into a canonical `payment.reversed` (kind 'refund'), or null when the
+   * order carries no refund signal. The reversal `invoiceId` is derived from the order id
+   * IDENTICALLY to `mapOrder` (`ax10m_inv_<orderId>`), so a refund reverses the exact invoice
+   * whose original failure/payment this adapter emitted. Amount is POSITIVE minor units.
+   * modeled on WooCommerce webhook — CONFIRM
+   */
+  private mapRefund(order: WooOrder): ReversalPayload | null {
+    const refunds = Array.isArray(order.refunds) ? order.refunds : [];
+    // Refund `total`s are negative decimal strings ("-149.00"); sum their magnitudes to minor units.
+    const refundedMinor = refunds.reduce((sum, r) => sum + Math.abs(toMinorUnits(r.total)), 0);
+    const isRefunded = order.status === 'refunded';
+    if (refundedMinor <= 0 && !isRefunded) return null;
+    // Full refund reported with no line detail → fall back to the order's total.
+    const amount = refundedMinor > 0 ? refundedMinor : toMinorUnits(order.total);
+    if (amount <= 0) return null;
+    const reason = refunds.find((r) => r.reason)?.reason || undefined;
+    return {
+      invoiceId: `ax10m_inv_${String(order.id ?? '')}`, // MUST match mapOrder's invoice.id
+      amount,
+      currency: order.currency ?? 'USD',
+      kind: 'refund',
+      reason,
     };
   }
 

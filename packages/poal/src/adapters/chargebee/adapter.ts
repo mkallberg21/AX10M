@@ -28,6 +28,7 @@ import {
   type Invoice,
   type Money,
   type PaymentMethod,
+  type ReversalPayload,
   type Subscription,
 } from '@ax10m/canonical';
 import { customerFromInvoice, contactOverrides } from '../../customer.js';
@@ -74,6 +75,7 @@ interface CbInvoice {
 interface CbTransaction {
   id: string;
   status?: string; // success | failure | timeout | needs_attention
+  type?: string; // payment | refund | authorization | payment_reversal (Transaction resource enum)
   amount?: number;
   currency_code?: string;
   error_code?: string;
@@ -174,6 +176,33 @@ export class ChargebeeAdapter implements ProcessorAdapter {
         const attempt = content.transaction ? this.mapAttempt(content.transaction, invoice.id) : undefined;
         return [envelope('invoice.paid', { invoice, attempt })];
       }
+      case 'payment_refunded': {
+        // A collected payment was refunded → net-recovery clawback (fee is billed on net
+        // recovery, so a refund of a payment we drove must claw it back). Chargebee's
+        // payment_refunded event nests the refund `transaction` (type=refund, amount in cents)
+        // alongside the original `invoice`; the reversal's invoiceId MUST equal the id
+        // mapInvoice stamps for that invoice (`ax10m_inv_<invoice.id>`) so it links to the
+        // recovery. Refund transaction amounts have no invoice link of their own
+        // (Chargebee's linked_invoices applies to `payment` txns only), so the invoice id
+        // comes from content.invoice. modeled on Chargebee webhook — CONFIRM
+        if (!content.invoice || !content.transaction) return [];
+        const txn = content.transaction;
+        // Only settled refunds — guard against a non-refund txn slipping through.
+        if (txn.type && txn.type !== 'refund') return [];
+        const amount = CENTS(txn.amount);
+        if (amount <= 0) return [];
+        const reversal: ReversalPayload = {
+          invoiceId: `ax10m_inv_${content.invoice.id}`,
+          amount,
+          currency: content.invoice.currency_code ?? txn.currency_code ?? 'USD',
+          kind: 'refund',
+        };
+        return [envelope('payment.reversed', reversal)];
+      }
+      // NOTE: Chargebee exposes no native dispute/chargeback webhook event (verified against
+      // apidocs.chargebee.com event-types, 2026-08), so no `kind: 'chargeback'` path exists
+      // here. `refund_initiated` is intentionally excluded — it fires for async direct_debit
+      // refunds still in_progress, not a settled reversal.
       case 'card_updated':
       case 'payment_source_updated': {
         if (!content.payment_source) return [];

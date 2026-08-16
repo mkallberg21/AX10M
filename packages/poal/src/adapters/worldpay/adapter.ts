@@ -38,6 +38,7 @@ import {
   type Invoice,
   type Money,
   type PaymentMethod,
+  type ReversalPayload,
   type Subscription,
 } from '@ax10m/canonical';
 import { customerFromInvoice } from '../../customer.js';
@@ -85,9 +86,11 @@ interface WpEventNotification {
   eventId?: string;
   eventTimestamp?: string;
   eventDetails?: {
-    type?: string; // payment.refused | payment.settled | payment.authorized | ...
+    type?: string; // payment.refused | payment.settled | payment.authorized | payment.refunded | ...
     transactionReference?: string;
-    amount?: { value?: number; currency?: string };
+    // Access Worldpay stamps the currency on refund/chargeback events as `currencyCode`; the
+    // charge-flow modeling above uses `currency`. We read either so the reversal path is robust.
+    amount?: { value?: number; currency?: string; currencyCode?: string };
     refusalCode?: string;
     refusalDescription?: string;
     paymentId?: string;
@@ -193,7 +196,36 @@ export class WorldpayAdapter implements ProcessorAdapter {
         const attempt = this.mapAttempt(details, invoice.id, /*failed*/ false, occurredAt);
         return [{ ...base, type: 'invoice.paid', payload: { invoice, attempt } }];
       }
+      case 'payment.refunded': {
+        // A settled payment we may have recovered was later refunded → net-recovery clawback
+        // (AX10M bills on NET uplift, so a refund must reverse the recovery we counted).
+        //
+        // Access Worldpay's `refunded` payment event (classification 'payment', type 'refunded' —
+        // matched here under this adapter's existing `payment.*` type convention) carries the same
+        // `transactionReference` we supplied at authorization. mapInvoice stamps the original
+        // recovery's id as `ax10m_inv_${transactionReference}`, so the reversal's invoiceId is
+        // that exact id — a reliable, direct mapping (no charge→invoice lookup needed, unlike
+        // Stripe disputes). Amount is minor units in `amount.value`; currency in `currencyCode`.
+        const ref = details.transactionReference ?? '';
+        const amount = CENTS(details.amount?.value);
+        if (!ref || amount <= 0) return []; // unmappable or zero → not an actionable reversal
+        const reversal: ReversalPayload = {
+          invoiceId: `ax10m_inv_${ref}`,
+          amount,
+          currency: details.amount?.currencyCode ?? details.amount?.currency ?? 'USD',
+          kind: 'refund',
+        };
+        return [{ ...base, type: 'payment.reversed', payload: reversal }];
+      }
       default:
+        // NOTE: Access Worldpay DOES emit `chargeback` events (classification 'chargeback') that
+        // carry `transactionReference`, so the invoice mapping would be reliable. We deliberately
+        // do NOT emit a chargeback reversal here: the chargeback event is a multi-stage lifecycle
+        // (informationRequested → chargeback → reversed/defended/secondChargeback …) and the
+        // published schema does not let us reliably distinguish the single stage that represents a
+        // net funds withdrawal from a retrieval request or a later re-credit. Firing on the wrong
+        // stage would over- or under-count the clawback, so we leave chargebacks unwired rather
+        // than guess the stage. Refunds (above) are a single unambiguous event.
         return []; // event we don't act on
     }
   }

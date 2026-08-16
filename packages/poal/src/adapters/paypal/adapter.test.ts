@@ -214,3 +214,132 @@ describe('ingestWebhook', () => {
     expect(paid[0]!.type).toBe('invoice.paid');
   });
 });
+
+describe('ingestWebhook — reversals (refund / dispute → payment.reversed)', () => {
+  const txHeaders = {
+    'paypal-auth-algo': 'SHA256withRSA',
+    'paypal-cert-url': 'https://api.paypal.com/cert',
+    'paypal-transmission-id': 't_1',
+    'paypal-transmission-sig': 'sig',
+    'paypal-transmission-time': '2026-08-14T10:00:00Z',
+  };
+  const okFetch = () =>
+    makeFetch((url) => {
+      if (url.includes('/v1/oauth2/token')) return TOKEN_OK;
+      if (url.includes('/v1/notifications/verify-webhook-signature')) return res(200, { verification_status: 'SUCCESS' });
+      throw new Error(`unexpected url ${url}`);
+    });
+
+  it('normalizes PAYMENT.CAPTURE.REFUNDED to payment.reversed (kind refund) using the merchant invoice_id', async () => {
+    const { fetch } = okFetch();
+    const adapter = new PayPalAdapter({ ...baseCfg, fetch, webhookId: 'WH-123' });
+    const events = await adapter.ingestWebhook({
+      body: JSON.stringify({
+        id: 'ev_r1',
+        event_type: 'PAYMENT.CAPTURE.REFUNDED',
+        create_time: '2026-08-14T11:00:00Z',
+        resource: {
+          id: 'REF1', // refund id — deliberately NOT the capture id
+          status: 'COMPLETED',
+          amount: { value: '149.00', currency_code: 'USD' },
+          invoice_id: 'inv_1',
+          links: [{ rel: 'up', href: 'https://paypal.test/v2/payments/captures/CAP1', method: 'GET' }],
+        },
+      }),
+      headers: txHeaders,
+    });
+    expect(events).toHaveLength(1);
+    const ev = events[0]!;
+    expect(ev.type).toBe('payment.reversed');
+    expect(ev.processorEventId).toBe('ev_r1');
+    const r = ev.payload as { invoiceId: string; amount: number; currency: string; kind: string };
+    // SAME id mapResourceInvoice built for the original (invoice_id-based) capture.
+    expect(r.invoiceId).toBe('ax10m_inv_inv_1');
+    expect(r.amount).toBe(14900);
+    expect(r.currency).toBe('USD');
+    expect(r.kind).toBe('refund');
+  });
+
+  it('maps a driven-charge PARTIAL refund (no invoice_id) to the SAME id via the capture up-link — round-trips with the original invoice.id', async () => {
+    const { fetch } = okFetch();
+    const adapter = new PayPalAdapter({ ...baseCfg, fetch, webhookId: 'WH-123' });
+    // A driven capture carries NO invoice_id/custom_id → invoice.id falls back to the capture id.
+    const paid = await adapter.ingestWebhook({
+      body: JSON.stringify({
+        id: 'ev_p1',
+        event_type: 'PAYMENT.CAPTURE.COMPLETED',
+        create_time: '2026-08-14T10:00:00Z',
+        resource: { id: 'CAP1', status: 'COMPLETED', amount: { value: '80.00', currency_code: 'USD' } },
+      }),
+      headers: txHeaders,
+    });
+    const originalId = (paid[0]!.payload as { invoice: Invoice }).invoice.id;
+    expect(originalId).toBe('ax10m_inv_CAP1');
+
+    // A partial refund of that capture → clawback of the refunded delta, SAME invoice id
+    // (resolved from the rel:"up" capture link, NOT the refund's own id REF2).
+    const events = await adapter.ingestWebhook({
+      body: JSON.stringify({
+        id: 'ev_r2',
+        event_type: 'PAYMENT.CAPTURE.REFUNDED',
+        create_time: '2026-08-14T12:00:00Z',
+        resource: {
+          id: 'REF2',
+          status: 'COMPLETED',
+          amount: { value: '50.00', currency_code: 'USD' },
+          links: [{ rel: 'up', href: 'https://paypal.test/v2/payments/captures/CAP1', method: 'GET' }],
+        },
+      }),
+      headers: txHeaders,
+    });
+    expect(events[0]!.type).toBe('payment.reversed');
+    const r = events[0]!.payload as { invoiceId: string; amount: number; kind: string };
+    expect(r.invoiceId).toBe(originalId); // clawback lands on the recovery we drove
+    expect(r.amount).toBe(5000); // partial-refund delta in minor units
+    expect(r.kind).toBe('refund');
+  });
+
+  it('normalizes CUSTOMER.DISPUTE.CREATED to payment.reversed (kind chargeback) via seller_transaction_id', async () => {
+    const { fetch } = okFetch();
+    const adapter = new PayPalAdapter({ ...baseCfg, fetch, webhookId: 'WH-123' });
+    const events = await adapter.ingestWebhook({
+      body: JSON.stringify({
+        id: 'ev_d1',
+        event_type: 'CUSTOMER.DISPUTE.CREATED',
+        create_time: '2026-08-14T13:00:00Z',
+        resource: {
+          dispute_id: 'PP-D-1',
+          reason: 'MERCHANDISE_OR_SERVICE_NOT_RECEIVED',
+          status: 'OPEN',
+          dispute_amount: { value: '149.00', currency_code: 'USD' },
+          disputed_transactions: [{ seller_transaction_id: 'CAP1', buyer_transaction_id: 'B1' }],
+        },
+      }),
+      headers: txHeaders,
+    });
+    expect(events).toHaveLength(1);
+    const ev = events[0]!;
+    expect(ev.type).toBe('payment.reversed');
+    const r = ev.payload as { invoiceId: string; amount: number; kind: string; reason?: string };
+    // seller_transaction_id == the capture id → matches the driven capture's invoice.id fallback.
+    expect(r.invoiceId).toBe('ax10m_inv_CAP1');
+    expect(r.amount).toBe(14900);
+    expect(r.kind).toBe('chargeback');
+    expect(r.reason).toBe('MERCHANDISE_OR_SERVICE_NOT_RECEIVED');
+  });
+
+  it('skips a dispute it cannot map to a recovery invoice id (no seller_transaction_id / invoice_number / custom)', async () => {
+    const { fetch } = okFetch();
+    const adapter = new PayPalAdapter({ ...baseCfg, fetch, webhookId: 'WH-123' });
+    const events = await adapter.ingestWebhook({
+      body: JSON.stringify({
+        id: 'ev_d2',
+        event_type: 'CUSTOMER.DISPUTE.CREATED',
+        create_time: '2026-08-14T13:00:00Z',
+        resource: { dispute_id: 'PP-D-2', dispute_amount: { value: '10.00', currency_code: 'USD' }, disputed_transactions: [{}] },
+      }),
+      headers: txHeaders,
+    });
+    expect(events).toEqual([]);
+  });
+});

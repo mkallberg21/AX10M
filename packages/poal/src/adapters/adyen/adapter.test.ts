@@ -110,11 +110,53 @@ describe('ingestWebhook', () => {
     await expect(adapter.ingestWebhook({ body: notification(signedItem()), headers: {} })).rejects.toThrow(/not configured/);
   });
 
-  it('ignores non-AUTHORISATION events (still HMAC-verified)', async () => {
+  it('ignores non-recovery events (still HMAC-verified)', async () => {
     const { fetch } = makeFetch(() => res(200, {}));
     const adapter = new AdyenAdapter({ ...baseCfg, fetch, hmacKey: KEY });
-    const refund = signedItem({ eventCode: 'REFUND', success: 'true', reason: '' });
-    const none = await adapter.ingestWebhook({ body: notification(refund), headers: {} });
+    const report = signedItem({ eventCode: 'REPORT_AVAILABLE', success: 'true', reason: '' });
+    const none = await adapter.ingestWebhook({ body: notification(report), headers: {} });
+    expect(none).toEqual([]);
+  });
+
+  it('normalizes a REFUND notification to payment.reversed (kind refund) on the AUTHORISATION invoice id', async () => {
+    const { fetch } = makeFetch(() => res(200, {}));
+    const adapter = new AdyenAdapter({ ...baseCfg, fetch, hmacKey: KEY });
+    const refund = signedItem({ eventCode: 'REFUND', success: 'true', reason: 'requested by customer', amount: { value: 14900, currency: 'USD' } });
+    const events = await adapter.ingestWebhook({ body: notification(refund), headers: {} });
+    expect(events).toHaveLength(1);
+    const ev = events[0]!;
+    expect(ev.type).toBe('payment.reversed');
+    expect(ev.merchantId).toBe('mrc_1');
+    const r = ev.payload as { invoiceId: string; amount: number; currency: string; kind: string; reason?: string };
+    // Same merchantReference as the AUTHORISATION → same ax10m_inv_ id, so recovery + reversal net.
+    expect(r.invoiceId).toBe('ax10m_inv_inv_1');
+    expect(r.amount).toBe(14900);
+    expect(r.currency).toBe('USD');
+    expect(r.kind).toBe('refund');
+    expect(r.reason).toBe('requested by customer');
+  });
+
+  it('normalizes a CHARGEBACK notification to payment.reversed (kind chargeback)', async () => {
+    const { fetch } = makeFetch(() => res(200, {}));
+    const adapter = new AdyenAdapter({ ...baseCfg, fetch, hmacKey: KEY });
+    const cb = signedItem({ eventCode: 'CHARGEBACK', success: 'true', reason: 'Fraudulent transaction', amount: { value: 14900, currency: 'USD' } });
+    const events = await adapter.ingestWebhook({ body: notification(cb), headers: {} });
+    expect(events).toHaveLength(1);
+    const ev = events[0]!;
+    expect(ev.type).toBe('payment.reversed');
+    const r = ev.payload as { invoiceId: string; amount: number; currency: string; kind: string; reason?: string };
+    expect(r.invoiceId).toBe('ax10m_inv_inv_1');
+    expect(r.amount).toBe(14900);
+    expect(r.currency).toBe('USD');
+    expect(r.kind).toBe('chargeback');
+    expect(r.reason).toBe('Fraudulent transaction');
+  });
+
+  it('does not emit a reversal for a failed (defended) chargeback notification', async () => {
+    const { fetch } = makeFetch(() => res(200, {}));
+    const adapter = new AdyenAdapter({ ...baseCfg, fetch, hmacKey: KEY });
+    const cb = signedItem({ eventCode: 'CHARGEBACK', success: 'false', reason: 'Fraudulent transaction' });
+    const none = await adapter.ingestWebhook({ body: notification(cb), headers: {} });
     expect(none).toEqual([]);
   });
 });

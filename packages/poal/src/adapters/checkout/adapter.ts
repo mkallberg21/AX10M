@@ -37,6 +37,7 @@ import {
   type Invoice,
   type Money,
   type PaymentMethod,
+  type ReversalPayload,
   type Subscription,
 } from '@ax10m/canonical';
 import { customerFromInvoice, contactOverrides } from '../../customer.js';
@@ -82,13 +83,19 @@ interface CkoWebhookEnvelope {
   type?: string; // payment_declined | payment_captured | payment_approved | ...
   created_on?: string;
   data?: {
-    id?: string; // pay_...
+    id?: string; // pay_... (payment webhooks); dsp_... on dispute webhooks
     reference?: string;
     amount?: number;
     currency?: string;
     response_code?: string;
     response_summary?: string;
     source?: { id?: string };
+    // Dispute webhooks (dispute_received) carry a DISPUTE-shaped `data`, not the payment object:
+    // the merchant reference is `payment_reference` and the original payment is `payment_id`.
+    payment_id?: string; // pay_... — the disputed payment. modeled on Checkout.com webhook — CONFIRM
+    payment_reference?: string; // merchant reference of the disputed payment. modeled on Checkout.com webhook — CONFIRM
+    reason_code?: string; // chargeback reason code, e.g. '10.4'. modeled on Checkout.com webhook — CONFIRM
+    category?: string; // dispute category, e.g. 'fraudulent'. modeled on Checkout.com webhook — CONFIRM
     // Checkout.com echoes the payment's `customer` object on the webhook; email is the
     // dunning-email destination and `phone` (country_code + national number) the SMS one.
     customer?: {
@@ -205,6 +212,22 @@ export class CheckoutAdapter implements ProcessorAdapter {
         const attempt = this.mapAttempt(data, invoice.id, /*failed*/ false, occurredAt);
         return [{ ...base, type: 'invoice.paid', payload: { invoice, attempt } }];
       }
+      case 'payment_refunded': {
+        // A collected payment was (partly or fully) refunded → net-recovery clawback. `data` is the
+        // payment object, so the reference derivation is identical to mapInvoice → the reversal's
+        // invoiceId equals the invoice.id we emitted for the original payment.
+        return this.reversalFromPayment(base, data, 'refund');
+      }
+      case 'payment_chargeback': {
+        // Legacy Unified-Payments chargeback notification — `data` is the payment object.
+        // modeled on Checkout.com webhook — CONFIRM
+        return this.reversalFromPayment(base, data, 'chargeback');
+      }
+      case 'dispute_received': {
+        // Disputes-API chargeback. `data` is a DISPUTE object: the merchant reference is
+        // `payment_reference` (fallback `payment_id`), and amount/currency are the disputed values.
+        return this.reversalFromDispute(base, data);
+      }
       default:
         return []; // event we don't act on
     }
@@ -294,6 +317,55 @@ export class CheckoutAdapter implements ProcessorAdapter {
   async pauseNativeDunning(_subscription: Subscription): Promise<void> {
     // No-op: Checkout.com is a gateway with no merchant-facing dunning engine, so
     // there is nothing to disable — AX10M owns the retry loop entirely.
+  }
+
+  // ── reversal mapping (refund / chargeback → payment.reversed) ────────────────
+
+  /**
+   * Build a `payment.reversed` from a webhook whose `data` is the PAYMENT object
+   * (payment_refunded, payment_chargeback). The reference derivation (`reference ?? id`) is the
+   * SAME one mapInvoice uses, so the reversal's invoiceId equals the invoice.id emitted for the
+   * original payment — the join the fee-clawback / net-recovery ledger relies on.
+   */
+  private reversalFromPayment(
+    base: { id: string; merchantId: string; processorEventId: string; occurredAt: string },
+    data: NonNullable<CkoWebhookEnvelope['data']>,
+    kind: 'refund' | 'chargeback',
+  ): CanonicalEvent[] {
+    const ref = data.reference ?? data.id ?? '';
+    const amount = CENTS(data.amount);
+    if (!ref || amount <= 0) return []; // nothing we can join to a recovery
+    const reversal: ReversalPayload = {
+      invoiceId: `ax10m_inv_${ref}`,
+      amount,
+      currency: data.currency ?? 'USD',
+      kind,
+      reason: data.response_summary ?? data.reason_code,
+    };
+    return [{ ...base, type: 'payment.reversed', payload: reversal }];
+  }
+
+  /**
+   * Build a `payment.reversed` from a Disputes-API `dispute_received` webhook. Its `data` is a
+   * DISPUTE object, so the merchant reference lives in `payment_reference` (fallback `payment_id`) —
+   * NOT `reference`/`id` — but the resulting invoiceId still matches the original payment's invoice.id
+   * because `payment_reference` is the same merchant reference the payment carried.
+   */
+  private reversalFromDispute(
+    base: { id: string; merchantId: string; processorEventId: string; occurredAt: string },
+    data: NonNullable<CkoWebhookEnvelope['data']>,
+  ): CanonicalEvent[] {
+    const ref = data.payment_reference ?? data.payment_id ?? '';
+    const amount = CENTS(data.amount);
+    if (!ref || amount <= 0) return [];
+    const reversal: ReversalPayload = {
+      invoiceId: `ax10m_inv_${ref}`,
+      amount,
+      currency: data.currency ?? 'USD',
+      kind: 'chargeback',
+      reason: data.reason_code ?? data.category,
+    };
+    return [{ ...base, type: 'payment.reversed', payload: reversal }];
   }
 
   // ── mapping helpers ──────────────────────────────────────────────────────────

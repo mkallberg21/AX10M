@@ -16,9 +16,14 @@
  * End-to-end against Recurly v3:
  *  - ingestWebhook   — verify the webhook's HTTP Basic auth (Recurly optionally
  *                      authenticates its notification endpoint with Basic auth),
- *                      then normalize failed/successful payment + canceled
- *                      subscription notifications. Recurly notifications are XML;
- *                      a real impl uses an XML parser (see parseRecurlyNotification).
+ *                      then normalize failed/successful payment, canceled
+ *                      subscription, and successful_refund notifications. A refund
+ *                      emits `payment.reversed` (net-recovery / fee clawback), keyed to
+ *                      the SAME invoice UUID as the original recovery. Recurly does NOT
+ *                      publish a dedicated dispute/chargeback webhook (chargebacks
+ *                      surface as an external refund invoice), so no `chargeback`
+ *                      reversal is emitted here. Recurly notifications are XML; a real
+ *                      impl uses an XML parser (see parseRecurlyNotification).
  *  - listOpenFailures— reconciliation poll over invoices in `past_due`.
  *  - attemptCharge   — PUT /invoices/{id}/collect against the account's stored
  *                      billing info (token, never a PAN → SAQ-A).
@@ -41,6 +46,7 @@ import {
   type Invoice,
   type Money,
   type PaymentMethod,
+  type ReversalPayload,
   type Subscription,
 } from '@ax10m/canonical';
 import { customerFromInvoice, contactOverrides } from '../../customer.js';
@@ -153,6 +159,10 @@ interface RlNotification {
   transactionErrorCode?: string;
   transactionId?: string;
   transactionStatus?: string;
+  /** Refund/credit transaction amount in MINOR units (<transaction><amount_in_cents>). Used for reversals. */
+  transactionAmountInCents?: number;
+  /** Transaction lifecycle action (<transaction><action>): 'purchase' | 'credit' | 'refund' | ... */
+  transactionAction?: string;
   rawReason?: string;
   occurredAt?: string;
 }
@@ -179,16 +189,34 @@ export function parseRecurlyNotification(body: string): RlNotification | null {
         type?: string;
         event_type?: string;
         invoice?: { uuid?: string; id?: string; number?: string; currency?: string; total_in_cents?: number; balance_in_cents?: number };
-        transaction?: { id?: string; uuid?: string; status?: string; error_code?: string; decline_code?: string; message?: string };
+        // A refund/credit transaction carries the invoice reference itself (<invoice_id> = the invoice UUID,
+        // <invoice_number>) plus <amount_in_cents> and <action>. modeled on Recurly webhook — CONFIRM
+        transaction?: {
+          id?: string;
+          uuid?: string;
+          status?: string;
+          error_code?: string;
+          decline_code?: string;
+          message?: string;
+          invoice_id?: string;
+          invoice_number?: number | string;
+          amount_in_cents?: number;
+          action?: string;
+        };
         subscription?: { uuid?: string; id?: string };
         account?: { account_code?: string; code?: string; email?: string };
         occurred_at?: string;
       };
       const type = j.type ?? j.event_type ?? '';
       if (!type) return null;
+      const txnInvoiceNumber =
+        j.transaction?.invoice_number != null ? String(j.transaction.invoice_number) : undefined;
       return {
         type,
-        invoiceId: j.invoice?.uuid ?? j.invoice?.id ?? j.invoice?.number,
+        // Prefer an explicit invoice block; fall back to the transaction's own invoice reference so a
+        // refund notification (which has no <invoice> block) resolves the SAME invoiceId the original
+        // failed/paid notification did — <transaction><invoice_id> IS the invoice UUID.
+        invoiceId: j.invoice?.uuid ?? j.invoice?.id ?? j.invoice?.number ?? j.transaction?.invoice_id ?? txnInvoiceNumber,
         subscriptionId: j.subscription?.uuid ?? j.subscription?.id,
         accountCode: j.account?.account_code ?? j.account?.code,
         accountEmail: j.account?.email,
@@ -197,6 +225,8 @@ export function parseRecurlyNotification(body: string): RlNotification | null {
         transactionErrorCode: j.transaction?.error_code ?? j.transaction?.decline_code,
         transactionId: j.transaction?.uuid ?? j.transaction?.id,
         transactionStatus: j.transaction?.status,
+        transactionAmountInCents: j.transaction?.amount_in_cents,
+        transactionAction: j.transaction?.action,
         rawReason: j.transaction?.message ?? j.transaction?.error_code,
         occurredAt: j.occurred_at,
       };
@@ -209,9 +239,20 @@ export function parseRecurlyNotification(body: string): RlNotification | null {
   if (!type) return null;
   const invoiceBlock = firstMatch(trimmed, /<invoice>([\s\S]*?)<\/invoice>/i) ?? '';
   const txnBlock = firstMatch(trimmed, /<transaction>([\s\S]*?)<\/transaction>/i) ?? '';
+  // A refund/credit notification (successful_refund_notification) has NO <invoice> block — the
+  // invoice reference lives on the transaction as <invoice_id> (the invoice UUID) / <invoice_number>.
+  // modeled on Recurly webhook — CONFIRM
+  const txnInvoiceId = firstMatch(txnBlock, /<invoice_id>([^<]+)<\/invoice_id>/i);
+  const txnInvoiceNumber = firstMatch(txnBlock, /<invoice_number(?:[^>]*)>([^<]+)<\/invoice_number>/i);
   return {
     type,
-    invoiceId: firstMatch(invoiceBlock, /<uuid>([^<]+)<\/uuid>/i) ?? firstMatch(invoiceBlock, /<invoice_number(?:[^>]*)>([^<]+)<\/invoice_number>/i),
+    // Same invoiceId derivation as the failed/paid path, extended so a refund resolves the invoice
+    // UUID from the transaction — keeping recovery and reversal keyed to the identical ax10m_inv_ id.
+    invoiceId:
+      firstMatch(invoiceBlock, /<uuid>([^<]+)<\/uuid>/i) ??
+      firstMatch(invoiceBlock, /<invoice_number(?:[^>]*)>([^<]+)<\/invoice_number>/i) ??
+      txnInvoiceId ??
+      txnInvoiceNumber,
     subscriptionId: firstMatch(trimmed, /<subscription>[\s\S]*?<uuid>([^<]+)<\/uuid>/i),
     accountCode: firstMatch(trimmed, /<account>[\s\S]*?<account_code>([^<]+)<\/account_code>/i),
     accountEmail: firstMatch(trimmed, /<account>[\s\S]*?<email>([^<]+)<\/email>/i),
@@ -220,6 +261,8 @@ export function parseRecurlyNotification(body: string): RlNotification | null {
     transactionErrorCode: firstMatch(txnBlock, /<error_code(?:[^>]*)>([^<]+)<\/error_code>/i),
     transactionId: firstMatch(txnBlock, /<uuid>([^<]+)<\/uuid>/i) ?? firstMatch(txnBlock, /<id(?:[^>]*)>([^<]+)<\/id>/i),
     transactionStatus: firstMatch(txnBlock, /<status>([^<]+)<\/status>/i),
+    transactionAmountInCents: Number(firstMatch(txnBlock, /<amount_in_cents(?:[^>]*)>([^<]+)<\/amount_in_cents>/i)) || undefined,
+    transactionAction: firstMatch(txnBlock, /<action>([^<]+)<\/action>/i),
     rawReason: firstMatch(txnBlock, /<message>([^<]+)<\/message>/i) ?? firstMatch(txnBlock, /<error_code(?:[^>]*)>([^<]+)<\/error_code>/i),
   };
 }
@@ -307,6 +350,25 @@ export class RecurlyAdapter implements ProcessorAdapter {
           attemptedAt: occurredAt,
         });
         return [envelope('invoice.paid', { invoice, attempt })];
+      }
+      case 'successful_refund_notification': {
+        // A previously-collected payment was refunded → net-recovery / fee clawback. Recurly's refund
+        // (successful_refund_notification) is a PaymentNotification whose <transaction> carries
+        // <invoice_id> (the invoice UUID), <amount_in_cents> (MINOR units) and <action>credit.
+        // We key the reversal off the SAME invoice UUID mapNotificationInvoice stamps on the original
+        // recovery, so net recovery = recovered − reversed nets correctly.
+        // modeled on Recurly webhook — CONFIRM
+        const ref = note.invoiceId ?? '';
+        const amount = note.transactionAmountInCents ?? note.amountInCents ?? 0;
+        if (!ref || amount <= 0) return []; // can't tie to a recovery, or no funds moved → skip (never throw)
+        const reversal: ReversalPayload = {
+          invoiceId: `ax10m_inv_${ref}`,
+          amount,
+          currency: note.currency ?? 'USD',
+          kind: 'refund',
+          reason: note.rawReason ?? note.transactionAction,
+        };
+        return [envelope('payment.reversed', reversal)];
       }
       case 'canceled_subscription_notification': {
         if (!note.subscriptionId) return [];
