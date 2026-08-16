@@ -228,6 +228,18 @@ export class CheckoutAdapter implements ProcessorAdapter {
         // `payment_reference` (fallback `payment_id`), and amount/currency are the disputed values.
         return this.reversalFromDispute(base, data);
       }
+      case 'dispute_won':
+      case 'dispute_canceled': {
+        // Chargeback resolved in the merchant's favour → the disputed funds return, so we UNDO the
+        // prior chargeback reversal (net recovery rises, clawed-back fee re-accrues).
+        //   - dispute_won: the issuer accepted our evidence; the disputed amount is returned.
+        //   - dispute_canceled: the issuer cancelled the dispute; a previously-debited amount is
+        //     credited back to us.
+        // Both carry the SAME DISPUTE-shaped `data` as dispute_received, so the invoiceId join is
+        // identical. (dispute_resolved is NOT here: it fires when we had already refunded the
+        // customer, so no funds return and there is nothing to re-credit.)
+        return this.reinstatementFromDispute(base, data, event.type);
+      }
       default:
         return []; // event we don't act on
     }
@@ -366,6 +378,31 @@ export class CheckoutAdapter implements ProcessorAdapter {
       reason: data.reason_code ?? data.category,
     };
     return [{ ...base, type: 'payment.reversed', payload: reversal }];
+  }
+
+  /**
+   * Build a `payment.reversal_reverted` from a dispute resolved in the merchant's favour
+   * (`dispute_won` / `dispute_canceled`). The `data` is the SAME DISPUTE shape as
+   * `dispute_received`, so the invoiceId derivation (`payment_reference` → fallback `payment_id`)
+   * and the emitted invoiceId are IDENTICAL to the reversal we undo — the join the fee-clawback /
+   * net-recovery ledger relies on to re-accrue the clawed-back fee and lift net recovery.
+   */
+  private reinstatementFromDispute(
+    base: { id: string; merchantId: string; processorEventId: string; occurredAt: string },
+    data: NonNullable<CkoWebhookEnvelope['data']>,
+    reason: string,
+  ): CanonicalEvent[] {
+    const ref = data.payment_reference ?? data.payment_id ?? '';
+    const amount = CENTS(data.amount);
+    if (!ref || amount <= 0) return [];
+    const reinstatement: ReversalPayload = {
+      invoiceId: `ax10m_inv_${ref}`,
+      amount,
+      currency: data.currency ?? 'USD',
+      kind: 'chargeback',
+      reason,
+    };
+    return [{ ...base, type: 'payment.reversal_reverted', payload: reinstatement }];
   }
 
   // ── mapping helpers ──────────────────────────────────────────────────────────

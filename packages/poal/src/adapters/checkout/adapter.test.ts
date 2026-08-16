@@ -221,6 +221,71 @@ describe('reversals (refund / chargeback → payment.reversed)', () => {
   });
 });
 
+describe('won disputes (dispute_won / dispute_canceled → payment.reversal_reverted)', () => {
+  function disputeWebhook(type: string, data: Record<string, unknown>): string {
+    return JSON.stringify({ id: 'evt_w', type, created_on: '2026-08-14T10:00:00Z', data });
+  }
+
+  it('maps dispute_won (dispute-shaped data: payment_reference) to payment.reversal_reverted with the original invoice id', async () => {
+    const { fetch } = makeFetch(() => res(200, {}));
+    const adapter = new CheckoutAdapter({ ...baseCfg, fetch });
+    const body = disputeWebhook('dispute_won', {
+      id: 'dsp_1', payment_id: 'pay_1', payment_reference: 'inv_1', amount: 14900, currency: 'USD', reason_code: '10.4',
+    });
+    const events = await adapter.ingestWebhook({ body, headers: { 'Cko-Signature': computeCheckoutSignature(body, SECRET) } });
+    expect(events).toHaveLength(1);
+    const ev = events[0]!;
+    expect(ev.type).toBe('payment.reversal_reverted');
+    expect(ev.merchantId).toBe('mrc_1');
+    const r = ev.payload as { invoiceId: string; amount: number; currency: string; kind: string; reason?: string };
+    // invoiceId MUST equal the invoice.id emitted for the original payment AND the chargeback it undoes
+    expect(r.invoiceId).toBe('ax10m_inv_inv_1');
+    expect(r.invoiceId).toBe(invoice.id);
+    expect(r.amount).toBe(14900);
+    expect(r.currency).toBe('USD');
+    expect(r.kind).toBe('chargeback');
+    expect(r.reason).toBe('dispute_won');
+  });
+
+  it('maps dispute_canceled (issuer cancelled → funds returned) to payment.reversal_reverted', async () => {
+    const { fetch } = makeFetch(() => res(200, {}));
+    const adapter = new CheckoutAdapter({ ...baseCfg, fetch });
+    const body = disputeWebhook('dispute_canceled', {
+      id: 'dsp_2', payment_id: 'pay_1', payment_reference: 'inv_1', amount: 14900, currency: 'USD',
+    });
+    const events = await adapter.ingestWebhook({ body, headers: { 'Cko-Signature': computeCheckoutSignature(body, SECRET) } });
+    const ev = events[0]!;
+    expect(ev.type).toBe('payment.reversal_reverted');
+    const r = ev.payload as { invoiceId: string; kind: string; reason?: string };
+    expect(r.invoiceId).toBe('ax10m_inv_inv_1');
+    expect(r.kind).toBe('chargeback');
+    expect(r.reason).toBe('dispute_canceled');
+  });
+
+  it('falls back to payment_id for the reinstatement when no payment_reference is present', async () => {
+    const { fetch } = makeFetch(() => res(200, {}));
+    const adapter = new CheckoutAdapter({ ...baseCfg, fetch });
+    const body = disputeWebhook('dispute_won', { id: 'dsp_3', payment_id: 'pay_1', amount: 14900, currency: 'USD' });
+    const events = await adapter.ingestWebhook({ body, headers: { 'Cko-Signature': computeCheckoutSignature(body, SECRET) } });
+    const r = events[0]!.payload as { invoiceId: string };
+    expect(r.invoiceId).toBe('ax10m_inv_pay_1');
+  });
+
+  it('skips a won dispute with no reference or non-positive amount', async () => {
+    const { fetch } = makeFetch(() => res(200, {}));
+    const adapter = new CheckoutAdapter({ ...baseCfg, fetch });
+    const zero = disputeWebhook('dispute_won', { id: 'dsp_4', payment_reference: 'inv_1', amount: 0, currency: 'USD' });
+    expect(await adapter.ingestWebhook({ body: zero, headers: { 'Cko-Signature': computeCheckoutSignature(zero, SECRET) } })).toEqual([]);
+  });
+
+  it('does not emit for dispute_resolved (customer already refunded → no funds return)', async () => {
+    const { fetch } = makeFetch(() => res(200, {}));
+    const adapter = new CheckoutAdapter({ ...baseCfg, fetch });
+    const body = disputeWebhook('dispute_resolved', { id: 'dsp_5', payment_reference: 'inv_1', amount: 14900, currency: 'USD' });
+    expect(await adapter.ingestWebhook({ body, headers: { 'Cko-Signature': computeCheckoutSignature(body, SECRET) } })).toEqual([]);
+  });
+});
+
 describe('attemptCharge', () => {
   it('posts the stored source token with the idempotency key and reports success', async () => {
     const { fetch, calls } = makeFetch((url) => {

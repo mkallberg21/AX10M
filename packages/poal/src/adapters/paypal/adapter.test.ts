@@ -342,4 +342,59 @@ describe('ingestWebhook — reversals (refund / dispute → payment.reversed)', 
     });
     expect(events).toEqual([]);
   });
+
+  it('normalizes a SELLER-favour CUSTOMER.DISPUTE.RESOLVED to payment.reversal_reverted (kind chargeback, SAME id/amount as CREATED)', async () => {
+    const { fetch } = okFetch();
+    const adapter = new PayPalAdapter({ ...baseCfg, fetch, webhookId: 'WH-123' });
+    const events = await adapter.ingestWebhook({
+      body: JSON.stringify({
+        id: 'ev_d3',
+        event_type: 'CUSTOMER.DISPUTE.RESOLVED',
+        create_time: '2026-08-14T14:00:00Z',
+        resource: {
+          dispute_id: 'PP-D-1',
+          reason: 'MERCHANDISE_OR_SERVICE_NOT_RECEIVED',
+          status: 'RESOLVED',
+          dispute_amount: { value: '149.00', currency_code: 'USD' },
+          // Resolved in the MERCHANT's favour → funds reinstated.
+          dispute_outcome: { outcome_code: 'RESOLVED_SELLER_FAVOUR' },
+          disputed_transactions: [{ seller_transaction_id: 'CAP1', buyer_transaction_id: 'B1' }],
+        },
+      }),
+      headers: txHeaders,
+    });
+    expect(events).toHaveLength(1);
+    const ev = events[0]!;
+    expect(ev.type).toBe('payment.reversal_reverted');
+    expect(ev.processorEventId).toBe('ev_d3');
+    const r = ev.payload as { invoiceId: string; amount: number; currency: string; kind: string };
+    // Reinstatement lands on the SAME recovery invoice id the CREATED reversal used
+    // (seller_transaction_id == capture id == the driven-capture invoice.id fallback).
+    expect(r.invoiceId).toBe('ax10m_inv_CAP1');
+    expect(r.amount).toBe(14900);
+    expect(r.currency).toBe('USD');
+    expect(r.kind).toBe('chargeback');
+  });
+
+  it('does NOT emit for a BUYER-favour CUSTOMER.DISPUTE.RESOLVED (chargeback stands → no-op)', async () => {
+    const { fetch } = okFetch();
+    const adapter = new PayPalAdapter({ ...baseCfg, fetch, webhookId: 'WH-123' });
+    const events = await adapter.ingestWebhook({
+      body: JSON.stringify({
+        id: 'ev_d4',
+        event_type: 'CUSTOMER.DISPUTE.RESOLVED',
+        create_time: '2026-08-14T14:30:00Z',
+        resource: {
+          dispute_id: 'PP-D-2',
+          status: 'RESOLVED',
+          dispute_amount: { value: '149.00', currency_code: 'USD' },
+          // Resolved in the CUSTOMER's favour → the chargeback stands, no reinstatement.
+          dispute_outcome: { outcome_code: 'RESOLVED_BUYER_FAVOUR' },
+          disputed_transactions: [{ seller_transaction_id: 'CAP1' }],
+        },
+      }),
+      headers: txHeaders,
+    });
+    expect(events).toEqual([]);
+  });
 });

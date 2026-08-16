@@ -151,6 +151,27 @@ describe('ingestWebhook', () => {
     expect(p.kind).toBe('refund');
     expect(p.reason).toBe('requested_by_customer');
   });
+
+  it('maps a chargeback_cancelled payment to payment.reversal_reverted (re-credit undoes the chargeback)', async () => {
+    const { fetch } = makeFetch((url, init) => {
+      if (init.method === 'GET' && url.includes('/payments/PM1')) {
+        return res(200, { payments: { id: 'PM1', amount: 14900, currency: 'USD', status: 'confirmed', links: { mandate: 'MD1', customer: 'CU1' }, created_at: '2026-08-14T10:00:00.000Z' } });
+      }
+      return res(404, { error: { message: 'not found' } });
+    });
+    const adapter = new GoCardlessAdapter({ ...baseCfg, fetch });
+    const body = webhookBody('chargeback_cancelled', 'chargeback_cancelled');
+    const events = await adapter.ingestWebhook({ body, headers: { 'webhook-signature': computeGoCardlessSignature(body, SECRET) } });
+    expect(events).toHaveLength(1);
+    const ev = events[0]!;
+    expect(ev.type).toBe('payment.reversal_reverted'); // undoes the prior chargeback reversal
+    const p = ev.payload as { invoiceId: string; amount: number; currency: string; kind: string; reason?: string };
+    expect(p.invoiceId).toBe('ax10m_inv_PM1'); // MUST match the original payment's invoice id
+    expect(p.amount).toBe(14900); // GoCardless amounts are already minor units
+    expect(p.currency).toBe('USD');
+    expect(p.kind).toBe('chargeback');
+    expect(p.reason).toBe('chargeback_cancelled');
+  });
 });
 
 describe('attemptCharge (retry)', () => {

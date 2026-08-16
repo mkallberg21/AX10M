@@ -186,43 +186,17 @@ export class BraintreeAdapter implements ProcessorAdapter {
       return [{ ...base, type: 'invoice.paid', payload: { invoice, attempt } }];
     }
 
-    if (kind === 'dispute_opened') {
-      // A previously-collected payment was charged back → net-recovery / fee clawback.
-      // Braintree's dispute webhook carries <subject><dispute>…<transaction>…</transaction></dispute>.
-      const dispute = xmlInner(subject, 'dispute') ?? '';
-      // The dispute's own <kind> is chargeback | retrieval | pre_arbitration. Only a true
-      // chargeback withdraws funds (a settled reversal); retrieval/pre_arbitration are info
-      // requests / escalations, not a clawback, so we don't emit for those.
-      if ((xmlLeaf(dispute, 'kind') ?? '').toLowerCase() !== 'chargeback') return [];
-      const txn = xmlInner(dispute, 'transaction') ?? '';
-      // CRITICAL back-reference: the disputed transaction's <order-id> is the invoice ref
-      // AX10M stamped at charge time — attemptCharge sets `<order-id> = invoice.processorRef`,
-      // and buildInvoice keys `id = ax10m_inv_${processorRef}`, so `ax10m_inv_${orderId}`
-      // reconstructs the SAME invoice.id the recovery used. Braintree's dispute webhook
-      // exposes a trimmed <transaction> (id, amount, created-at, order-id,
-      // purchase-order-number, payment-instrument-subtype) with NO <subscription-id>, so
-      // <order-id> is the only reliable link back to the recovery. If it's absent (Braintree
-      // renders it as a nil self-closing element → xmlLeaf undefined), the disputed charge
-      // isn't one we can map to a recovery, so we skip rather than fabricate an invoice id.
-      const orderId = xmlLeaf(txn, 'order-id');
-      if (!orderId) return [];
-      // Currency lives at the dispute level, not on the trimmed transaction.
-      const currency = xmlLeaf(dispute, 'currency-iso-code') ?? 'USD';
-      const reversal: ReversalPayload = {
-        invoiceId: `ax10m_inv_${orderId}`,
-        amount: decimalToMinor(xmlLeaf(dispute, 'amount'), currency),
-        currency,
-        kind: 'chargeback',
-        reason: xmlLeaf(dispute, 'reason'),
-      };
-      const disputeId = xmlLeaf(dispute, 'id') ?? orderId;
-      const base = {
-        id: `ax10m_evt_${disputeId}_${occurredAt}`,
-        merchantId: this.config.merchantId,
-        processorEventId: `${kind}:${disputeId}:${occurredAt}`,
-        occurredAt,
-      };
-      return [{ ...base, type: 'payment.reversed', payload: reversal }];
+    // Dispute lifecycle. dispute_opened → the chargeback settled and pulled funds
+    // (payment.reversed); dispute_won → we later won that chargeback and the funds came
+    // back (payment.reversal_reverted, undoing the prior reversal). Both carry the same
+    // <subject><dispute> shape and map back to the recovery the same way, so they share
+    // one parser. dispute_lost is a no-op: the funds already left on dispute_opened, so
+    // there's nothing further to reverse.
+    if (kind === 'dispute_opened' || kind === 'dispute_won') {
+      const parsed = this.parseDisputeReversal(subject, occurredAt, kind);
+      if (!parsed) return [];
+      const type = kind === 'dispute_won' ? 'payment.reversal_reverted' : 'payment.reversed';
+      return [{ ...parsed.base, type, payload: parsed.reversal }];
     }
 
     // Refunds arrive as `credit`-type transactions, but Braintree emits no first-class refund
@@ -307,6 +281,57 @@ export class BraintreeAdapter implements ProcessorAdapter {
   }
 
   // ── mapping helpers ──────────────────────────────────────────────────────────
+
+  /**
+   * Parse a Braintree dispute webhook's <subject><dispute> into a canonical ReversalPayload
+   * plus the shared event base, or null when the dispute isn't a mappable funds movement.
+   *
+   * Shared by dispute_opened (→ payment.reversed) and dispute_won (→ payment.reversal_reverted):
+   * the two webhooks carry an identical <dispute>…<transaction>…</transaction></dispute> shape.
+   *
+   * The dispute's own <kind> is chargeback | retrieval | pre_arbitration. Only a true
+   * chargeback moves funds (a settled reversal); retrieval/pre_arbitration are info requests /
+   * escalations, so we don't emit for those (and a won on a non-chargeback has nothing to undo).
+   *
+   * CRITICAL back-reference: the disputed transaction's <order-id> is the invoice ref AX10M
+   * stamped at charge time — attemptCharge sets `<order-id> = invoice.processorRef`, and
+   * buildInvoice keys `id = ax10m_inv_${processorRef}`, so `ax10m_inv_${orderId}` reconstructs
+   * the SAME invoice.id the recovery used. Braintree's dispute webhook exposes a trimmed
+   * <transaction> (id, amount, created-at, order-id, purchase-order-number,
+   * payment-instrument-subtype) with NO <subscription-id>, so <order-id> is the only reliable
+   * link back to the recovery. If it's absent (Braintree renders it as a nil self-closing
+   * element → xmlLeaf undefined), the disputed charge isn't one we can map to a recovery, so we
+   * return null rather than fabricate an invoice id.
+   */
+  private parseDisputeReversal(
+    subject: string,
+    occurredAt: string,
+    kind: string,
+  ): { reversal: ReversalPayload; base: { id: string; merchantId: string; processorEventId: string; occurredAt: string } } | null {
+    // Braintree's dispute webhook carries <subject><dispute>…<transaction>…</transaction></dispute>.
+    const dispute = xmlInner(subject, 'dispute') ?? '';
+    if ((xmlLeaf(dispute, 'kind') ?? '').toLowerCase() !== 'chargeback') return null;
+    const txn = xmlInner(dispute, 'transaction') ?? '';
+    const orderId = xmlLeaf(txn, 'order-id');
+    if (!orderId) return null;
+    // Currency lives at the dispute level, not on the trimmed transaction.
+    const currency = xmlLeaf(dispute, 'currency-iso-code') ?? 'USD';
+    const reversal: ReversalPayload = {
+      invoiceId: `ax10m_inv_${orderId}`,
+      amount: decimalToMinor(xmlLeaf(dispute, 'amount'), currency),
+      currency,
+      kind: 'chargeback',
+      reason: xmlLeaf(dispute, 'reason'),
+    };
+    const disputeId = xmlLeaf(dispute, 'id') ?? orderId;
+    const base = {
+      id: `ax10m_evt_${disputeId}_${occurredAt}`,
+      merchantId: this.config.merchantId,
+      processorEventId: `${kind}:${disputeId}:${occurredAt}`,
+      occurredAt,
+    };
+    return { reversal, base };
+  }
 
   private buildInvoice(p: {
     ref: string;

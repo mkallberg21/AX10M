@@ -154,7 +154,13 @@ export class GoCardlessAdapter implements ProcessorAdapter {
       // failed/confirmed → invoice.failed/paid; charged_back/refunded → payment.reversed
       // (net-recovery fee-clawback). GoCardless payment lifecycle actions per the API.
       const action = event.action;
-      if (action !== 'failed' && action !== 'confirmed' && action !== 'charged_back' && action !== 'refunded')
+      if (
+        action !== 'failed' &&
+        action !== 'confirmed' &&
+        action !== 'charged_back' &&
+        action !== 'refunded' &&
+        action !== 'chargeback_cancelled'
+      )
         continue;
       const paymentId = event.links?.payment;
       if (!paymentId) continue;
@@ -166,6 +172,8 @@ export class GoCardlessAdapter implements ProcessorAdapter {
         if (!payment) continue;
         if (action === 'charged_back' || action === 'refunded') {
           out.push(this.mapReversalEvent(event, payment));
+        } else if (action === 'chargeback_cancelled') {
+          out.push(this.mapReversalRevertedEvent(event, payment));
         } else {
           out.push(await this.mapPaymentEvent(event, payment));
         }
@@ -263,6 +271,32 @@ export class GoCardlessAdapter implements ProcessorAdapter {
       reason: event.details?.cause ?? event.details?.description,
     };
     return { ...base, type: 'payment.reversed', payload: reversal };
+  }
+
+  /**
+   * A chargeback on a previously-collected payment was CANCELLED → the funds are reinstated and
+   * GoCardless reverts the payment to confirmed/paid_out. This UNDOES the prior `charged_back`
+   * reversal, so we emit the canonical `payment.reversal_reverted` with kind 'chargeback'. Uses the
+   * SAME invoiceId/amount/currency derivation as the charged_back path so the engine can net the
+   * re-credit against the earlier chargeback fee-clawback. (Mirrors Stripe's
+   * charge.dispute.closed status=won → payment.reversal_reverted.)
+   */
+  private mapReversalRevertedEvent(event: GcEvent, payment: GcPayment): CanonicalEvent {
+    const occurredAt = event.created_at ?? payment.created_at ?? new Date(0).toISOString();
+    const base = {
+      id: `ax10m_evt_${event.id ?? payment.id}`,
+      merchantId: this.config.merchantId,
+      processorEventId: event.id ?? '',
+      occurredAt,
+    };
+    const reversal: ReversalPayload = {
+      invoiceId: `ax10m_inv_${payment.id}`,
+      amount: CENTS(payment.amount),
+      currency: payment.currency ?? 'GBP',
+      kind: 'chargeback',
+      reason: event.details?.cause ?? event.details?.description,
+    };
+    return { ...base, type: 'payment.reversal_reverted', payload: reversal };
   }
 
   // ── reconciliation poll (GoCardless is a payment ledger) ─────────────────────

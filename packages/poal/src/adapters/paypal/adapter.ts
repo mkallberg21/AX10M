@@ -143,8 +143,19 @@ interface PpDisputedTransaction {
   reference_id?: string;
 }
 /**
- * A `CUSTOMER.DISPUTE.CREATED` webhook `resource` — a Customer-Disputes-v1 dispute object.
- * modeled on PayPal webhook — CONFIRM.
+ * The `dispute_outcome` object on a resolved Customer-Disputes-v1 dispute.
+ * modeled on PayPal webhook — CONFIRM. `outcome_code` carries the settlement result;
+ * `RESOLVED_SELLER_FAVOUR` == resolved in the MERCHANT's favour (funds reinstated),
+ * `RESOLVED_BUYER_FAVOUR` == resolved in the customer's favour (chargeback stands).
+ */
+interface PpDisputeOutcome {
+  outcome_code?: string;
+  amount_refunded?: PpAmount;
+}
+/**
+ * A `CUSTOMER.DISPUTE.CREATED` / `CUSTOMER.DISPUTE.RESOLVED` webhook `resource` — a
+ * Customer-Disputes-v1 dispute object. modeled on PayPal webhook — CONFIRM.
+ * On RESOLVED, `status` is `RESOLVED` and `dispute_outcome.outcome_code` names the winner.
  */
 interface PpDisputeResource {
   dispute_id?: string;
@@ -152,6 +163,7 @@ interface PpDisputeResource {
   reason?: string;
   status?: string;
   disputed_transactions?: PpDisputedTransaction[];
+  dispute_outcome?: PpDisputeOutcome; // modeled on PayPal webhook — CONFIRM
 }
 
 /** Parse a PayPal MAJOR-unit decimal string ("149.00") into integer minor units (14900). */
@@ -300,10 +312,7 @@ export class PayPalAdapter implements ProcessorAdapter {
         // later resolution in the merchant's favour is a follow-up, not modeled here.
         // modeled on PayPal webhook — CONFIRM
         const dispute = resource as unknown as PpDisputeResource;
-        const tx = (dispute.disputed_transactions ?? []).find(
-          (t) => t.seller_transaction_id || t.invoice_number || t.custom,
-        );
-        const ref = tx?.invoice_number ?? tx?.custom ?? tx?.seller_transaction_id;
+        const ref = this.disputeInvoiceRef(dispute);
         const amount = majorToMinor(dispute.dispute_amount?.value);
         if (!ref || amount <= 0) return []; // can't map to a recovery invoice id → skip
         const reversal: ReversalPayload = {
@@ -314,6 +323,33 @@ export class PayPalAdapter implements ProcessorAdapter {
           reason: dispute.reason,
         };
         return [envelope('payment.reversed', reversal)];
+      }
+      case 'CUSTOMER.DISPUTE.RESOLVED': {
+        // A dispute reached a final outcome. Reinstate ONLY when it settled in the SELLER's
+        // favour — the funds return, undoing the chargeback reversal we emitted on CREATED →
+        // `payment.reversal_reverted` (net recovery rises, the clawed-back fee re-accrues).
+        // A buyer-favour resolution means the chargeback STANDS → no-op. We read the outcome
+        // from `dispute_outcome.outcome_code` (RESOLVED_SELLER_FAVOUR vs RESOLVED_BUYER_FAVOUR).
+        // invoiceId + amount are derived EXACTLY as the CREATED path (same disputed_transactions
+        // precedence + dispute_amount via majorToMinor) so the reinstatement round-trips to the
+        // same `ax10m_inv_…` id the reversal used.
+        // modeled on PayPal webhook — CONFIRM
+        const dispute = resource as unknown as PpDisputeResource;
+        const outcome = dispute.dispute_outcome?.outcome_code; // modeled on PayPal webhook — CONFIRM
+        // Only a seller/merchant-favour outcome reinstates funds; anything else (buyer favour,
+        // partial payout, canceled, unmapped) leaves the chargeback in place → skip.
+        if (outcome !== 'RESOLVED_SELLER_FAVOUR') return [];
+        const ref = this.disputeInvoiceRef(dispute);
+        const amount = majorToMinor(dispute.dispute_amount?.value);
+        if (!ref || amount <= 0) return []; // can't map to a recovery invoice id → skip
+        const reinstatement: ReversalPayload = {
+          invoiceId: `ax10m_inv_${ref}`,
+          amount,
+          currency: dispute.dispute_amount?.currency_code ?? 'USD',
+          kind: 'chargeback',
+          reason: dispute.reason ?? 'dispute_resolved_seller_favour',
+        };
+        return [envelope('payment.reversal_reverted', reinstatement)];
       }
       case 'BILLING.SUBSCRIPTION.CANCELLED': {
         return [envelope('subscription.updated', {
@@ -445,6 +481,21 @@ export class PayPalAdapter implements ProcessorAdapter {
       if (cap) return cap;
     }
     return undefined;
+  }
+
+  /**
+   * Resolve a dispute's merchant-invoice reference from its `disputed_transactions[]`, mirroring
+   * the CREATED→RESOLVED precedence: Disputes v1 names the merchant refs `invoice_number`/`custom`
+   * (vs `invoice_id`/`custom_id` on the capture), and `seller_transaction_id` == the capture id
+   * (the value `mapResourceInvoice` falls back to for a driven recovery). Shared by the CREATED
+   * (reverse) and RESOLVED (reinstate) paths so both round-trip to the SAME `ax10m_inv_…` id.
+   * modeled on PayPal webhook — CONFIRM
+   */
+  private disputeInvoiceRef(dispute: PpDisputeResource): string | undefined {
+    const tx = (dispute.disputed_transactions ?? []).find(
+      (t) => t.seller_transaction_id || t.invoice_number || t.custom,
+    );
+    return tx?.invoice_number ?? tx?.custom ?? tx?.seller_transaction_id;
   }
 
   private mapResourceInvoice(resource: PpResource, occurredAt: string, failed: boolean): Invoice {

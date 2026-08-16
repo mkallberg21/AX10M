@@ -63,10 +63,10 @@ function notificationBody(kind: string, opts: { status: string; code?: string; e
 // The disputed transaction's <order-id> is the invoice ref AX10M stamped at charge time
 // (attemptCharge sets order-id = invoice.processorRef = the subscription ref), so it maps back
 // to the recovery's invoice id. Currency is at the dispute level; there is NO <subscription-id>.
-function disputeBody(opts: { disputeKind?: string; orderId?: string | null; amount?: string; currency?: string; reason?: string; disputeId?: string } = {}): string {
+function disputeBody(opts: { kind?: string; disputeKind?: string; orderId?: string | null; amount?: string; currency?: string; reason?: string; disputeId?: string } = {}): string {
   const orderIdEl = opts.orderId === null ? '<order-id nil="true"/>' : `<order-id>${opts.orderId ?? 'sub_1'}</order-id>`;
   const xml =
-    `<notification><kind>dispute_opened</kind>` +
+    `<notification><kind>${opts.kind ?? 'dispute_opened'}</kind>` +
     `<timestamp type="datetime">2026-08-14T10:00:00Z</timestamp>` +
     `<subject><dispute>` +
     `<id>${opts.disputeId ?? 'dsp_1'}</id>` +
@@ -161,6 +161,39 @@ describe('ingestWebhook', () => {
     expect(r.amount).toBe(4999); // decimal 49.99 → minor units
     expect(r.currency).toBe('USD');
     expect(r.reason).toBe('fraud');
+  });
+
+  it('normalizes a dispute_won chargeback into a payment.reversal_reverted keyed on the recovery invoice id', async () => {
+    const { fetch } = makeFetch(() => res(200, ''));
+    const adapter = new BraintreeAdapter({ ...baseCfg, fetch });
+    const events = await adapter.ingestWebhook({
+      body: disputeBody({ kind: 'dispute_won', orderId: 'sub_1', amount: '49.99', currency: 'USD', reason: 'fraud' }),
+      headers: {},
+    });
+    expect(events).toHaveLength(1);
+    const ev = events[0]!;
+    expect(ev.type).toBe('payment.reversal_reverted');
+    const r = ev.payload as ReversalPayload;
+    expect(r.kind).toBe('chargeback');
+    // Same <order-id> mapping as dispute_opened → undoes the prior reversal on the same invoice.
+    expect(r.invoiceId).toBe('ax10m_inv_sub_1');
+    expect(r.amount).toBe(4999); // decimal 49.99 → minor units
+    expect(r.currency).toBe('USD');
+    expect(r.reason).toBe('fraud');
+  });
+
+  it('treats dispute_lost as a no-op (funds already reversed on dispute_opened)', async () => {
+    const { fetch } = makeFetch(() => res(200, ''));
+    const adapter = new BraintreeAdapter({ ...baseCfg, fetch });
+    const events = await adapter.ingestWebhook({ body: disputeBody({ kind: 'dispute_lost' }), headers: {} });
+    expect(events).toHaveLength(0);
+  });
+
+  it('skips a dispute_won whose transaction has no order-id (unmappable to a recovery)', async () => {
+    const { fetch } = makeFetch(() => res(200, ''));
+    const adapter = new BraintreeAdapter({ ...baseCfg, fetch });
+    const events = await adapter.ingestWebhook({ body: disputeBody({ kind: 'dispute_won', orderId: null }), headers: {} });
+    expect(events).toHaveLength(0);
   });
 
   it('skips a dispute whose transaction has no order-id (unmappable to a recovery)', async () => {
