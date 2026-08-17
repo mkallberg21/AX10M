@@ -30,6 +30,9 @@ import { OnboardingService } from '../onboarding/onboarding.service.js';
         if (featureStore) service.useFeatureStore(featureStore);
         const champion = await loadActiveChampion({ env: process.env });
         if (champion) service.useChampion(champion);
+        // Opt-in: enable the fully-learned LinUCB contextual-bandit policy (online learning) when
+        // AX10M_BANDIT_POLICY=true. Off by default → the fixed cost/compliance-aware objective.
+        if (process.env.AX10M_BANDIT_POLICY === 'true') service.useBanditPolicy();
         const { agent, config, sender, live } = buildDunningComms(process.env);
         service.useDunningAgent(agent, config);
         if (sender) service.useDunningSender(sender, { live });

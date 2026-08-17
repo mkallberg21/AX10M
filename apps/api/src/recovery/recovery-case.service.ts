@@ -18,11 +18,14 @@ import {
 import {
   BOOTSTRAP_RECOVERABILITY_WEIGHTS,
   CostAwarePolicy,
+  DEFAULT_COST_MODEL,
+  LinUcbBanditPolicy,
   LogisticRecoverability,
   planRetrySequence,
   RecoveryFeatureStore,
   type AvailableMethod,
   type ComplianceContext,
+  type ContextualBanditPolicy,
   type RecoverabilityWeights,
   type RecoveryDecision,
   type RecoveryFeatures,
@@ -95,7 +98,28 @@ export class RecoveryCaseService {
   // seam means neither touches this wiring. Starts on the bootstrap prior; useChampion() swaps in
   // a retrained model loaded from the persisted model store.
   private recoverabilityModel = new LogisticRecoverability(BOOTSTRAP_RECOVERABILITY_WEIGHTS);
-  private policy: RetryPolicy = new CostAwarePolicy(this.recoverabilityModel);
+  // When true, the decision surface is the fully-learned LinUCB contextual bandit (learns per-action
+  // reward online + explores); otherwise the fixed cost/compliance-aware objective. Off by default:
+  // an exploring policy should run once there is live charge volume feeding update() (see learnOnline).
+  private banditEnabled = false;
+  private policy: RetryPolicy = this.buildPolicy();
+
+  /** Build the active policy: LinUCB bandit when enabled, else the cost/compliance-aware objective. */
+  private buildPolicy(): RetryPolicy {
+    return this.banditEnabled ? new LinUcbBanditPolicy(this.recoverabilityModel) : new CostAwarePolicy(this.recoverabilityModel);
+  }
+
+  /**
+   * Enable the fully-learned LinUCB contextual-bandit policy (replaces the cold-start objective).
+   * It starts grounded on the cost-aware objective and improves online from realized charge
+   * rewards (see learnOnline). Call before ingest; opt-in because exploration should only run when
+   * it can actually learn from live volume.
+   */
+  useBanditPolicy(): void {
+    this.banditEnabled = true;
+    this.policy = this.buildPolicy();
+    this.logger.log('Recovery brain: LinUCB contextual-bandit policy ENABLED (online learning on).');
+  }
 
   /**
    * Swap the recoverability model to a retrained champion (loaded from the persisted
@@ -104,8 +128,20 @@ export class RecoveryCaseService {
    */
   useChampion(weights: RecoverabilityWeights): void {
     this.recoverabilityModel = new LogisticRecoverability(weights);
-    this.policy = new CostAwarePolicy(this.recoverabilityModel);
+    this.policy = this.buildPolicy();
     this.logger.log(`Loaded retrained champion (meta: ${JSON.stringify(weights.meta ?? {})}).`);
+  }
+
+  /**
+   * Feed one realized charge outcome back to the policy (online learning). A no-op unless the
+   * policy is a contextual bandit. Reward is realized NET cash: recovered amount − attempt fee on
+   * success, − attempt fee on failure. Only live charges produce a reward; shadow mode never calls
+   * this (no money moved → no signal).
+   */
+  private learnOnline(features: RecoveryFeatures, decision: RecoveryDecision, outcome: string, amountMinor: number): void {
+    if (!('update' in this.policy) || (outcome !== 'succeeded' && outcome !== 'failed')) return;
+    const reward = outcome === 'succeeded' ? amountMinor - DEFAULT_COST_MODEL.attemptFeeMinor : -DEFAULT_COST_MODEL.attemptFeeMinor;
+    (this.policy as ContextualBanditPolicy).update(features, decision, reward);
   }
 
   // Enrichment layer + data flywheel: turns a raw failure into the high-signal feature
@@ -691,6 +727,8 @@ export class RecoveryCaseService {
       globallyOptedOut: false,
     };
     const exec = await this.attemptRecovery({ adapter, invoice, method, proposed, attemptNumber, shadow, nowIso: params.nowIso });
+    // Online learning: feed the realized charge outcome back to the bandit (no-op for the fixed policy).
+    this.learnOnline(features, decision, exec.outcome ?? 'pending', invoice.amount.amount);
     return { action: exec.result, outcome: exec.outcome, decision };
   }
 
