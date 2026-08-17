@@ -51,6 +51,12 @@ export async function runBillingJob(opts: BillingJobOptions = {}): Promise<Billi
   // resolves the payment method + customer from the merchant's billing account.
   const charger = opts.charger ?? buildBillingCharger(env, (merchantId) => billingRepo.accountForMerchant(merchantId));
 
+  // Onboarding dates (drive the holdout taper) — the merchant's account createdAt when opted in,
+  // else runBilling falls back to the earliest ledger event.
+  const accounts = await billingRepo.listAccounts();
+  const onboardedAt: Record<string, string> = {};
+  for (const a of accounts) onboardedAt[a.merchantId] = a.createdAt;
+
   const { summary, statements } = await runBilling({
     entries,
     ledger: entries,
@@ -62,7 +68,10 @@ export async function runBillingJob(opts: BillingJobOptions = {}): Promise<Billi
     nowIso,
     live: env.AX10M_LIVE_BILLING === 'true',
     charger,
+    onboardedAt,
   });
+
+  const resultByMerchant = new Map(summary.merchants.map((m) => [m.merchantId, m]));
 
   // Generate a human-facing invoice for each billable statement whose merchant has opted in
   // (has a BillingAccount). The invoice amount is taken verbatim from the signed statement, so it
@@ -73,14 +82,20 @@ export async function runBillingJob(opts: BillingJobOptions = {}): Promise<Billi
   let noticesSent = 0;
   for (const signed of statements) {
     const r = signed.result;
-    if (!r.billable || r.fee.amount <= 0) continue;
+    const mr = resultByMerchant.get(signed.merchantId);
+    // Issue an invoice only when the lift is billable AND something is owed after the holdout
+    // credit (during certification net ≈ $0 → the statement stands, but there's nothing to invoice).
+    if (!r.billable || !mr || mr.netBilledMinor <= 0) continue;
     const account = await billingRepo.accountForMerchant(signed.merchantId);
     if (!account) continue; // not opted in yet → statement recorded, no invoice
     const statement: StatementForInvoice = {
       merchantId: signed.merchantId,
       period: signed.period,
       currency: signed.currency,
-      feeMinor: r.fee.amount,
+      feeMinor: mr.netBilledMinor, // NET owed after the holdout credit — the invoice total
+      grossFeeMinor: mr.feeMinor,
+      holdoutCreditMinor: mr.holdoutCreditMinor,
+      estimatedHoldoutCostMinor: mr.estimatedHoldoutCostMinor,
       upliftLowerMinor: r.billableIncrement.amount,
       statementHash: signed.statementHash,
       billable: r.billable,
@@ -94,6 +109,6 @@ export async function runBillingJob(opts: BillingJobOptions = {}): Promise<Billi
   }
 
   const billable = summary.merchants.filter((m) => m.feeMinor > 0).length;
-  logger.log(`Billed ${summary.period}: ${summary.merchants.length} merchant(s), ${billable} with a positive fee, ${invoicesIssued} invoice(s) issued to opted-in merchants (${noticesSent} notice(s) sent), total fee ${summary.totalFeeMinor} minor (live=${summary.live}, collected ${summary.totalChargedMinor}).`);
+  logger.log(`Billed ${summary.period}: ${summary.merchants.length} merchant(s), ${billable} with a positive fee, ${invoicesIssued} invoice(s) issued to opted-in merchants (${noticesSent} notice(s) sent), gross fee ${summary.totalFeeMinor} minor, net billed after holdout credit ${summary.totalNetBilledMinor} minor (live=${summary.live}, collected ${summary.totalChargedMinor}).`);
   return summary;
 }

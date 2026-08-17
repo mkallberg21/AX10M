@@ -81,31 +81,53 @@ describe('computeMerchantStatement + signing + watermark', () => {
 describe('runBilling', () => {
   const signer = createEd25519Signer('test').signer;
 
+  // A merchant onboarded > the 90-day certification window ago → tapered 2% holdout → net billed > 0.
+  const TAPERED = { m1: '2026-01-01T00:00:00.000Z' };
+
   it('records an uplift.statement per merchant and does NOT charge by default', async () => {
     const entries = cohort('m1', 300, 8_000, 2_000);
     const appended: LedgerAppend[] = [];
-    const { summary } = await runBilling({ entries, ledger: [], ledgerHead: 'h', append: async (e) => void appended.push(e), signer, nowIso: NOW, config: RELAXED });
+    const { summary } = await runBilling({ entries, ledger: [], ledgerHead: 'h', append: async (e) => void appended.push(e), signer, nowIso: NOW, config: RELAXED, onboardedAt: TAPERED });
     expect(summary.merchants).toHaveLength(1);
     expect(summary.merchants[0]!.feeMinor).toBeGreaterThan(0);
     expect(summary.merchants[0]!.charge).toBeUndefined(); // not live → no charge
     expect(appended).toHaveLength(1);
     expect(appended[0]).toMatchObject({ type: 'uplift.statement', merchantId: 'm1' });
     expect((appended[0]!.detail as { lowerDollarsCum?: number }).lowerDollarsCum).toBeGreaterThan(0);
+    // Holdout economics disclosed on the statement.
+    const detail = appended[0]!.detail as { holdoutFraction?: number; estimatedHoldoutCost?: number; holdoutCredit?: number; netBilled?: number };
+    expect(detail.holdoutFraction).toBe(0.02);
+    expect(detail.netBilled).toBeGreaterThan(0);
+    expect(detail.estimatedHoldoutCost).toBeGreaterThan(0);
   });
 
-  it('collects the fee only when live AND a charger is wired', async () => {
+  it('during the certification window (full 10% holdout) the credit offsets the fee → net billed ~ $0', async () => {
+    const entries = cohort('m1', 300, 8_000, 2_000);
+    // onboardedAt inside the period → still certifying → 10% holdout → credit ≈ fee.
+    const { summary } = await runBilling({ entries, ledger: [], ledgerHead: 'h', signer, nowIso: NOW, config: RELAXED, onboardedAt: { m1: '2026-07-01T00:00:00.000Z' } });
+    const m = summary.merchants[0]!;
+    expect(m.holdoutFraction).toBe(0.1);
+    expect(m.feeMinor).toBeGreaterThan(0); // gross fee is positive
+    // The holdout credit offsets the large majority of the fee during certification.
+    expect(m.holdoutCreditMinor).toBeGreaterThan(m.feeMinor * 0.8);
+    expect(m.netBilledMinor).toBeLessThan(m.feeMinor * 0.2);
+  });
+
+  it('collects the NET fee (after holdout credit) only when live AND a charger is wired', async () => {
     const entries = cohort('m1', 300, 8_000, 2_000);
     const charges: number[] = [];
     const charger: BillingCharger = { async charge(req): Promise<BillingChargeReceipt> { charges.push(req.amountMinor); return { status: 'charged', provider: 'test', reference: 'ch_1' }; } };
-    const { summary } = await runBilling({ entries, ledger: [], ledgerHead: 'h', signer, nowIso: NOW, live: true, charger, config: RELAXED });
+    const { summary } = await runBilling({ entries, ledger: [], ledgerHead: 'h', signer, nowIso: NOW, live: true, charger, config: RELAXED, onboardedAt: TAPERED });
+    expect(summary.merchants[0]!.netBilledMinor).toBeGreaterThan(0);
+    expect(summary.merchants[0]!.netBilledMinor).toBeLessThan(summary.merchants[0]!.feeMinor); // credit applied
     expect(summary.merchants[0]!.charge?.status).toBe('charged');
-    expect(charges[0]).toBe(summary.merchants[0]!.feeMinor);
-    expect(summary.totalChargedMinor).toBe(summary.totalFeeMinor);
+    expect(charges[0]).toBe(summary.merchants[0]!.netBilledMinor); // charged the NET, not the gross
+    expect(summary.totalChargedMinor).toBe(summary.totalNetBilledMinor);
   });
 
   it('the default NoopBillingCharger collects nothing even when live', async () => {
     const entries = cohort('m1', 300, 8_000, 2_000);
-    const { summary } = await runBilling({ entries, ledger: [], ledgerHead: 'h', signer, nowIso: NOW, live: true, charger: new NoopBillingCharger(), config: RELAXED });
+    const { summary } = await runBilling({ entries, ledger: [], ledgerHead: 'h', signer, nowIso: NOW, live: true, charger: new NoopBillingCharger(), config: RELAXED, onboardedAt: TAPERED });
     expect(summary.merchants[0]!.charge?.status).toBe('skipped');
     expect(summary.totalChargedMinor).toBe(0);
   });

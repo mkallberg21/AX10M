@@ -49,6 +49,8 @@ export interface Invoice {
   poNumber?: string;
   /** AX10M's remittance details (bank / pay-link), supplied by config. */
   remitTo: string;
+  /** Estimated recovery the merchant forwent on the held-out control group (disclosure, minor units). */
+  estimatedHoldoutCostMinor?: MinorUnits;
   billTo: {
     legalEntityName: string;
     address: PostalAddress;
@@ -66,12 +68,18 @@ export interface StatementForInvoice {
   merchantId: string;
   period: string; // YYYY-MM
   currency: CurrencyCode;
-  /** The billable fee (12% of proven uplift), minor units. */
+  /** The NET amount owed after any holdout credit (minor units) — the invoice total. */
   feeMinor: MinorUnits;
   /** The proven lower-bound incremental recovery this period (fee basis), minor units. */
   upliftLowerMinor: MinorUnits;
   statementHash: string;
   billable: boolean;
+  /** The gross fee (12% of proven lift) before the holdout credit. Defaults to feeMinor. */
+  grossFeeMinor?: MinorUnits;
+  /** Holdout credit applied against the fee (minor units). */
+  holdoutCreditMinor?: MinorUnits;
+  /** Estimated recovery forgone on the held-out control group (disclosure, minor units). */
+  estimatedHoldoutCostMinor?: MinorUnits;
 }
 
 /** Deterministic invoice number, unique per merchant per period. */
@@ -92,12 +100,25 @@ export function buildInvoice(params: {
 }): Invoice {
   const { account, statement, issuedAt, remitTo } = params;
   const fs = account.feeSchedule;
-  const line: InvoiceLineItem = {
-    description: `AX10M recovery uplift fee — ${statement.period} (${Math.round(fs.feeRate * 100)}% of proven incremental recovery)`,
-    upliftMeasuredMinor: statement.upliftLowerMinor,
-    feeRate: fs.feeRate,
-    amountMinor: statement.feeMinor,
-  };
+  const grossFee = statement.grossFeeMinor ?? statement.feeMinor;
+  const credit = statement.holdoutCreditMinor ?? 0;
+  const lineItems: InvoiceLineItem[] = [
+    {
+      description: `AX10M recovery uplift fee — ${statement.period} (${Math.round(fs.feeRate * 100)}% of proven incremental recovery)`,
+      upliftMeasuredMinor: statement.upliftLowerMinor,
+      feeRate: fs.feeRate,
+      amountMinor: grossFee,
+    },
+  ];
+  if (credit > 0) {
+    lineItems.push({
+      description: `Holdout credit — recovery forgone on your held-out control group this period (est.)`,
+      upliftMeasuredMinor: statement.estimatedHoldoutCostMinor ?? credit,
+      feeRate: 0,
+      amountMinor: -credit,
+    });
+  }
+  // The net owed is the fee minus the holdout credit (what the merchant is actually billed).
   const subtotal = statement.feeMinor;
   return {
     invoiceNumber: invoiceNumberFor(statement.merchantId, statement.period),
@@ -107,12 +128,13 @@ export function buildInvoice(params: {
     issuedAt,
     dueAt: addDaysIso(issuedAt, fs.paymentTermsDays),
     currency: statement.currency,
-    lineItems: [line],
+    lineItems,
     subtotalMinor: subtotal,
     financeChargeMinor: 0,
     totalDueMinor: subtotal,
     poNumber: account.poNumber,
     remitTo,
+    estimatedHoldoutCostMinor: statement.estimatedHoldoutCostMinor,
     billTo: {
       legalEntityName: account.legalEntityName,
       address: account.billingAddress,
