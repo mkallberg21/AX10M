@@ -62,6 +62,7 @@ tested end to end.**
 [Pricing summary](docs/PRICING-SUMMARY.md) · [Security & procurement](docs/SECURITY-PROCUREMENT.md) ·
 [SIG/CAIQ pre-fill](docs/SIG-CAIQ-PREFILL.md) · [DPA template](docs/DPA-TEMPLATE.md) *(draft — counsel review)* ·
 [Case-study template](docs/CASE-STUDY-TEMPLATE.md) · [Stripe App listing](docs/STRIPE-APP-LISTING.md) ·
+[Marketplace prioritization](docs/MARKETPLACE-PRIORITIZATION.md) · [Go-live readiness](docs/GO-LIVE-READINESS.md) ·
 [Terms](packages/billing/TERMS.md) *(draft — counsel review)*.
 
 ## Monorepo layout
