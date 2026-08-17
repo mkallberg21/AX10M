@@ -11,6 +11,7 @@ import { ConnectionRepository } from './connection-repo.js';
 import { CredentialAttemptRepository } from './credential-attempt-repo.js';
 import { DunningSendRepository } from './dunning-send-repo.js';
 import { BillingRepository } from './billing-repo.js';
+import { BanditStateRepository } from './bandit-state-repo.js';
 import { buildBillingAccount, buildAcceptance, buildInvoice, acceptanceHashMatches, type OptInInput } from '@ax10m/billing';
 import { createEd25519Signer } from '@ax10m/attribution';
 import { loadDemoSeed } from './seed.js';
@@ -201,6 +202,27 @@ describe('billing repository — accounts, signed acceptances, invoices; restart
     const inv = await repo2.getInvoice(invoice.invoiceNumber);
     expect(inv?.totalDueMinor).toBe(12_000);
     expect((await repo2.invoicesForMerchant('mrc_1'))).toHaveLength(1);
+    await handle.close();
+  });
+});
+
+describe('bandit-state repository — flywheel state, restart-safe', () => {
+  it('saves and reloads a named bandit state across a restart, upserting on the same name', async () => {
+    const dir = newTmpDir();
+    let handle: DbHandle = await createPglite(dir);
+    await applyMigrations(handle.db);
+
+    const repo1 = new BanditStateRepository(handle.db);
+    expect(await repo1.get('global')).toBeUndefined();
+    await repo1.save('global', { version: 1, arms: { retry: { n: 5 } } }, 5, '2026-08-16T00:00:00.000Z');
+    await repo1.save('global', { version: 1, arms: { retry: { n: 42 } } }, 42, '2026-08-16T01:00:00.000Z'); // upsert
+    await handle.close();
+
+    handle = await createPglite(dir);
+    const repo2 = new BanditStateRepository(handle.db);
+    const doc = await repo2.get('global');
+    expect((doc as { arms?: { retry?: { n?: number } } }).arms?.retry?.n).toBe(42); // latest survived the restart
+    expect(await repo2.get('other')).toBeUndefined();
     await handle.close();
   });
 });

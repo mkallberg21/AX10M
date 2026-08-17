@@ -61,7 +61,10 @@ export const DEFAULT_LINUCB_OPTIONS: LinUcbOptions = {
 };
 
 interface ArmState {
-  /** Inverse of A = λI + Σ xxᵀ (d×d). */
+  /** A = λI + Σ xxᵀ (d×d). Kept alongside its inverse so state is SERIALIZABLE and MERGEABLE
+   *  (A is additive across observations; the inverse is not). */
+  a: number[][];
+  /** Inverse of A (d×d) — kept incrementally (Sherman–Morrison) for O(d²) scoring. */
   aInv: number[][];
   /** Σ r·x (length d), reward in scaled units. */
   b: number[];
@@ -69,14 +72,64 @@ interface ArmState {
   n: number;
 }
 
-function scaledIdentityInverse(d: number, lambda: number): number[][] {
+/** Serializable snapshot of one arm's sufficient statistics. */
+export interface BanditArmSnapshot {
+  a: number[][];
+  b: number[];
+  n: number;
+}
+
+/** Serializable bandit state — the persisted, cross-merchant flywheel model. */
+export interface LinUcbBanditState {
+  version: 1;
+  dim: number;
+  lambda: number;
+  arms: Record<BanditArm, BanditArmSnapshot>;
+}
+
+function scaledIdentity(d: number, value: number): number[][] {
   const m: number[][] = [];
-  const inv = 1 / lambda;
   for (let i = 0; i < d; i++) {
     m.push(new Array<number>(d).fill(0));
-    m[i]![i] = inv;
+    m[i]![i] = value;
   }
   return m;
+}
+
+function cloneMatrix(m: number[][]): number[][] {
+  return m.map((row) => row.slice());
+}
+
+/** Gauss–Jordan inverse of a d×d matrix (used at load/merge time, not per decision). */
+function invertMatrix(src: number[][]): number[][] {
+  const d = src.length;
+  const a = src.map((row) => row.slice());
+  const inv = scaledIdentity(d, 1);
+  for (let col = 0; col < d; col++) {
+    // Partial pivot for numerical stability.
+    let pivot = col;
+    for (let r = col + 1; r < d; r++) if (Math.abs(a[r]![col]!) > Math.abs(a[pivot]![col]!)) pivot = r;
+    if (pivot !== col) {
+      [a[col], a[pivot]] = [a[pivot]!, a[col]!];
+      [inv[col], inv[pivot]] = [inv[pivot]!, inv[col]!];
+    }
+    const p = a[col]![col]!;
+    if (p === 0) continue; // singular column — leave as-is (regularized A is PD, shouldn't happen)
+    for (let j = 0; j < d; j++) {
+      a[col]![j]! /= p;
+      inv[col]![j]! /= p;
+    }
+    for (let r = 0; r < d; r++) {
+      if (r === col) continue;
+      const factor = a[r]![col]!;
+      if (factor === 0) continue;
+      for (let j = 0; j < d; j++) {
+        a[r]![j]! -= factor * a[col]![j]!;
+        inv[r]![j]! -= factor * inv[col]![j]!;
+      }
+    }
+  }
+  return inv;
 }
 
 function matVec(m: number[][], v: number[]): number[] {
@@ -122,9 +175,15 @@ export class LinUcbBanditPolicy implements ContextualBanditPolicy {
     opts: Partial<LinUcbOptions> = {},
   ) {
     this.opts = { ...DEFAULT_LINUCB_OPTIONS, ...opts };
-    this.arms = {
-      retry: { aInv: scaledIdentityInverse(FEATURE_DIM, this.opts.lambda), b: new Array<number>(FEATURE_DIM).fill(0), n: 0 },
-      card_update_comms: { aInv: scaledIdentityInverse(FEATURE_DIM, this.opts.lambda), b: new Array<number>(FEATURE_DIM).fill(0), n: 0 },
+    this.arms = { retry: this.freshArm(), card_update_comms: this.freshArm() };
+  }
+
+  private freshArm(): ArmState {
+    return {
+      a: scaledIdentity(FEATURE_DIM, this.opts.lambda), // A₀ = λI
+      aInv: scaledIdentity(FEATURE_DIM, 1 / this.opts.lambda), // A₀⁻¹ = (1/λ)I
+      b: new Array<number>(FEATURE_DIM).fill(0),
+      n: 0,
     };
   }
 
@@ -200,9 +259,38 @@ export class LinUcbBanditPolicy implements ContextualBanditPolicy {
     const state = this.arms[arm];
     const x = encodeFeatures(features);
     const r = realizedRewardMinor / this.opts.rewardScaleMinor;
-    shermanMorrisonUpdate(state.aInv, x);
-    for (let i = 0; i < FEATURE_DIM; i++) state.b[i]! += r * x[i]!;
+    shermanMorrisonUpdate(state.aInv, x); // A⁻¹ for scoring
+    for (let i = 0; i < FEATURE_DIM; i++) {
+      const xi = x[i]!;
+      if (xi !== 0) {
+        const arow = state.a[i]!;
+        for (let j = 0; j < FEATURE_DIM; j++) arow[j]! += xi * x[j]!; // A += xxᵀ (mergeable stat)
+      }
+      state.b[i]! += r * xi;
+    }
     state.n += 1;
+  }
+
+  /** Serialize the learned state (the persisted, poolable flywheel model). */
+  snapshot(): LinUcbBanditState {
+    return {
+      version: 1,
+      dim: FEATURE_DIM,
+      lambda: this.opts.lambda,
+      arms: {
+        retry: { a: cloneMatrix(this.arms.retry.a), b: this.arms.retry.b.slice(), n: this.arms.retry.n },
+        card_update_comms: { a: cloneMatrix(this.arms.card_update_comms.a), b: this.arms.card_update_comms.b.slice(), n: this.arms.card_update_comms.n },
+      },
+    };
+  }
+
+  /** Restore learned state (e.g. loaded from the store at startup). Recomputes A⁻¹ once. */
+  restore(state: LinUcbBanditState): void {
+    if (state.dim !== FEATURE_DIM) throw new Error(`LinUcbBanditPolicy.restore: dim ${state.dim} != FEATURE_DIM ${FEATURE_DIM}`);
+    for (const arm of ARMS) {
+      const s = state.arms[arm];
+      this.arms[arm] = { a: cloneMatrix(s.a), aInv: invertMatrix(s.a), b: s.b.slice(), n: s.n };
+    }
   }
 
   /** Learned + prior-blended net value (minor) and its UCB for an arm at context x. */
@@ -237,3 +325,40 @@ function selectMethod(features: RecoveryFeatures, methods: AvailableMethod[] | u
 
 // Re-export so callers can name the action kind alongside the policy.
 export type { RecoveryActionKind };
+
+// ── Cross-merchant flywheel: persistable, mergeable state ───────────────────────
+
+/** An empty (prior-only) bandit state — the baseline when nothing is persisted yet. */
+export function emptyBanditState(lambda = DEFAULT_LINUCB_OPTIONS.lambda): LinUcbBanditState {
+  const arm = (): BanditArmSnapshot => ({ a: scaledIdentity(FEATURE_DIM, lambda), b: new Array<number>(FEATURE_DIM).fill(0), n: 0 });
+  return { version: 1, dim: FEATURE_DIM, lambda, arms: { retry: arm(), card_update_comms: arm() } };
+}
+
+/**
+ * Merge a local DELTA into the persisted flywheel state, additively:
+ *   merged = persisted + (current − baseline)
+ * The sufficient statistics A (= λI + Σxxᵀ) and b (= Σr·x) are additive across observations, and
+ * the delta (current − baseline) is a pure sum of new observations (the shared λI cancels), so two
+ * processes' contributions combine correctly. This is how the API and the worker pool their
+ * learning into ONE cross-merchant model. (Under true concurrency the read-modify-write around
+ * this still needs a row lock — a documented hardening follow-up.)
+ */
+export function mergeBanditDelta(persisted: LinUcbBanditState, current: LinUcbBanditState, baseline: LinUcbBanditState): LinUcbBanditState {
+  const d = persisted.dim;
+  const mergeArm = (p: BanditArmSnapshot, c: BanditArmSnapshot, base: BanditArmSnapshot): BanditArmSnapshot => {
+    const a = cloneMatrix(p.a);
+    for (let i = 0; i < d; i++) for (let j = 0; j < d; j++) a[i]![j]! += c.a[i]![j]! - base.a[i]![j]!;
+    const b = p.b.slice();
+    for (let i = 0; i < d; i++) b[i]! += c.b[i]! - base.b[i]!;
+    return { a, b, n: p.n + (c.n - base.n) };
+  };
+  return {
+    version: 1,
+    dim: d,
+    lambda: persisted.lambda,
+    arms: {
+      retry: mergeArm(persisted.arms.retry, current.arms.retry, baseline.arms.retry),
+      card_update_comms: mergeArm(persisted.arms.card_update_comms, current.arms.card_update_comms, baseline.arms.card_update_comms),
+    },
+  };
+}

@@ -105,6 +105,17 @@ const MIGRATIONS: Migration[] = [
       `CREATE INDEX IF NOT EXISTS idx_billing_invoices_merchant ON billing_invoices (merchant_id)`,
     ],
   },
+  {
+    name: '0006_bandit_state',
+    statements: [
+      `CREATE TABLE IF NOT EXISTS bandit_state (
+        name text PRIMARY KEY,
+        doc jsonb NOT NULL,
+        updates integer NOT NULL DEFAULT 0,
+        updated_at text NOT NULL
+      )`,
+    ],
+  },
 ];
 
 /** Apply all pending migrations. Returns the names actually run. Idempotent. */

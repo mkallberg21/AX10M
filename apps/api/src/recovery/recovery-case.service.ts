@@ -19,19 +19,23 @@ import {
   BOOTSTRAP_RECOVERABILITY_WEIGHTS,
   CostAwarePolicy,
   DEFAULT_COST_MODEL,
+  emptyBanditState,
   LinUcbBanditPolicy,
   LogisticRecoverability,
+  mergeBanditDelta,
   planRetrySequence,
   RecoveryFeatureStore,
   type AvailableMethod,
   type ComplianceContext,
   type ContextualBanditPolicy,
+  type LinUcbBanditState,
   type RecoverabilityWeights,
   type RecoveryDecision,
   type RecoveryFeatures,
   type RetryPolicy,
   type RetryStep,
 } from '@ax10m/recovery-engine';
+import type { BanditStateStore } from './bandit-store.js';
 import type { RecoveryWorkflowInput } from '@ax10m/scheduler/temporal';
 import {
   TemplateDunningAgent,
@@ -104,9 +108,23 @@ export class RecoveryCaseService {
   private banditEnabled = false;
   private policy: RetryPolicy = this.buildPolicy();
 
+  // Cross-merchant flywheel: the live bandit, its persisted store, the baseline snapshot at last
+  // load/flush (for the additive delta merge), and a since-last-flush update counter.
+  private bandit?: LinUcbBanditPolicy;
+  private banditStore?: BanditStateStore;
+  private banditBaseline: LinUcbBanditState = emptyBanditState();
+  private banditUpdatesSinceFlush = 0;
+  private banditTotalUpdates = 0;
+  private static readonly BANDIT_FLUSH_EVERY = 25;
+
   /** Build the active policy: LinUCB bandit when enabled, else the cost/compliance-aware objective. */
   private buildPolicy(): RetryPolicy {
-    return this.banditEnabled ? new LinUcbBanditPolicy(this.recoverabilityModel) : new CostAwarePolicy(this.recoverabilityModel);
+    if (this.banditEnabled) {
+      this.bandit = new LinUcbBanditPolicy(this.recoverabilityModel);
+      return this.bandit;
+    }
+    this.bandit = undefined;
+    return new CostAwarePolicy(this.recoverabilityModel);
   }
 
   /**
@@ -119,6 +137,48 @@ export class RecoveryCaseService {
     this.banditEnabled = true;
     this.policy = this.buildPolicy();
     this.logger.log('Recovery brain: LinUCB contextual-bandit policy ENABLED (online learning on).');
+  }
+
+  /** Point the bandit at a shared persisted store (the cross-merchant flywheel). Call before load. */
+  useBanditStore(store: BanditStateStore): void {
+    this.banditStore = store;
+  }
+
+  /**
+   * Load the shared 'global' bandit state from the store into the live bandit (the cross-merchant
+   * flywheel: every merchant's learning pools into one model). No-op unless the bandit + store are
+   * wired. Sets the baseline so later flushes contribute only the NEW delta.
+   */
+  async loadBanditState(name = 'global'): Promise<void> {
+    if (!this.bandit || !this.banditStore) return;
+    const state = await this.banditStore.load(name);
+    if (state) {
+      this.bandit.restore(state);
+      this.banditBaseline = state;
+      this.logger.log(`Bandit flywheel: loaded shared '${name}' state (retry n=${state.arms.retry.n}, comms n=${state.arms.card_update_comms.n}).`);
+    } else {
+      this.banditBaseline = this.bandit.snapshot();
+    }
+  }
+
+  /**
+   * Flush the local learning delta into the shared store, additively merged with whatever other
+   * processes have written since we loaded (persisted + (current − baseline)). Then re-adopt the
+   * merged state as the new baseline so contributions pool without double-counting.
+   */
+  private async flushBanditState(name = 'global'): Promise<void> {
+    if (!this.bandit || !this.banditStore) return;
+    try {
+      const current = this.bandit.snapshot();
+      const persisted = (await this.banditStore.load(name)) ?? emptyBanditState();
+      const merged = mergeBanditDelta(persisted, current, this.banditBaseline);
+      await this.banditStore.save(name, merged, this.banditTotalUpdates);
+      this.bandit.restore(merged); // adopt the pooled model (picks up other processes' deltas)
+      this.banditBaseline = merged;
+      this.banditUpdatesSinceFlush = 0;
+    } catch (err) {
+      this.logger.warn(`Bandit flywheel flush failed (kept learning in-memory): ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   /**
@@ -142,6 +202,16 @@ export class RecoveryCaseService {
     if (!('update' in this.policy) || (outcome !== 'succeeded' && outcome !== 'failed')) return;
     const reward = outcome === 'succeeded' ? amountMinor - DEFAULT_COST_MODEL.attemptFeeMinor : -DEFAULT_COST_MODEL.attemptFeeMinor;
     (this.policy as ContextualBanditPolicy).update(features, decision, reward);
+    // Only the retry / comms arms produce a learnable reward — mirror the policy's own guard so
+    // the flush cadence tracks real learning.
+    if (decision.action !== 'retry' && decision.action !== 'card_update_comms') return;
+    this.banditTotalUpdates += 1;
+    this.banditUpdatesSinceFlush += 1;
+    // Periodically persist the delta into the shared cross-merchant flywheel (fire-and-forget).
+    if (this.bandit && this.banditStore && this.banditUpdatesSinceFlush >= RecoveryCaseService.BANDIT_FLUSH_EVERY) {
+      this.banditUpdatesSinceFlush = 0;
+      void this.flushBanditState();
+    }
   }
 
   // Enrichment layer + data flywheel: turns a raw failure into the high-signal feature

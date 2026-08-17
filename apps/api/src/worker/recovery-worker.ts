@@ -24,6 +24,7 @@ import { buildCredentialAttemptStore } from '../recovery/credential-attempt-stor
 import { buildFeatureStore } from '../recovery/feature-store-builder.js';
 import { buildDunningComms } from '../recovery/dunning-comms-builder.js';
 import { buildSendDedupeStore } from '../recovery/send-dedupe-store.js';
+import { buildBanditStateStore } from '../recovery/bandit-store.js';
 import { loadActiveChampion } from '../recovery/retrain-job.js';
 import { buildConnectionStore } from '../webhooks/merchant-connections.js';
 
@@ -68,6 +69,17 @@ export async function buildRecoveryWorkerRuntime(env: NodeJS.ProcessEnv = proces
   // Share the send-idempotency store across API + worker (same Postgres) so a reminder is sent once.
   const sendDedupe = await buildSendDedupeStore(env);
   if (sendDedupe) service.useSendDedupeStore(sendDedupe);
+  // The worker does the live charging → it is the bandit's primary learner. Enable the LinUCB
+  // policy + the shared cross-merchant flywheel state (loaded now, flushed as outcomes land) when
+  // AX10M_BANDIT_POLICY=true, so its online learning pools with the API's and survives restarts.
+  if (env.AX10M_BANDIT_POLICY === 'true') {
+    service.useBanditPolicy();
+    const banditStore = await buildBanditStateStore(env);
+    if (banditStore) {
+      service.useBanditStore(banditStore);
+      await service.loadBanditState();
+    }
+  }
 
   // Preload the configured processor connections into a merchant→adapter map. The saga's
   // resolver is synchronous, so we resolve credentials up front (the worker starts with a

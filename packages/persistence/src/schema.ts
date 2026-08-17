@@ -122,4 +122,17 @@ export const billingInvoices = pgTable('billing_invoices', {
   issuedAt: text('issued_at').notNull(),
 });
 
-export const schema = { merchants, merchantConnections, ledgerEntries, recoveryModels, credentialAttempts, dunningSends, billingAccounts, billingAcceptances, billingInvoices };
+/**
+ * Contextual-bandit flywheel state. One row per named model (default 'global') holding the
+ * bandit's serialized sufficient statistics (LinUcbBanditState) in `doc`. Shared across the API +
+ * worker so learning from every merchant's live outcomes pools into ONE cross-merchant model, and
+ * survives restarts. `updates` is the cumulative online-update count (observability).
+ */
+export const banditState = pgTable('bandit_state', {
+  name: text('name').primaryKey(),
+  doc: jsonb('doc').notNull(),
+  updates: integer('updates').notNull().default(0),
+  updatedAt: text('updated_at').notNull(),
+});
+
+export const schema = { merchants, merchantConnections, ledgerEntries, recoveryModels, credentialAttempts, dunningSends, billingAccounts, billingAcceptances, billingInvoices, banditState };

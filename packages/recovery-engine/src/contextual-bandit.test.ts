@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DeclineCode } from '@ax10m/canonical';
-import { LinUcbBanditPolicy } from './contextual-bandit.js';
+import { emptyBanditState, LinUcbBanditPolicy, mergeBanditDelta } from './contextual-bandit.js';
 import { CostAwarePolicy } from './policy.js';
 import type { RecoverabilityModel, RecoveryFeatures } from './recoverability.js';
 
@@ -75,5 +75,42 @@ describe('LinUcbBanditPolicy — online learning', () => {
     // A comms reward doesn't move the retry arm: retry still chosen at cold-start prior.
     bandit.update(f, { action: 'card_update_comms', recoverabilityScore: 0.5, expectedValueMinor: 0, rationale: 'x' }, 50_000);
     expect(bandit.decide(f, ctx()).action).toBe('retry'); // retry prior still wins for a healthy soft decline
+  });
+});
+
+describe('LinUcbBanditPolicy — persistence + cross-merchant flywheel', () => {
+  it('snapshot → restore round-trips the learned state (survives a restart)', () => {
+    const f = feat();
+    const trained = new LinUcbBanditPolicy(fixedModel(0.5));
+    for (let i = 0; i < 300; i++) trained.update(f, { action: 'retry', recoverabilityScore: 0.5, expectedValueMinor: 0, rationale: 'x' }, 0);
+    const decisionBefore = trained.decide(f, ctx());
+
+    // "Restart": a fresh policy loads the snapshot and must decide identically.
+    const restored = new LinUcbBanditPolicy(fixedModel(0.5));
+    restored.restore(trained.snapshot());
+    const decisionAfter = restored.decide(f, ctx());
+    expect(decisionAfter.action).toBe(decisionBefore.action);
+    expect(decisionAfter.netValueMinor).toBe(decisionBefore.netValueMinor);
+  });
+
+  it('mergeBanditDelta pools two processes contributions additively', () => {
+    const f = feat();
+    // Two processes both start from the same baseline (empty), each learns 150 retry rewards.
+    const baseline = emptyBanditState();
+    const a = new LinUcbBanditPolicy(fixedModel(0.5));
+    const b = new LinUcbBanditPolicy(fixedModel(0.5));
+    for (let i = 0; i < 150; i++) a.update(f, { action: 'retry', recoverabilityScore: 0.5, expectedValueMinor: 0, rationale: 'x' }, 19_985);
+    for (let i = 0; i < 150; i++) b.update(f, { action: 'retry', recoverabilityScore: 0.5, expectedValueMinor: 0, rationale: 'x' }, 19_985);
+
+    // Merge b's delta into a's state (as a persisted flush would): persisted=a, current=b, baseline.
+    const merged = mergeBanditDelta(a.snapshot(), b.snapshot(), baseline);
+    expect(merged.arms.retry.n).toBe(300); // 150 + (150 − 0)
+
+    // A single policy that saw all 300 rewards should match the merged (pooled) state's decision.
+    const pooled = new LinUcbBanditPolicy(fixedModel(0.5));
+    for (let i = 0; i < 300; i++) pooled.update(f, { action: 'retry', recoverabilityScore: 0.5, expectedValueMinor: 0, rationale: 'x' }, 19_985);
+    const fromMerged = new LinUcbBanditPolicy(fixedModel(0.5));
+    fromMerged.restore(merged);
+    expect(fromMerged.decide(f, ctx()).netValueMinor).toBeCloseTo(pooled.decide(f, ctx()).netValueMinor!, -2); // within ~$1
   });
 });
