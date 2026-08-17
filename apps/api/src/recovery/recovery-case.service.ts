@@ -10,17 +10,19 @@ import {
   type Stratum,
 } from '@ax10m/attribution';
 import {
+  DEFAULT_GUARDRAIL_POLICY,
   evaluate as evaluateGuardrail,
   type CardNetwork,
   type ProposedAction,
 } from '@ax10m/guardrail';
 import {
   BOOTSTRAP_RECOVERABILITY_WEIGHTS,
-  HeuristicPolicy,
+  CostAwarePolicy,
   LogisticRecoverability,
   planRetrySequence,
   RecoveryFeatureStore,
   type AvailableMethod,
+  type ComplianceContext,
   type RecoverabilityWeights,
   type RecoveryDecision,
   type RecoveryFeatures,
@@ -83,16 +85,17 @@ export class RecoveryCaseService {
   // TODO(ax10m): inject per-environment holdout config from env / config service.
   private readonly holdoutConfig?: HoldoutConfig;
 
-  // The recovery brain. Same guardrail-safe decision surface (HeuristicPolicy), but its
-  // recoverability model is the TRAINED LogisticRecoverability (bootstrap prior fit by
-  // @ax10m/recovery-engine's trainer; held-out AUC 0.881 vs 0.869 heuristic). Retrain on
-  // the live ledger via samplesFromLedger, or swap in an online BanditPolicy — the
-  // RetryPolicy/RecoverabilityModel seam means neither touches this wiring.
-  // The trained recoverability model, shared by the single-step policy AND the ARSE
-  // sequence planner so both speak with the same brain. Starts on the bootstrap prior;
-  // useChampion() swaps in a retrained model loaded from the persisted model store.
+  // The recovery brain. The decision surface is the COST/COMPLIANCE-AWARE objective
+  // (CostAwarePolicy): it scores candidates by net value = expected recovery − processing fee −
+  // expected fine cost (which rises as attempts near the network cap), so it self-suppresses
+  // low-value / near-cap attempts a blind "retry harder" baseline would take. Its recoverability
+  // model is the TRAINED LogisticRecoverability (bootstrap prior fit by @ax10m/recovery-engine's
+  // trainer; held-out AUC 0.881 vs 0.869 heuristic). Retrain on the live ledger via
+  // samplesFromLedger, or swap in an online BanditPolicy — the RetryPolicy/RecoverabilityModel
+  // seam means neither touches this wiring. Starts on the bootstrap prior; useChampion() swaps in
+  // a retrained model loaded from the persisted model store.
   private recoverabilityModel = new LogisticRecoverability(BOOTSTRAP_RECOVERABILITY_WEIGHTS);
-  private policy: RetryPolicy = new HeuristicPolicy(this.recoverabilityModel);
+  private policy: RetryPolicy = new CostAwarePolicy(this.recoverabilityModel);
 
   /**
    * Swap the recoverability model to a retrained champion (loaded from the persisted
@@ -101,7 +104,7 @@ export class RecoveryCaseService {
    */
   useChampion(weights: RecoverabilityWeights): void {
     this.recoverabilityModel = new LogisticRecoverability(weights);
-    this.policy = new HeuristicPolicy(this.recoverabilityModel);
+    this.policy = new CostAwarePolicy(this.recoverabilityModel);
     this.logger.log(`Loaded retrained champion (meta: ${JSON.stringify(weights.meta ?? {})}).`);
   }
 
@@ -605,7 +608,17 @@ export class RecoveryCaseService {
     const methods: AvailableMethod[] = [
       { ref: method.processorRef, isDefault: true, autoUpdated: method.autoUpdated },
     ];
-    const decision = this.policy.decide(features, { now: new Date().toISOString(), methods });
+    // Cap-proximity context for the cost/compliance-aware objective: how many attempts this
+    // credential has used in the network window vs the network's cap. The closer to the cap, the
+    // higher the expected fine cost the objective prices in → the engine backs off before the
+    // guardrail's hard block. Computed here (once) and reused for the guardrail's ProposedAction.
+    const network = mapCardNetwork(method.brand);
+    const credWin = await this.credentialAttempts.window(this.credentialKey(invoice.id, method), params.nowIso);
+    const compliance: ComplianceContext = {
+      attemptsInNetworkWindow: credWin.attemptsInWindow,
+      networkCap: DEFAULT_GUARDRAIL_POLICY.networkCaps?.[network]?.maxAttemptsPerWindow,
+    };
+    const decision = this.policy.decide(features, { now: new Date().toISOString(), methods, compliance });
 
     await this.ledger.append({
       merchantId: invoice.merchantId,
@@ -663,14 +676,14 @@ export class RecoveryCaseService {
       return { action: decision.action, decision };
     }
 
-    // The engine proposed a retry — hand it to the guardrail + execution path.
-    const credWin = await this.credentialAttempts.window(this.credentialKey(invoice.id, method), params.nowIso);
+    // The engine proposed a retry — hand it to the guardrail + execution path. (credWin + network
+    // were computed above for the cost/compliance objective; reuse them here.)
     const proposed: ProposedAction = {
       kind: 'charge_retry',
       declineCode: features.declineCode,
       declineFamily: familyOf(features.declineCode),
       attemptsSoFar, // per-CASE → global attempt cap
-      cardNetwork: mapCardNetwork(method.brand),
+      cardNetwork: network,
       attemptsInWindow: credWin.attemptsInWindow, // per-CREDENTIAL → network retry cap
       minutesSinceLastAttempt: credWin.minutesSinceLastAttempt ?? params.minutesSinceLastAttempt, // saga-clock min-interval
       localHour: params.localHour ?? new Date().getUTCHours(),

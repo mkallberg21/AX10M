@@ -14,6 +14,7 @@
  */
 export * from './recoverability.js';
 export * from './timing.js';
+export * from './objective.js';
 export * from './policy.js';
 // Decline-Code Intelligence + Autonomous Retry Sequencing (ARSE).
 export * from './decline-intel.js';
