@@ -1,5 +1,5 @@
-import { BadRequestException, Body, Controller, Get, Headers, HttpCode, Ip, Param, Post } from '@nestjs/common';
-import type { Invoice, OptInInput } from '@ax10m/billing';
+import { BadRequestException, Body, Controller, Get, Headers, HttpCode, Ip, Param, Post, Query } from '@nestjs/common';
+import { icpQuote, type IcpQuote, type Invoice, type OptInInput } from '@ax10m/billing';
 import { BillingPortalService, type AccountView, type ForwardToApComposition, type OptInResult } from './billing-portal.service.js';
 import { InvoiceDeliveryService, type InvoiceDeliveryResult, type InvoiceDunningSummary } from './invoice-delivery.service.js';
 import { StripeEnrollmentService, type SetupIntentRequest, type SetupIntentResult } from './stripe-enrollment.service.js';
@@ -32,6 +32,37 @@ export class BillingController {
   @Get('terms')
   terms(): ReturnType<BillingPortalService['terms']> {
     return this.portal.terms();
+  }
+
+  /**
+   * Sales-time ICP + time-to-proven-lift quote. Given a merchant's monthly failed-payment volume
+   * and a few rate assumptions, estimates whether they clear the billable floor and how long the
+   * holdout takes to prove lift. An analytic planning estimate — the live holdout is the truth.
+   *
+   *   GET /billing/icp-quote?monthlyFailedPayments=8000&avgInvoiceAmountMinor=5000
+   *       &baselineRecoveryRate=0.3&upliftRatePoints=0.05
+   */
+  @Get('icp-quote')
+  icpQuote(
+    @Query('monthlyFailedPayments') monthlyFailedPayments?: string,
+    @Query('avgInvoiceAmountMinor') avgInvoiceAmountMinor?: string,
+    @Query('baselineRecoveryRate') baselineRecoveryRate?: string,
+    @Query('upliftRatePoints') upliftRatePoints?: string,
+    @Query('controlFraction') controlFraction?: string,
+  ): IcpQuote {
+    const n = Number(monthlyFailedPayments);
+    const amt = Number(avgInvoiceAmountMinor);
+    if (!Number.isFinite(n) || n <= 0 || !Number.isFinite(amt) || amt <= 0) {
+      throw new BadRequestException('monthlyFailedPayments and avgInvoiceAmountMinor are required positive numbers');
+    }
+    return icpQuote({
+      monthlyFailedPayments: n,
+      avgInvoiceAmountMinor: amt,
+      baselineRecoveryRate: Number.isFinite(Number(baselineRecoveryRate)) ? Number(baselineRecoveryRate) : 0.3,
+      // Conservative default incremental-over-baseline effect (+2pp); callers pass their own.
+      upliftRatePoints: Number.isFinite(Number(upliftRatePoints)) ? Number(upliftRatePoints) : 0.02,
+      controlFraction: Number.isFinite(Number(controlFraction)) ? Number(controlFraction) : undefined,
+    });
   }
 
   /**
