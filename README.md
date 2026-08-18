@@ -186,6 +186,7 @@ recover alongside the processor's own retries; `advisory` = the platform owns th
 | **Chargebee · Recurly · Zuora · Maxio** | billing platform | drive/co-drive | ✅ implemented |
 | **Shopify · WooCommerce** | e-commerce | co-drive | ✅ implemented |
 | **BigCommerce · Kajabi · ThriveCart · SamCart** | e-commerce/creator | advisory | ✅ implemented (measure + prompt) |
+| **Deluxe Merchant Services** (Deluxe Connect) | card gateway | drive | 🟡 skeleton (real drive API; field-level spec TODO — portal not fetchable) |
 | _+ 13 enterprise billing platforms_ | — | co-drive | skeleton (capability matrix real; API TODO) |
 
 Every implemented adapter follows the same template: an **injectable `fetch` transport** (unit-tested

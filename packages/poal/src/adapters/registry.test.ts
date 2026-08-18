@@ -5,6 +5,7 @@ import { BraintreeAdapter } from './braintree/index.js';
 import { ChargebeeAdapter } from './chargebee/index.js';
 import { GoCardlessAdapter } from './gocardless/index.js';
 import { PaddleAdapter } from './paddle.js';
+import { DeluxeAdapter } from './deluxe/index.js';
 import { BaseAdapter } from './base.js';
 import type { CapabilityMatrix } from '../adapter.js';
 
@@ -62,6 +63,27 @@ describe('advisory-mode safety', () => {
 
   it('still ingests webhooks (measurement is always available)', async () => {
     await expect(paddle.ingestWebhook({ body: '{}', headers: {} })).resolves.toEqual([]);
+  });
+});
+
+describe('Deluxe Merchant Services (drive card-gateway skeleton)', () => {
+  it('is registered as a drive card gateway, skeleton status', () => {
+    const entry = getProcessor('deluxe');
+    expect(entry).toMatchObject({ segment: 'card-gateway', mode: 'drive', status: 'skeleton' });
+  });
+
+  const deluxe = new DeluxeAdapter({ merchantId: 'm' });
+
+  it("advertises the drive mode its registry entry claims", () => {
+    expect(deluxe.capabilities().integrationMode).toBe(getProcessor('deluxe')!.mode);
+  });
+
+  it('surfaces a TODO (not the advisory error) on attemptCharge — it CAN drive once wired', async () => {
+    await expect(deluxe.attemptCharge({} as never, {} as never, 'idem_dlx')).rejects.toThrow(/TODO\(ax10m\)/);
+  });
+
+  it('still ingests webhooks (measurement path), returning [] until the contract is wired', async () => {
+    await expect(deluxe.ingestWebhook({ body: '{}', headers: {} })).resolves.toEqual([]);
   });
 });
 

@@ -44,6 +44,9 @@ export const PROCESSOR_REGISTRY: readonly ProcessorDescriptor[] = [
   { id: 'worldpay', displayName: 'Worldpay / FIS', segment: 'card-gateway', mode: 'drive', status: 'implemented' },
   { id: 'tsys', displayName: 'TSYS (Global Payments)', segment: 'card-gateway', mode: 'drive', status: 'implemented' },
   { id: 'elavon', displayName: 'Elavon (Converge)', segment: 'card-gateway', mode: 'drive', status: 'implemented' },
+  // Deluxe Connect / Merchant Services API is real + drive-capable (Payments, tokenized Payment
+  // Methods, Reports, webhooks); skeleton until the field-level spec (auth/base-URL/webhook) is wired.
+  { id: 'deluxe', displayName: 'Deluxe Merchant Services', segment: 'card-gateway', mode: 'drive', status: 'skeleton' },
   { id: 'cybersource', displayName: 'Cybersource (Visa)', segment: 'card-gateway', mode: 'drive', status: 'planned' },
   { id: 'authorizenet', displayName: 'Authorize.Net', segment: 'card-gateway', mode: 'drive', status: 'planned' },
   { id: 'fiserv', displayName: 'Fiserv', segment: 'card-gateway', mode: 'co-drive', status: 'planned' },

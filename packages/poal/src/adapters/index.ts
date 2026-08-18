@@ -15,6 +15,7 @@ export * from './checkout/index.js';
 export * from './worldpay/index.js';
 export * from './tsys/index.js';
 export * from './elavon/index.js';
+export * from './deluxe/index.js';
 // Subscription-billing platforms
 export * from './recurly/index.js';
 export * from './zuora/index.js';
