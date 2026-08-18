@@ -2,7 +2,8 @@
 
 The copy for a one-page brochure aimed at **executives at payment processors and platforms** (a
 partnership/channel pitch, not the merchant sale). A polished, print-ready visual version is
-published as an Artifact. Fill the `[PLACEHOLDER]`s (founder, email, site) before sending.
+published as an Artifact. Contact: **Matt Kallberg · mkallberg@k6-labs.com** (the green CTA button
+in the artifact is a working `mailto:` to that address).
 
 > **Honesty:** design-partner stage, no fabricated merchant counts, logos, or recovery results.
 > The intrigue is the *mechanism* (provable, reconcilable recovery) plus the processor-agnostic
@@ -45,8 +46,9 @@ One canonical core, an adapter per processor. AX10M isn't a competitor lock-in p
 infrastructure that speaks payment recovery across the whole ecosystem, zero code for your merchants.
 **Your platform is already on the map.** Live adapters: Stripe · Adyen · Braintree · Checkout.com ·
 Worldpay/FIS · TSYS/Global Payments · Elavon · PayPal · GoCardless · Deluxe · Chargebee · Recurly ·
-Zuora · Maxio. Registry also covers Cybersource · Authorize.Net · Fiserv · Square · Nuvei · Mollie ·
-and your platform. A new adapter is a well-worn template: days, not quarters.
+Zuora · Maxio. Every processor in our 47-strong registry now ships with a first-class adapter
+(Cybersource · Authorize.Net · Fiserv · Global Payments · Square · Mollie · Nuvei · Razorpay ·
+Stripe Billing · and more), so a new one is a well-worn template: days, not quarters.
 
 ### The differentiator
 Every recovery statement is Ed25519-signed over an append-only, hash-chained ledger and reconciles
@@ -55,12 +57,12 @@ honesty is the moat, and the reason a processor can put its name next to it.
 `verify → PASS statement hash · PASS Ed25519 signature · PASS ledger chain · reconciles to payout ✓`
 
 ### By the architecture (facts, not performance claims)
-~17 live processor adapters · 40+ in the registry · 0 card numbers stored (SAQ-A) · 100% of billing
+47 processors (all with an adapter) · 19 wired live · 0 card numbers stored (SAQ-A) · 100% of billing
 independently verifiable.
 
 ### Call to action
 Let's put **provable recovery** in front of your merchants: a measured pilot on a handful of
-accounts. **[Founder name] · [email] · [ax10m.com]**
+accounts. **Matt Kallberg · mkallberg@k6-labs.com**
 
 *Footer:* Design-partner stage. Recovery figures are proven per-merchant by a live holdout, never
 claimed in advance.

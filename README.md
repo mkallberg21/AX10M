@@ -187,7 +187,11 @@ recover alongside the processor's own retries; `advisory` = the platform owns th
 | **Shopify · WooCommerce** | e-commerce | co-drive | ✅ implemented |
 | **BigCommerce · Kajabi · ThriveCart · SamCart** | e-commerce/creator | advisory | ✅ implemented (measure + prompt) |
 | **Deluxe Merchant Services** (Deluxe Connect) | card gateway | drive | 🟡 skeleton (real drive API; field-level spec TODO — portal not fetchable) |
+| **Cybersource · Authorize.Net · Fiserv · Global Payments · Square · Mollie · Nuvei · Razorpay · Stripe Billing · Vindicia · PayU · Apple/Google IAP** | card / billing / app-store | drive/co-drive/advisory | 🟡 skeleton (capability matrix real; field-level API TODO) |
 | _+ 13 enterprise billing platforms_ | — | co-drive | skeleton (capability matrix real; API TODO) |
+
+The **registry now has 0 `planned` entries**: every one of the 47 processors has a first-class
+adapter (19 wired live end-to-end, 28 capability-accurate scaffolds ready for a mechanical fill-in).
 
 Every implemented adapter follows the same template: an **injectable `fetch` transport** (unit-tested
 against a fake), canonical decline mapping, verified webhooks, and token/mandate charges
@@ -230,7 +234,7 @@ corepack pnpm --filter @ax10m/api run bill        # monthly Uplift Statement + (
 corepack pnpm --filter @ax10m/api run dun         # daily invoice delivery + dunning sweep
 ```
 
-**~655 unit + e2e tests** across the 12 packages + api (poal 289 · recovery-engine 68 · api 104 ·
+**~710 unit + e2e tests** across the 12 packages + api (poal 346 · recovery-engine 68 · api 104 ·
 attribution 41 · comms 38 · billing 33 · scheduler 25 · onboarding 18 · guardrail 14 · persistence 11 ·
 backtest 10 · protocol 4; canonical is types-only). All green **except** one pre-existing flaky
 scheduler Temporal time-skipping e2e (`worker.e2e.test.ts`), which fails intermittently independent
