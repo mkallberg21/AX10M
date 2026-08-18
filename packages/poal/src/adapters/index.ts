@@ -16,6 +16,8 @@ export * from './worldpay/index.js';
 export * from './tsys/index.js';
 export * from './elavon/index.js';
 export * from './deluxe/index.js';
+// Planned-processor skeletons (capability matrix real; field-level API wiring TODO)
+export * from './planned/index.js';
 // Subscription-billing platforms
 export * from './recurly/index.js';
 export * from './zuora/index.js';

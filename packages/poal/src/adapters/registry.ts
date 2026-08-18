@@ -47,22 +47,22 @@ export const PROCESSOR_REGISTRY: readonly ProcessorDescriptor[] = [
   // Deluxe Connect / Merchant Services API is real + drive-capable (Payments, tokenized Payment
   // Methods, Reports, webhooks); skeleton until the field-level spec (auth/base-URL/webhook) is wired.
   { id: 'deluxe', displayName: 'Deluxe Merchant Services', segment: 'card-gateway', mode: 'drive', status: 'skeleton' },
-  { id: 'cybersource', displayName: 'Cybersource (Visa)', segment: 'card-gateway', mode: 'drive', status: 'planned' },
-  { id: 'authorizenet', displayName: 'Authorize.Net', segment: 'card-gateway', mode: 'drive', status: 'planned' },
-  { id: 'fiserv', displayName: 'Fiserv', segment: 'card-gateway', mode: 'co-drive', status: 'planned' },
-  { id: 'globalpayments', displayName: 'Global Payments', segment: 'card-gateway', mode: 'drive', status: 'planned' },
-  { id: 'square', displayName: 'Square', segment: 'card-gateway', mode: 'drive', status: 'planned' },
-  { id: 'mollie', displayName: 'Mollie', segment: 'card-gateway', mode: 'co-drive', status: 'planned' },
-  { id: 'nuvei', displayName: 'Nuvei', segment: 'card-gateway', mode: 'drive', status: 'planned' },
-  { id: 'razorpay', displayName: 'Razorpay', segment: 'card-gateway', mode: 'co-drive', status: 'planned' },
-  { id: 'payu', displayName: 'PayU', segment: 'card-gateway', mode: 'advisory', status: 'planned' },
+  { id: 'cybersource', displayName: 'Cybersource (Visa)', segment: 'card-gateway', mode: 'drive', status: 'skeleton' },
+  { id: 'authorizenet', displayName: 'Authorize.Net', segment: 'card-gateway', mode: 'drive', status: 'skeleton' },
+  { id: 'fiserv', displayName: 'Fiserv', segment: 'card-gateway', mode: 'co-drive', status: 'skeleton' },
+  { id: 'globalpayments', displayName: 'Global Payments', segment: 'card-gateway', mode: 'drive', status: 'skeleton' },
+  { id: 'square', displayName: 'Square', segment: 'card-gateway', mode: 'drive', status: 'skeleton' },
+  { id: 'mollie', displayName: 'Mollie', segment: 'card-gateway', mode: 'co-drive', status: 'skeleton' },
+  { id: 'nuvei', displayName: 'Nuvei', segment: 'card-gateway', mode: 'drive', status: 'skeleton' },
+  { id: 'razorpay', displayName: 'Razorpay', segment: 'card-gateway', mode: 'co-drive', status: 'skeleton' },
+  { id: 'payu', displayName: 'PayU', segment: 'card-gateway', mode: 'advisory', status: 'skeleton' },
   // Subscription-billing platforms
   { id: 'chargebee', displayName: 'Chargebee', segment: 'billing-platform', mode: 'drive', status: 'implemented' },
   { id: 'recurly', displayName: 'Recurly', segment: 'billing-platform', mode: 'co-drive', status: 'implemented' },
   { id: 'zuora', displayName: 'Zuora', segment: 'billing-platform', mode: 'co-drive', status: 'implemented' },
   { id: 'maxio', displayName: 'Maxio (Chargify/SaaSOptics)', segment: 'billing-platform', mode: 'drive', status: 'implemented' },
-  { id: 'stripe-billing', displayName: 'Stripe Billing', segment: 'billing-platform', mode: 'co-drive', status: 'planned' },
-  { id: 'vindicia', displayName: 'Vindicia', segment: 'billing-platform', mode: 'advisory', status: 'planned' },
+  { id: 'stripe-billing', displayName: 'Stripe Billing', segment: 'billing-platform', mode: 'co-drive', status: 'skeleton' },
+  { id: 'vindicia', displayName: 'Vindicia', segment: 'billing-platform', mode: 'advisory', status: 'skeleton' },
   // Enterprise billing / monetization platforms (co-drive; skeleton connectors — capability
   // matrix real, live API integration TODO given proprietary/partner-gated APIs).
   { id: 'appdirect', displayName: 'AppDirect', segment: 'billing-platform', mode: 'co-drive', status: 'skeleton' },
@@ -91,8 +91,8 @@ export const PROCESSOR_REGISTRY: readonly ProcessorDescriptor[] = [
   { id: 'thrivecart', displayName: 'ThriveCart', segment: 'creator-commerce', mode: 'advisory', status: 'implemented' },
   { id: 'samcart', displayName: 'SamCart', segment: 'creator-commerce', mode: 'advisory', status: 'implemented' },
   // App stores (advisory-only, measurement + prompt)
-  { id: 'apple-iap', displayName: 'Apple App Store', segment: 'app-store', mode: 'advisory', status: 'planned' },
-  { id: 'google-play', displayName: 'Google Play', segment: 'app-store', mode: 'advisory', status: 'planned' },
+  { id: 'apple-iap', displayName: 'Apple App Store', segment: 'app-store', mode: 'advisory', status: 'skeleton' },
+  { id: 'google-play', displayName: 'Google Play', segment: 'app-store', mode: 'advisory', status: 'skeleton' },
 ];
 
 /** Look up a processor descriptor by id. */
